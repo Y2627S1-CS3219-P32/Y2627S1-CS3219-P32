@@ -1,0 +1,27 @@
+services:
+  supplier-service:
+    build: ./supplier-service
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgres://supplier:supplier@supplier-db:5432/suppliers
+    depends_on:
+      supplier-db:
+        condition: service_healthy
+
+  supplier-db:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: supplier
+      POSTGRES_PASSWORD: supplier
+      POSTGRES_DB: suppliers
+    volumes:
+      - supplier-db-data:/var/lib/postgresql/data
+      - ./supplier-service/db/init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U supplier -d suppliers"]
+      interval: 5s
+      retries: 5
+
+volumes:
+  supplier-db-data:
