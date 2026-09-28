@@ -33,7 +33,11 @@ operating_hours
 - supplier_id
 - day (0 - 6) int, add check constraint
 - opening_hrs time
-- closing_hrs same type as opening_hrs (check constraint: opening_hrs < closing_hrs)
-Composite key: supplier_id and day.
+- closing_hrs same type as opening_hrs
+Composite key: supplier_id, day, opening_hrs
 
-Some considerations with this composite key is that it's not possible to have break times on this service. However, the item that the requestor wants the courier to pick up has already been purchased, so it's deemed to be out of scope.
+Did not put a check constraint on opening_hrs < closing_hrs to provide flexibility on overnight hours (example 22:00 - 02:00). Non-overlapping times will be checked in the service layer as well.
+
+Operating hours: 0 is Sunday, in line with postgres and javascript.
+
+Missing day means it's closed.
