@@ -24,7 +24,7 @@
 
       <div class="order-1 overflow-hidden bg-white md:order-2">
         <img
-          src="/images/suppliers/ROBOT_CAFE.jpeg"
+          src="/images/mascot.jpg"
           alt="A campus cafe ready for your next stop"
           class="aspect-square w-full object-cover"
         >
@@ -32,14 +32,3 @@
     </section>
   </main>
 </template>
-
-<style scoped>
-.landing-title {
-  margin: 0;
-  color: #06427e;
-  font-size: inherit;
-  font-weight: 700;
-  line-height: 1.12;
-  letter-spacing: -1.5px;
-}
-</style>
