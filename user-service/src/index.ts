@@ -1,6 +1,15 @@
 import 'dotenv/config';
-import { drizzle } from 'drizzle-orm/node-sqlite';
+import express from 'express';
 
-import { db, getAllUsers } from './db.ts'
+import { getAllUsers } from './db';
 
-console.log(getAllUsers())
+const app = express();
+const port = Number(process.env.PORT ?? 3000);
+
+app.get('/users', (_req, res) => {
+  res.json(getAllUsers());
+});
+
+app.listen(port, () => {
+  console.log(`User service listening on port ${port}`);
+});
