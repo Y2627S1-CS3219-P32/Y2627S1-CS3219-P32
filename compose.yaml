@@ -1,3 +1,5 @@
+# AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-28.
+# Scope: Add an opt-in Drizzle tooling container. Author review: pending.
 services:
   supplier-service:
     build: ./supplier-service
@@ -5,6 +7,21 @@ services:
       - "3000:3000"
     environment:
       DATABASE_URL: postgres://supplier:supplier@supplier-db:5432/suppliers
+    depends_on:
+      supplier-db:
+        condition: service_healthy
+
+  supplier-db-tools:
+    profiles: ["tools"]
+    build:
+      context: ./supplier-service
+      target: tooling
+    environment:
+      DATABASE_URL: postgres://supplier:supplier@supplier-db:5432/suppliers
+    volumes:
+      - ./supplier-service/src:/app/src
+      - ./supplier-service/drizzle:/app/drizzle
+      - ./supplier-service/drizzle.config.ts:/app/drizzle.config.ts:ro
     depends_on:
       supplier-db:
         condition: service_healthy

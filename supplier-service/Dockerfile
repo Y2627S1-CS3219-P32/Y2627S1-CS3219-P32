@@ -1,4 +1,6 @@
-FROM node:22-bookworm-slim AS build
+# AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-28.
+# Scope: Add a development target for Drizzle tooling. Author review: pending.
+FROM node:22-bookworm-slim AS tooling
 
 WORKDIR /app
 
@@ -6,7 +8,11 @@ COPY package.json package-lock.json ./
 RUN npm ci
 
 COPY tsconfig.json ./
+COPY drizzle.config.ts ./
 COPY src ./src
+CMD ["npm", "run", "db:check"]
+
+FROM tooling AS build
 RUN npm run build && npm prune --omit=dev
 
 FROM node:22-bookworm-slim AS runtime

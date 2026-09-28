@@ -1,4 +1,5 @@
 {
+  "//": "AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-28. Scope: Drizzle dependencies and scripts; package-lock.json is npm-generated. Author review: pending.",
   "name": "supplier-service",
   "version": "1.0.0",
   "description": "Supplier Service",
@@ -12,6 +13,10 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit",
+    "db:check": "npm run build && node dist/db/check.js",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:studio": "drizzle-kit studio",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
@@ -20,11 +25,15 @@
   "devDependencies": {
     "@types/express": "^5.0.6",
     "@types/node": "^26.6.3",
+    "@types/pg": "^8.23.1",
+    "drizzle-kit": "^0.31.11",
     "ts-node": "^10.9.2",
     "typescript": "^7.0.2"
   },
   "dependencies": {
     "dotenv": "^18.0.4",
-    "express": "^5.2.1"
+    "drizzle-orm": "^0.45.3",
+    "express": "^5.2.1",
+    "pg": "^8.23.0"
   }
 }

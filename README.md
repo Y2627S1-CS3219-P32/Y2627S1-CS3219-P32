@@ -1,3 +1,5 @@
+<!-- AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-28.
+Scope: Consolidated AI disclosure. Author review: pending. -->
 # CS3219 — Software Design and Architecture (AY2627 Sem 1)
 
 ## Friend on Campus (FoC)
@@ -46,3 +48,15 @@ microservice (`user-service/`, `supplier-service/`, `order-service/`,
   one-service-per-folder skeleton** for core implementation.
 
 ---
+
+## AI Assistance Disclosure
+
+Tool: ChatGPT / Codex (GPT-6). Modes: boilerplate generation, debugging,
+documentation, and verification. Supplier-service setup assistance is recorded
+in the [service README](supplier-service/README.md). The exact Drizzle setup
+prompt, key response, affected files, and review status are in the
+[AI usage log](AI_USAGE_LOG.md).
+
+Drizzle assistance covers connection and tooling boilerplate. Database schema
+and architecture decisions remain with the student. Student review is pending.
+Link this README from the submission slide deck when it is created.
