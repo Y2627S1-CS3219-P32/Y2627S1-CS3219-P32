@@ -18,7 +18,7 @@
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
     "db:seed": "npm run build && node dist/db/seed.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "npm run build && node --test test/suppliers.test.mjs"
   },
   "keywords": [],
   "author": "",

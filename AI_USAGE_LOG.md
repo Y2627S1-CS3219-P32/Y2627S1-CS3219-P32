@@ -3,6 +3,49 @@ Scope: Record this session's AI assistance.
 Author review: Checked for correctness. -->
 # AI usage log (Supplier Service)
 
+## 2026-09-28: Supplier response joins
+
+- Tool: ChatGPT / Codex (GPT-6). Mode: Implementation, tests, and documentation.
+- Exact prompt: `perform the join to join building names and type, and reflect that in get suppliers/. supplier type id and building id should be omitted from the response`
+- Key response: GET /suppliers now returns the joined `type` and `buildingName`,
+  excluding `supplierTypeId` and `buildingId`. A left join preserves suppliers
+  without a building and returns `buildingName: null`. Filtering and open-first
+  ordering remain in place.
+- Affected files: `supplier-service/src/index.ts`,
+  `supplier-service/test/suppliers.test.mjs`, `supplier-service/README.md`, and
+  this log. The project README links this consolidated disclosure.
+- Author review: Pending review of these response changes.
+- Verification: Typecheck and build passed. All seven integration tests passed,
+  including correct names from two different buildings, null building handling,
+  omission of both foreign-key ID fields, filtering, and opening-time behavior.
+
+## 2026-09-28: GET suppliers happy path
+
+- Tool: ChatGPT / Codex (GPT-6). Mode: Implementation, tests, and documentation.
+- Exact prompt: `implement the GET suppliers route. optional query parameters for name (fuzzy search) and type. implement for happy path first (200). all suppliers currently open should appear before suppliers currently closed.`
+- Clarification: Asked whether fuzzy search meant case-insensitive partial
+  matching or typo tolerance. Exact answer: `Case-insensitive partial match`.
+- Clarification: Asked to return a JSON array of supplier fields plus `isOpen`,
+  use Singapore time, include inactive suppliers as closed, and filter `type` by
+  its name (e.g. Food). Exact answer: `Yes, use those defaults`.
+- Key response: Added GET /suppliers with optional AND-combined name and exact
+  type-name filters. Open suppliers sort first, followed by name and UUID.
+  Opening status handles daily periods and previous-day overnight carryover in
+  Asia/Singapore, including Saturday-to-Sunday rollover. Inactive suppliers are
+  closed. Empty results return HTTP 200 with an empty array.
+- Affected files: `supplier-service/src/index.ts`,
+  `supplier-service/src/db/opening-hours.ts`,
+  `supplier-service/test/suppliers.test.mjs`, `supplier-service/package.json`,
+  `supplier-service/README.md`, `README.md`, and this log.
+- Verification: Typecheck and build passed. Six integration tests passed against
+  a uniquely named disposable PostgreSQL database, including HTTP filtering,
+  open-first ordering, literal wildcard input, and 11 clock/period boundary cases.
+  The test database was removed afterward.
+- Runtime verification: Rebuilt and restarted the Compose supplier-service and
+  confirmed HTTP 200 responses for unfiltered, name-only, type-only, combined,
+  and no-match requests through host port 3000.
+- Author review: Pending review of these route changes.
+
 ## 2026-09-28: pgAdmin connection diagnosis
 
 - Tool: ChatGPT / Codex (GPT-6). Mode: Debugging and configuration correction.

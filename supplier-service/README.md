@@ -1,6 +1,6 @@
 <!-- AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-28.
 Scope: Drizzle setup and usage documentation. Prior content reviewed;
-seed and local database access documentation changes await review. -->
+seed, local database access, and route documentation changes await review. -->
 # Supplier Service
 
 Run commands from `supplier-service/`:
@@ -12,6 +12,8 @@ npm run dev
 
 `npm run dev` compiles TypeScript and starts the Express server on port 3000.
 `GET /` returns a JSON status message. Restart the command after code changes.
+Set `DATABASE_URL` before starting the server (see the host database instructions
+below); `GET /suppliers` queries PostgreSQL.
 
 To compile and run the built server:
 
@@ -24,6 +26,48 @@ Run `npm run typecheck` to check both `src/` and `drizzle.config.ts` without
 generating output. `tsconfig.json` owns both in the editor, including Node globals
 such as `process`. `npm run build` uses `tsconfig.build.json` to compile only
 `src/`, preserving the `dist/index.js` entry point.
+
+## GET /suppliers
+
+Returns HTTP 200 with a JSON array of supplier records in camelCase, plus a boolean
+`isOpen`. The response includes joined `type` and `buildingName` values and omits
+`supplierTypeId` and `buildingId`. Suppliers without a building remain in the
+results with `buildingName: null`. The supplier's own `id` is retained.
+No matches returns `[]`.
+
+| Query parameter | Behavior |
+| --- | --- |
+| `name` | Optional case-insensitive partial name match. `%`, `_`, and backslash are literal characters. |
+| `type` | Optional exact, case-sensitive type name, such as `Food` or `Food/Coffee`. |
+
+Both filters combine with AND. Surrounding whitespace is trimmed; blank values
+act as omitted filters. For example:
+
+```sh
+curl "http://127.0.0.1:3000/suppliers"
+curl "http://127.0.0.1:3000/suppliers?name=cafe&type=Food%2FCoffee"
+```
+
+Open suppliers come first, followed by closed suppliers. Each group is sorted
+by name and then UUID for stable ties. Inactive suppliers are included with
+`isOpen: false`. Opening status uses Singapore time (`Asia/Singapore`), includes
+the opening instant, and excludes the closing instant. It checks multiple daily
+periods and overnight periods that started on the previous day. A supplier with
+no matching period is closed. Multiple matching periods return the supplier once.
+
+### Route tests
+
+From `supplier-service/`, using PowerShell and the local Compose database:
+
+```powershell
+$env:TEST_DATABASE_URL = 'postgres://supplier:supplier@127.0.0.1:5433/suppliers'
+npm test
+```
+
+The PostgreSQL role must have permission to create databases. Tests create a
+uniquely named disposable database, apply migrations, check HTTP responses and
+opening-time boundaries, then drop that test database. Application data is not
+used for test fixtures.
 
 ## Docker
 
