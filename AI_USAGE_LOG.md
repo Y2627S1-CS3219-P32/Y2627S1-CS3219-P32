@@ -3,6 +3,46 @@ Scope: Record this session's AI assistance.
 Author review: Checked for correctness. -->
 # AI usage log (Supplier Service)
 
+## 2026-09-28: Frontend decoupling from supplier service
+
+- Tool: Claude Code (Opus 5.5). Mode: Configuration, documentation, and git.
+- Exact prompt: `decouple the frontend service from the supplier service first. i wish to cherrypick the commit over to another branch first`
+- Key response: Removed the frontend's Compose `depends_on: supplier-service` and
+  the supplier-service health check that existed only for that dependency, so the
+  frontend starts on its own. Made the frontend README self-contained (startup
+  notes and full AI disclosure inline, rather than linking this log, which does
+  not exist on `main`). Split the work into two commits: `c383e50` adds only
+  `frontend-service/` and can be cherry-picked without conflicts; `d6ea86c` wires
+  the root `compose.yaml`, `README.md`, `.env.example`, and this log on `supplier`.
+- Affected files: `compose.yaml`, `README.md`, `frontend-service/README.md`, and
+  this log.
+- Author review: Pending review of these changes.
+- Verification: With supplier-service stopped, the frontend started and served the
+  page (200); the proxy route returned 502 and the page showed its error state.
+  After restarting supplier-service, the route returned all 21 suppliers.
+
+## 2026-09-28: Nuxt frontend verification (Codex continuation)
+
+- Tool: Claude Code (Opus 5.5). Mode: Implementation, configuration, and verification.
+- Exact prompt: `ran out of credits on codex. could you continue with this status update from it?
+for context, frontend-service is being set up. The frontend’s supplier screen and server-side API forwarding are in place. It preserves the API’s open-first ordering and uses the repository’s supplier photos locally. I’m installing its dependencies and wiring Compose, then I’ll check the build, container connection, and browser layout.`
+- Key response: Found that dependencies and the Compose wiring were already in
+  place. `nuxt typecheck` failed because the shared supplier type imports had one
+  `../` too many (the build passed since type imports are erased), so changed them
+  to Nuxt's `#shared` alias. Added a follow-up note to the Codex entry below.
+- Affected files: `frontend-service/app/services/supplier-service/components/SupplierCard.vue`,
+  `frontend-service/app/services/supplier-service/components/SupplierDirectory.vue`,
+  `frontend-service/app/services/supplier-service/composables/useSuppliers.ts`,
+  `frontend-service/server/services/supplier-service/client.ts`, and this log.
+- Author review: Pending review of these changes.
+- Verification: `npm run build` and `npm run typecheck` passed. Compose started the
+  database, supplier-service, and frontend on port 3001. The Nuxt route returned
+  all 21 suppliers from supplier-service over the Compose network, `?name=cafe`
+  filtered correctly, and supplier photos were served locally. Headless Edge
+  screenshots confirmed the three-column desktop layout (1440px) and single-column
+  phone layout (390px) without horizontal overflow.
+
+
 ## 2026-09-28: Nuxt frontend service
 
 - Tool: ChatGPT / Codex (GPT-6). Mode: Implementation, configuration, and verification.
@@ -12,18 +52,13 @@ Author review: Checked for correctness. -->
   endpoint forwards requests to supplier-service:3000 over Compose's default
   network using private runtime configuration (the Compose dependency was later removed). Added service folders for supplier,
   user, order, and credit frontend code, an independent dependency manifest and
-  lockfile, a multi-stage Dockerfile,.
+  lockfile, and a multi-stage Dockerfile.
 - Affected files: Authored files in `frontend-service/`, `compose.yaml`,
   `.env.example`, `README.md`, and this log. `frontend-service/package-lock.json`
   is npm-generated. The six files under `frontend-service/public/images/suppliers/`
   are copies of the user-supplied repository assets, not AI-generated images.
-- Follow-up tool: Claude Code (Claude Opus 5.5). Prompt: continue Codex's
-  verification. Changed the shared supplier type imports in four frontend files to
-  Nuxt's `#shared` alias because the relative paths failed `nuxt typecheck`.
-  At the user's request, removed the frontend's Compose `depends_on` and the
-  supplier-service health check so the frontend can be cherry-picked on its own.
-  Verified the build, typecheck, Compose startup, API forwarding, and desktop and
-  phone layouts.
+- Follow-up: Verification, a typecheck fix, and removal of the Compose dependency
+  were done with Claude Code; see the two entries above.
 - Author review: Pending review of these frontend changes.
 
 ## 2026-09-28: Supplier response joins
