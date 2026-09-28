@@ -1,7 +1,7 @@
 /**
  * AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-28.
  * Scope: HTTP and PostgreSQL integration checks for GET /suppliers.
- * Author review: pending.
+ * Author review: Done, tests work as expected.
  */
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";

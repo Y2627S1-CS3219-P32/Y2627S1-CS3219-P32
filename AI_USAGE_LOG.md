@@ -14,7 +14,7 @@ Author review: Checked for correctness. -->
 - Affected files: `supplier-service/src/index.ts`,
   `supplier-service/test/suppliers.test.mjs`, `supplier-service/README.md`, and
   this log. The project README links this consolidated disclosure.
-- Author review: Pending review of these response changes.
+- Author review: Response changes verified.
 - Verification: Typecheck and build passed. All seven integration tests passed,
   including correct names from two different buildings, null building handling,
   omission of both foreign-key ID fields, filtering, and opening-time behavior.
@@ -44,7 +44,7 @@ Author review: Checked for correctness. -->
 - Runtime verification: Rebuilt and restarted the Compose supplier-service and
   confirmed HTTP 200 responses for unfiltered, name-only, type-only, combined,
   and no-match requests through host port 3000.
-- Author review: Pending review of these route changes.
+- Author review: Review done for these route changes.
 
 ## 2026-09-28: pgAdmin connection diagnosis
 
