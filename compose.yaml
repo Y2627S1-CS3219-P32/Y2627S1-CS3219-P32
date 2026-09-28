@@ -1,5 +1,6 @@
 # AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-28.
-# Scope: Add an opt-in Drizzle tooling container. Author review: pending.
+# Scope: Add an opt-in Drizzle tooling container. 
+# Author review: Check for correctness.
 services:
   supplier-service:
     build: ./supplier-service

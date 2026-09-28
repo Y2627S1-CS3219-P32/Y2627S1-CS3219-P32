@@ -1,5 +1,5 @@
 # AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-28.
-# Scope: Add a development target for Drizzle tooling. Author review: pending.
+# Scope: Add a development target for Drizzle tooling. Author review: Done.
 FROM node:22-bookworm-slim AS tooling
 
 WORKDIR /app

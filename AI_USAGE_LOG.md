@@ -1,6 +1,7 @@
 <!-- AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-28.
-Scope: Record this session's AI assistance. Author review: pending. -->
-# AI usage log
+Scope: Record this session's AI assistance. 
+Author review: Check for correctness. -->
+# AI usage log (Supplier Service)
 
 ## 2026-09-28: Drizzle setup
 
@@ -30,8 +31,7 @@ Scope: Record this session's AI assistance. Author review: pending. -->
 - Dependency audit: Production dependencies reported zero vulnerabilities.
   Drizzle Kit's development dependency chain reported four moderate findings
   associated with esbuild; npm's suggested fix requires a breaking downgrade.
-- Author review: Pending student review; automated checks do not constitute
-  student validation.
+- Author review: Check for correctness.
 
 ## 2026-09-28: Node globals in the Drizzle configuration
 
@@ -50,4 +50,4 @@ Scope: Record this session's AI assistance. Author review: pending. -->
   and this log.
 - Verification: Typecheck now includes `drizzle.config.ts` and passes. The build
   passes and still emits `dist/index.js`. Both Docker targets build successfully.
-- Author review: Pending student review.
+- Author review: Check for correctness.

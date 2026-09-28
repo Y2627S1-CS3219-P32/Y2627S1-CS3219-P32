@@ -1,5 +1,5 @@
 <!-- AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-28.
-Scope: Drizzle setup and usage documentation. Author review: pending. -->
+Scope: Drizzle setup and usage documentation. Author review: Done. -->
 # Supplier Service
 
 Run commands from `supplier-service/`:
@@ -120,4 +120,4 @@ Logs:
 - Prompts: in supplier-service/ ive set up some parts of the project. write some boilerplate express code to listen on 3000, check my dockerfile and fill up the instructions for running in the README
 - Prompt (2026-09-28): take a look at agents.md first. next, set up drizzle orm
 - Key response: Added Drizzle setup boilerplate and an empty schema scaffold;
-  table design remains with the student. Human review is pending.
+  table design remains with the student. Human checked for correctness

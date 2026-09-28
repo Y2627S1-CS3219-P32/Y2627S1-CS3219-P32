@@ -1,6 +1,6 @@
 /**
  * AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-28.
- * Scope: Drizzle Kit configuration. Author review: pending.
+ * Scope: Drizzle Kit configuration. Author review: Done.
  */
 import "dotenv/config";
 import { defineConfig } from "drizzle-kit";

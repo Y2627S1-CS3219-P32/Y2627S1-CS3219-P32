@@ -1,5 +1,5 @@
 {
-  "//": "AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-28. Scope: Drizzle dependencies and scripts; package-lock.json is npm-generated. Author review: pending.",
+  "//": "AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-28. Scope: Drizzle dependencies and scripts; package-lock.json is npm-generated. Author review: Check for correctness.",
   "name": "supplier-service",
   "version": "1.0.0",
   "description": "Supplier Service",

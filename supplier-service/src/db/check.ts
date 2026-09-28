@@ -1,6 +1,6 @@
 /**
  * AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-28.
- * Scope: Read-only Drizzle connection check. Author review: pending.
+ * Scope: Read-only Drizzle connection check. Author review: Done.
  */
 import { sql } from "drizzle-orm";
 import { db, pool } from "./index.js";

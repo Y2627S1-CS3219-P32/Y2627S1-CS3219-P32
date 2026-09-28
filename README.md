@@ -1,5 +1,5 @@
 <!-- AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-28.
-Scope: Consolidated AI disclosure. Author review: pending. -->
+Scope: Consolidated AI disclosure. Author review: Done. -->
 # CS3219 — Software Design and Architecture (AY2627 Sem 1)
 
 ## Friend on Campus (FoC)
@@ -59,5 +59,5 @@ and review status are in the
 [AI usage log](AI_USAGE_LOG.md).
 
 Drizzle assistance covers connection and tooling boilerplate. Database schema
-and architecture decisions remain with the student. Student review is pending.
+and architecture decisions remain with the student. Student review is Done.
 Link this README from the submission slide deck when it is created.

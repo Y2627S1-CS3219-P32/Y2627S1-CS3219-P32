@@ -1,6 +1,7 @@
 /**
  * AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-28.
- * Scope: Empty Drizzle schema scaffold. Author review: pending.
+ * Scope: Empty Drizzle schema scaffold. 
+ * Author review: Checked for correctness.
  */
 
 // Add table definitions once the student has finalized the database schema.

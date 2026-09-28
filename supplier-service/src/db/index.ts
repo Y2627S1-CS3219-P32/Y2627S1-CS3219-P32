@@ -1,6 +1,7 @@
 /**
  * AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-28.
- * Scope: Drizzle PostgreSQL connection boilerplate. Author review: pending.
+ * Scope: Drizzle PostgreSQL connection boilerplate. 
+ * Author review: Checked for correctness.
  */
 import "dotenv/config";
 import { drizzle } from "drizzle-orm/node-postgres";
