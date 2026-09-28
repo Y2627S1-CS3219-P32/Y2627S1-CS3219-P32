@@ -54,10 +54,13 @@ microservice (`user-service/`, `supplier-service/`, `order-service/`,
 Tool: ChatGPT / Codex (GPT-6). Modes: boilerplate generation, debugging,
 documentation, and verification. Supplier-service setup assistance is recorded
 in the [service README](supplier-service/README.md). The exact Drizzle setup
-prompt, subsequent TypeScript configuration fix, key responses, affected files,
+prompt, subsequent TypeScript configuration fix, schema implementation and migration,
+key responses, affected files,
 and review status are in the
 [AI usage log](AI_USAGE_LOG.md).
 
-Drizzle assistance covers connection and tooling boilerplate. Database schema
-and architecture decisions remain with the student. Student review is Done.
+Drizzle assistance covers connection and tooling boilerplate and implementation
+of the student-defined database schema. Database schema and architecture decisions
+remain with the student. Prior setup was reviewed; the latest schema and migration
+changes await student review.
 Link this README from the submission slide deck when it is created.
