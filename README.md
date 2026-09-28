@@ -49,12 +49,13 @@ microservice (`user-service/`, `supplier-service/`, `order-service/`,
 
 ---
 
-## AI Assistance Disclosure
+## AI Assistance Disclosure - Supplier Service
 
 Tool: ChatGPT / Codex (GPT-6). Modes: boilerplate generation, debugging,
 documentation, and verification. Supplier-service setup assistance is recorded
 in the [service README](supplier-service/README.md). The exact Drizzle setup
-prompt, key response, affected files, and review status are in the
+prompt, subsequent TypeScript configuration fix, key responses, affected files,
+and review status are in the
 [AI usage log](AI_USAGE_LOG.md).
 
 Drizzle assistance covers connection and tooling boilerplate. Database schema

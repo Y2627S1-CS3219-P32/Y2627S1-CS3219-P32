@@ -32,3 +32,22 @@ Scope: Record this session's AI assistance. Author review: pending. -->
   associated with esbuild; npm's suggested fix requires a breaking downgrade.
 - Author review: Pending student review; automated checks do not constitute
   student validation.
+
+## 2026-09-28: Node globals in the Drizzle configuration
+
+- Tool: ChatGPT / Codex (GPT-6).
+- Mode: Debugging, configuration fix, and documentation.
+- Exact prompt: ``Cannot find name 'process'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig -- tsconfig looks correct already, and ive restarted typescript server``
+- Clarification: The user confirmed the affected file is
+  `supplier-service/drizzle.config.ts`.
+- Key response: Node types were installed and source typechecking passed, but
+  `drizzle.config.ts` was excluded by `include: ["src/**/*.ts"]`. Included it in
+  the editor/typecheck project and added a build config that preserves
+  source-only compilation and the `dist/index.js` entry point.
+- Affected files: `supplier-service/tsconfig.json`,
+  `supplier-service/tsconfig.build.json`, `supplier-service/package.json`,
+  `supplier-service/Dockerfile`, `supplier-service/README.md`, `README.md`,
+  and this log.
+- Verification: Typecheck now includes `drizzle.config.ts` and passes. The build
+  passes and still emits `dist/index.js`. Both Docker targets build successfully.
+- Author review: Pending student review.

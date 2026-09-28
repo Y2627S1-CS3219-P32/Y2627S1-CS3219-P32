@@ -19,7 +19,10 @@ npm run build
 npm start
 ```
 
-Run `npm run typecheck` to check TypeScript without generating output.
+Run `npm run typecheck` to check both `src/` and `drizzle.config.ts` without
+generating output. `tsconfig.json` owns both in the editor, including Node globals
+such as `process`. `npm run build` uses `tsconfig.build.json` to compile only
+`src/`, preserving the `dist/index.js` entry point.
 
 ## Docker
 
