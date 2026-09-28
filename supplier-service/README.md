@@ -1,5 +1,6 @@
 <!-- AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-28.
-Scope: Drizzle setup and usage documentation. Reviewed; -->
+Scope: Drizzle setup and usage documentation. Prior content reviewed;
+seed documentation changes await review. -->
 # Supplier Service
 
 Run commands from `supplier-service/`:
@@ -113,6 +114,48 @@ need a reachable database. Drizzle Studio is intended for this host workflow.
 
 Reference: [Drizzle PostgreSQL setup](https://orm.drizzle.team/docs/get-started/postgresql-new).
 
+## Seed data
+
+`src/db/seed-data.ts` is a typed snapshot of
+[`data/csv/supplier-seed-data.csv`](../data/csv/supplier-seed-data.csv).
+`src/db/seed.ts` loads it through Drizzle. On an empty migrated database it inserts
+21 active suppliers, four types, 16 building names, and 147 operating-hour rows.
+As confirmed for this seed, each supplier's CSV hours apply Sunday through Saturday.
+
+From the repository root, after applying migrations:
+
+```sh
+docker compose --profile tools build supplier-db-tools
+docker compose --profile tools run --rm supplier-db-tools npm run db:seed -- --dry-run
+docker compose --profile tools run --rm supplier-db-tools npm run db:seed
+```
+
+With a host-accessible `DATABASE_URL`, run `npm run db:seed` from
+`supplier-service/`; add `-- --dry-run` to verify and roll back every write.
+Normal execution commits all records in one transaction, or rolls everything
+back on failure.
+
+The seed reuses types and buildings by exact name. Fixed supplier UUIDs make
+reruns skip existing seed suppliers and their hours, preserving subsequent edits.
+It does not delete records or overwrite existing data. Keep the UUIDs stable
+when editing the snapshot; changes to existing seed records are not applied by
+rerunning this insert-only seed.
+
+CSV conversion details:
+
+- The source uses Windows-1252; its apostrophes are preserved in UTF-8 seed data.
+- Whitespace around values is trimmed, and blank optional fields become `NULL`.
+- Coordinates keep their source precision in the snapshot; PostgreSQL rounds
+  them to the schema's six decimal places on insertion.
+- `HHMMhrs` becomes `HH:MM:00`. Overnight hours such as `11:00` to `02:00` and
+  the source's `00:00` to `23:59` periods are preserved.
+- `Com 2` and `Com2` are standardized to `COM2`, including the printer's name.
+  Straight/curly apostrophes in Prince George's Park remain distinct. Image URLs
+  and `Food/Coffee` remain as given.
+
+The seed snapshot is committed with the service; running it does not reread the
+CSV. No database schema changes or new runtime dependencies are required.
+
 # AI Disclosure
 
 AI Use Summary
@@ -123,6 +166,8 @@ Prohibited phrases avoided: requirements elicitation; architecture/design decisi
 
 Used for: Boilerplate generation, Drizzle configuration, connection verification,
 and documentation. See the consolidated [usage log](../AI_USAGE_LOG.md).
+
+The CSV-derived seed implementation and its validation are also recorded there.
 
 Logs:
 

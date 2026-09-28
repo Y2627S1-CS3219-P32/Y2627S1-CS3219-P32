@@ -3,6 +3,49 @@ Scope: Record this session's AI assistance.
 Author review: Checked for correctness. -->
 # AI usage log (Supplier Service)
 
+## 2026-09-28: COM2 seed naming
+
+- Tool: ChatGPT / Codex (GPT-6). Mode: Seed data correction and documentation.
+- Exact prompt: `standardise com2 and com 2 to COM2`
+- Key response: Standardized the two building references to `COM2` and the
+  printer name to `Printer @ COM2` in the seed snapshot. The seed now has 16
+  distinct building names. Fixed supplier UUIDs and the source CSV are preserved.
+- Affected files: `supplier-service/src/db/seed-data.ts`,
+  `supplier-service/README.md`, and this log.
+- Author review: Pending review of this correction.
+
+## 2026-09-28: Supplier seed from CSV
+
+- Tool: ChatGPT / Codex (GPT-6).
+- Mode: CSV inspection, seed implementation, documentation, and verification.
+- Exact prompt: `next, i want you to take a look at ../data/csv. this file contains some seed data for the supplier service. write a seed file (compatible with the current schema) from that csv data`
+- Source located at `data/csv/supplier-seed-data.csv` in this repository.
+- Clarification question: The CSV has opening/closing times but no weekdays or
+  active status. How should the seed fill those required details?
+- Exact answer: `All suppliers active; hours every day (Sunday–Saturday)`
+- Key response: Created a typed snapshot of all 21 CSV suppliers and a Drizzle
+  seed script. It reuses the four type names and 17 exact building names, creates
+  seven daily periods per new supplier, and uses fixed supplier UUIDs to skip
+  existing seed suppliers on reruns. Writes are transactional, with a dry-run
+  option that rolls back all changes.
+- Conversion: Decoded Windows-1252 source data, trimmed surrounding whitespace,
+  retained source names and image URLs, converted blank optional fields to null
+  and HHMMhrs to database times. Coordinates retain their source precision until
+  PostgreSQL rounds them to six decimal places. The source CSV is unchanged.
+- Affected files: `supplier-service/src/db/seed-data.ts`,
+  `supplier-service/src/db/seed.ts`, `supplier-service/package.json`,
+  `supplier-service/README.md`, `README.md`, and this log.
+- Author review: Pending review of these seed changes. Prior review statements
+  apply to earlier work only.
+- Verification: Typecheck, build, and Docker tooling build passed. Compared every
+  converted field in all 21 records with the CSV, including quoted commas and
+  Windows-1252 apostrophes. The CLI dry run inserted 21 suppliers and 147 periods,
+  then rolled back. Database verification checked all mappings and exact decimal
+  rounding, lookup reuse, and seven daily periods per supplier. A second seed
+  inserted nothing and preserved edited suppliers, hours, and timestamps.
+  Verified all database contents were unchanged after rollback; no seed data was
+  committed during this task.
+
 ## 2026-09-28: Drizzle setup
 
 - Tool: ChatGPT / Codex (GPT-6).
