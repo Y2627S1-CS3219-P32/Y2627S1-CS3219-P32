@@ -1,3 +1,10 @@
+/**
+    AI Assistance Disclosure:
+    Tool: ChatGPT (model: GPT-6), date: 2026-09-28
+    Scope: Express server boilerplate and GET /users
+    Author review: Fixed port to 3000
+**/
+
 import 'dotenv/config';
 import express from 'express';
 
