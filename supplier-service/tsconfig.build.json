@@ -1,5 +1,5 @@
 // AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-28.
-// Scope: Preserve source-only build output. Author review: pending.
+// Scope: Preserve source-only build output. Author review: Done.
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {

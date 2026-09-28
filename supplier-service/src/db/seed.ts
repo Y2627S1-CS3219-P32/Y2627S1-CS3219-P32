@@ -1,7 +1,7 @@
 /**
  * AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-28.
  * Scope: Repeatable supplier seed with transactional dry-run support.
- * Author review: pending.
+ * Author review: Done.
  */
 import { pathToFileURL } from "node:url";
 import { inArray } from "drizzle-orm";

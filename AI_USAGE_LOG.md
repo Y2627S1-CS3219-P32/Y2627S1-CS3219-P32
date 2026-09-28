@@ -13,7 +13,7 @@ Author review: Checked for correctness. -->
   container on 127.0.0.1:5433 for desktop pgAdmin.
 - Affected files: `compose.yaml`, `.env.example`, `supplier-service/README.md`,
   `README.md`, and this log.
-- Author review: Pending review of these connection changes.
+- Author review: Verified connection changes are the correct fix.
 - Verification: Applied the mapping with `docker compose up -d supplier-db`,
   preserving the existing volume. A Windows-host TCP connection to
   `127.0.0.1:5433` authenticated as `supplier`, connected to `suppliers`, and
@@ -28,7 +28,7 @@ Author review: Checked for correctness. -->
   distinct building names. Fixed supplier UUIDs and the source CSV are preserved.
 - Affected files: `supplier-service/src/db/seed-data.ts`,
   `supplier-service/README.md`, and this log.
-- Author review: Pending review of this correction.
+- Author review: Done
 
 ## 2026-09-28: Supplier seed from CSV
 
@@ -51,7 +51,7 @@ Author review: Checked for correctness. -->
 - Affected files: `supplier-service/src/db/seed-data.ts`,
   `supplier-service/src/db/seed.ts`, `supplier-service/package.json`,
   `supplier-service/README.md`, `README.md`, and this log.
-- Author review: Pending review of these seed changes. Prior review statements
+- Author review: Seed files work as expected.
   apply to earlier work only.
 - Verification: Typecheck, build, and Docker tooling build passed. Compared every
   converted field in all 21 records with the CSV, including quoted commas and

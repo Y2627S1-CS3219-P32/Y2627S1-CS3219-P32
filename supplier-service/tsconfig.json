@@ -1,5 +1,5 @@
 // AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-28.
-// Scope: Include Drizzle config in the Node typecheck project. Author review: pending.
+// Scope: Include Drizzle config in the Node typecheck project. Author review: Done.
 {
   // Visit https://aka.ms/tsconfig to read more about this file
   "compilerOptions": {

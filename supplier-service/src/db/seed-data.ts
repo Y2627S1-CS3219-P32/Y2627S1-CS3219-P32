@@ -1,6 +1,6 @@
 /**
  * AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-28.
- * Scope: Convert the supplied CSV into typed seed records. Author review: pending.
+ * Scope: Convert the supplied CSV into typed seed records. Author review: Done.
  * Source: data/csv/supplier-seed-data.csv (Windows-1252 encoding).
  * UUIDs are fixed seed identifiers; keep them stable when editing these records.
  * Com2 and Com 2 references are standardized to COM2 at the user's request.
