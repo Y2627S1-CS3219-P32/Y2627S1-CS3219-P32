@@ -3,6 +3,22 @@ Scope: Record this session's AI assistance.
 Author review: Checked for correctness. -->
 # AI usage log (Supplier Service)
 
+## 2026-09-28: pgAdmin connection diagnosis
+
+- Tool: ChatGPT / Codex (GPT-6). Mode: Debugging and configuration correction.
+- Exact prompt: `yeah, i thought so too, but it says password is wrong`
+- Key response: Windows PostgreSQL owns host port 5432. The Compose database
+  had no published port. Confirmed supplier/supplier authentication against the
+  container's network address with SCRAM authentication, then published the
+  container on 127.0.0.1:5433 for desktop pgAdmin.
+- Affected files: `compose.yaml`, `.env.example`, `supplier-service/README.md`,
+  `README.md`, and this log.
+- Author review: Pending review of these connection changes.
+- Verification: Applied the mapping with `docker compose up -d supplier-db`,
+  preserving the existing volume. A Windows-host TCP connection to
+  `127.0.0.1:5433` authenticated as `supplier`, connected to `suppliers`, and
+  confirmed all four public tables remain present.
+
 ## 2026-09-28: COM2 seed naming
 
 - Tool: ChatGPT / Codex (GPT-6). Mode: Seed data correction and documentation.

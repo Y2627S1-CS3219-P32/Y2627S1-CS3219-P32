@@ -1,5 +1,5 @@
 # AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-28.
-# Scope: Add an opt-in Drizzle tooling container. 
+# Scope: Drizzle tooling and local PostgreSQL access for pgAdmin.
 # Author review: Check for correctness.
 services:
   supplier-service:
@@ -29,6 +29,8 @@ services:
 
   supplier-db:
     image: postgres:17
+    ports:
+      - "127.0.0.1:5433:5432"
     environment:
       POSTGRES_USER: supplier
       POSTGRES_PASSWORD: supplier

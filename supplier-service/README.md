@@ -1,6 +1,6 @@
 <!-- AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-28.
 Scope: Drizzle setup and usage documentation. Prior content reviewed;
-seed documentation changes await review. -->
+seed and local database access documentation changes await review. -->
 # Supplier Service
 
 Run commands from `supplier-service/`:
@@ -95,10 +95,17 @@ explicit command; starting the Express server does not apply them.
 
 ### Run tools from the host
 
-Set `DATABASE_URL` in `supplier-service/.env` to a PostgreSQL instance reachable
-from your host. The repository `.env.example` documents its format. The existing
-Compose database does not publish a host port, and `supplier-db` resolves only
-inside the Compose network; use the tooling container for that database.
+The Compose database is published at `127.0.0.1:5433`. Set this in
+`supplier-service/.env` for host-side commands:
+
+```dotenv
+DATABASE_URL=postgres://supplier:supplier@127.0.0.1:5433/suppliers
+```
+
+In desktop pgAdmin, register a server with host `127.0.0.1`, port `5433`,
+maintenance database `suppliers`, username `supplier`, and password `supplier`.
+Port `5432` on this Windows host belongs to a separate PostgreSQL instance.
+Containers continue to use `supplier-db:5432` on the Compose network.
 
 From `supplier-service/`:
 
