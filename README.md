@@ -49,14 +49,26 @@ microservice (`user-service/`, `supplier-service/`, `order-service/`,
 
 ---
 
-## AI Assistance Disclosure - Supplier Service
+## Run the frontend
+
+```sh
+docker compose up -d --build frontend-service
+```
+
+Open **http://127.0.0.1:3001**. The independent Nuxt app lives in
+[`frontend-service/`](frontend-service/README.md), with frontend code grouped by
+supplier, user, order, and credit service. It starts independently of the
+supplier service; run `docker compose up -d supplier-service` for supplier data,
+which Nuxt fetches over the Compose network. The supplier API remains on host port 3000.
+
+## AI Assistance Disclosure
 
 Tool: ChatGPT / Codex (GPT-6). Modes: boilerplate generation, debugging,
 documentation, and verification. Supplier-service setup assistance is recorded
 in the [service README](supplier-service/README.md). The exact Drizzle setup
 prompt, subsequent TypeScript configuration fix, schema implementation and migration,
 CSV-derived seed implementation, local database connection fix, GET suppliers route,
-key responses, affected files,
+Nuxt frontend implementation, key responses, affected files,
 and review status are in the
 [AI usage log](AI_USAGE_LOG.md).
 

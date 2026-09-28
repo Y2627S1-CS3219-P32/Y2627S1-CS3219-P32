@@ -1,7 +1,14 @@
 # AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-28.
-# Scope: Drizzle tooling and local PostgreSQL access for pgAdmin.
+# Scope: Service orchestration, Nuxt frontend, and local database access.
 # Author review: Check for correctness.
 services:
+  frontend-service:
+    build: ./frontend-service
+    ports:
+      - "3001:3000"
+    environment:
+      NUXT_SUPPLIER_SERVICE_BASE_URL: http://supplier-service:3000
+
   supplier-service:
     build: ./supplier-service
     ports:

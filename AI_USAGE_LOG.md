@@ -3,6 +3,29 @@ Scope: Record this session's AI assistance.
 Author review: Checked for correctness. -->
 # AI usage log (Supplier Service)
 
+## 2026-09-28: Nuxt frontend service
+
+- Tool: ChatGPT / Codex (GPT-6). Mode: Implementation, configuration, and verification.
+- Exact prompt: `build a frontend service (nuxtjs). edit the compose file, add a dependency on the supplier service. the frontend will call supplier-service on the same network. do ensure the segregation of the code on the frontend as well (separated by the services you see in the folder). you may shift the port numbers around (since supplier service is on 3000 already) to avoid clashing. the service will have its own dependencies as well, do manage that`
+- Key response: Added an independent Nuxt frontend on host port 3001, with a
+  service-specific supplier directory, filters, and request states. A Nuxt server
+  endpoint forwards requests to supplier-service:3000 over Compose's default
+  network using private runtime configuration (the Compose dependency was later removed). Added service folders for supplier,
+  user, order, and credit frontend code, an independent dependency manifest and
+  lockfile, a multi-stage Dockerfile,.
+- Affected files: Authored files in `frontend-service/`, `compose.yaml`,
+  `.env.example`, `README.md`, and this log. `frontend-service/package-lock.json`
+  is npm-generated. The six files under `frontend-service/public/images/suppliers/`
+  are copies of the user-supplied repository assets, not AI-generated images.
+- Follow-up tool: Claude Code (Claude Opus 5.5). Prompt: continue Codex's
+  verification. Changed the shared supplier type imports in four frontend files to
+  Nuxt's `#shared` alias because the relative paths failed `nuxt typecheck`.
+  At the user's request, removed the frontend's Compose `depends_on` and the
+  supplier-service health check so the frontend can be cherry-picked on its own.
+  Verified the build, typecheck, Compose startup, API forwarding, and desktop and
+  phone layouts.
+- Author review: Pending review of these frontend changes.
+
 ## 2026-09-28: Supplier response joins
 
 - Tool: ChatGPT / Codex (GPT-6). Mode: Implementation, tests, and documentation.
