@@ -1,0 +1,11 @@
+// AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-28.
+// Scope: Nuxt TypeScript project references. Author review: Done.
+{
+  "files": [],
+  "references": [
+    { "path": "./.nuxt/tsconfig.app.json" },
+    { "path": "./.nuxt/tsconfig.server.json" },
+    { "path": "./.nuxt/tsconfig.shared.json" },
+    { "path": "./.nuxt/tsconfig.node.json" }
+  ]
+}
