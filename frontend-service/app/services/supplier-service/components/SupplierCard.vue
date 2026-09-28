@@ -1,5 +1,5 @@
 <!-- AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-28.
-Scope: Supplier card using the existing API fields. Author review: pending. -->
+Scope: Supplier card using the existing API fields. Author review: Done. -->
 <script setup lang="ts">
 import type { Supplier } from "#shared/services/supplier-service/types";
 

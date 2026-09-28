@@ -1,5 +1,5 @@
 // AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-28.
-// Scope: Types for the existing supplier API response. Author review: pending.
+// Scope: Types for the existing supplier API response. Author review: Done.
 export interface Supplier {
   id: string;
   name: string;

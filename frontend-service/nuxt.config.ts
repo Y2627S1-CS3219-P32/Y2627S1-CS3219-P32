@@ -1,5 +1,5 @@
 // AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-28.
-// Scope: Nuxt runtime and frontend configuration. Author review: pending.
+// Scope: Nuxt runtime and frontend configuration. Author review: Done.
 import tailwindcss from "@tailwindcss/vite";
 
 export default defineNuxtConfig({

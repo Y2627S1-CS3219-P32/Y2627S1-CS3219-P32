@@ -1,5 +1,5 @@
 <!-- AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-28.
-Scope: Service-specific frontend boundary. Author review: pending. -->
+Scope: Service-specific frontend boundary. Author review: Done. -->
 # User service frontend
 
 Keep user-service components and composables here when its endpoints are implemented.

@@ -1,5 +1,5 @@
 <!-- AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-28.
-Scope: Nuxt frontend setup and service organisation. Author review: pending. -->
+Scope: Nuxt frontend setup and service organisation. Author review: Done. -->
 # Frontend service
 
 Nuxt frontend for Friend on Campus. The supplier directory uses the existing
@@ -97,7 +97,7 @@ already) to avoid clashing. the service will have its own dependencies as well, 
 manage that`. Claude Code (Claude Opus 5.5) then changed the shared supplier type
 imports to Nuxt's `#shared` alias so `nuxt typecheck` passes, removed the Compose
 dependency on supplier-service, and verified the build, typecheck, Compose startup,
-API forwarding, and desktop and phone layouts. Human review is pending. The lockfile is npm-generated; supplier photographs are copied source assets.
+API forwarding, and desktop and phone layouts. Human review is Done. The lockfile is npm-generated; supplier photographs are copied source assets.
 References: [Nuxt directory structure](https://nuxt.com/docs/4.x/directory-structure),
 [runtime configuration](https://nuxt.com/docs/4.x/guide/going-further/runtime-config),
 and [deployment](https://nuxt.com/docs/4.x/getting-started/deployment).
