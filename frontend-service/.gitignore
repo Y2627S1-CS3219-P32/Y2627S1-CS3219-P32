@@ -1,0 +1,9 @@
+# AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-28.
+# Scope: Ignore frontend dependencies and generated output. Author review: pending.
+node_modules/
+.nuxt/
+.output/
+.data/
+.env
+.env.*.local
+*.log
