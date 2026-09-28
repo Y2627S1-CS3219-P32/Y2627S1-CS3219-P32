@@ -1,8 +1,11 @@
+<!-- AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-28.
+Scope: Record user-confirmed UUID and timestamp defaults. Author review: Done. -->
 # Database Schema
 
 Columns are by default `NOT NULL` unless stated otherwise.
 Tables will by default have `created_at` and `updated_at` columns. updated_at should be updated with `.$onUpdate(() => new Date())`
-Ids are UUID by default
+Ids are UUID by default, generated with `gen_random_uuid()` for primary-key ids.
+`created_at` and `updated_at` are `timestamptz NOT NULL DEFAULT now()`.
 
 suppliers
 - id (PK)
