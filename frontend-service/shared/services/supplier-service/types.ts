@@ -16,6 +16,18 @@ export interface Supplier {
   isOpen: boolean;
 }
 
+// Body of PUT /suppliers/:id (Claude Code (Opus 5.5), 2026-09-29; author review pending).
+export interface SupplierUpdate {
+  name: string;
+  type: string;
+  buildingName: string | null;
+  floor: string | null;
+  locationDescription: string | null;
+  latitude: string;
+  longitude: string;
+  imageUrl: string | null;
+}
+
 export interface SupplierFilters {
   name?: string;
   type?: string;

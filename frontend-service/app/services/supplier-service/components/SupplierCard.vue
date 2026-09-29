@@ -1,10 +1,33 @@
 <!-- AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-28; Claude Code (Opus 5.5), 2026-09-29.
-Scope: Supplier card using the existing API fields; Tailwind styling after the supplier mockup. Author review: Done. -->
+Scope: Supplier card using the existing API fields; Tailwind styling after the supplier mockup. Author review: Done.
+Claude Code (Opus 5.5), 2026-09-29. Scope: Administrator actions menu. Author review: Pending. -->
 <script setup lang="ts">
 import type { Supplier } from "#shared/services/supplier-service/types";
 
-const props = defineProps<{ supplier: Supplier }>();
+const props = defineProps<{ supplier: Supplier; canManage?: boolean }>();
+const emit = defineEmits<{ edit: [supplier: Supplier]; delete: [supplier: Supplier] }>();
 const imageFailed = ref(false);
+
+const menuOpen = ref(false);
+const menuRoot = ref<HTMLElement | null>(null);
+const menuButton = ref<HTMLButtonElement | null>(null);
+
+function closeMenu(restoreFocus = false) {
+  menuOpen.value = false;
+  if (restoreFocus) menuButton.value?.focus();
+}
+
+function choose(action: "edit" | "delete") {
+  closeMenu();
+  if (action === "edit") emit("edit", props.supplier);
+  else emit("delete", props.supplier);
+}
+
+function onDocumentClick(event: MouseEvent) {
+  if (menuOpen.value && !menuRoot.value?.contains(event.target as Node)) closeMenu();
+}
+onMounted(() => document.addEventListener("click", onDocumentClick));
+onBeforeUnmount(() => document.removeEventListener("click", onDocumentClick));
 const localImages = new Set(["ANNA.jpeg", "NUS_COOP.jpeg", "PRINTER_COM2.jpeg", "COOL_SPOT.jpeg", "INSTACHEF.jpeg", "ROBOT_CAFE.jpeg"]);
 const imageSource = computed(() => {
   if (!props.supplier.imageUrl) return null;
@@ -32,7 +55,25 @@ const mapUrl = computed(() => `https://www.google.com/maps/search/?api=1&query=$
 </script>
 
 <template>
-  <article class="flex items-start gap-4 rounded-md bg-white p-3.5 shadow-[0_2px_6px_rgba(0,0,0,0.14)]">
+  <article class="group relative flex items-start gap-4 rounded-md bg-white p-3.5 shadow-[0_2px_6px_rgba(0,0,0,0.14)]" :class="{ 'opacity-60': !supplier.isActive }">
+    <div v-if="canManage && supplier.isActive" ref="menuRoot" class="absolute top-1.5 right-1.5 z-10" @keydown.esc="closeMenu(true)">
+      <button
+        ref="menuButton"
+        type="button"
+        class="flex h-7 w-9 items-center justify-center rounded-full bg-white/90 text-lg leading-none text-[#33383d] shadow-sm transition-opacity hover:bg-[#eef4fa] [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-focus-within:opacity-100 [@media(hover:hover)]:group-hover:opacity-100"
+        :class="{ 'opacity-100!': menuOpen }"
+        aria-haspopup="menu"
+        :aria-expanded="menuOpen"
+        :aria-label="`Actions for ${supplier.name}`"
+        @click="menuOpen = !menuOpen"
+      >
+        <span aria-hidden="true">⋯</span>
+      </button>
+      <div v-if="menuOpen" role="menu" class="absolute right-0 mt-1 w-32 overflow-hidden rounded-md border border-[#e1e6eb] bg-white py-1 text-sm shadow-lg">
+        <button type="button" role="menuitem" class="block w-full px-3 py-2 text-left text-[#25313c] hover:bg-[#f7f9fc]" @click="choose('edit')">Edit</button>
+        <button type="button" role="menuitem" class="block w-full px-3 py-2 text-left text-[#c62828] hover:bg-[#fdf2f2]" @click="choose('delete')">Delete</button>
+      </div>
+    </div>
     <div class="min-w-0 flex-1">
       <h2 class="text-[15px] font-semibold text-[#4a4f55] wrap-anywhere">{{ supplier.name }}</h2>
       <div class="mt-1.5 flex flex-wrap gap-1">

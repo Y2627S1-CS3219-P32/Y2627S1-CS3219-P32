@@ -1,6 +1,7 @@
 <!-- AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-28.
 Scope: Drizzle setup and usage documentation. Prior content reviewed;
-seed, local database access, and route documentation changes await review. -->
+seed, local database access, and route documentation changes await review.
+Claude Code (Opus 5.5), 2026-09-29: authentication, PUT, and DELETE documentation. Author review: Pending. -->
 # Supplier Service
 
 Run commands from `supplier-service/`:
@@ -27,6 +28,21 @@ generating output. `tsconfig.json` owns both in the editor, including Node globa
 such as `process`. `npm run build` uses `tsconfig.build.json` to compile only
 `src/`, preserving the `dist/index.js` entry point.
 
+## Authentication
+
+Every `/suppliers` route requires an `Authorization: Bearer <token>` header carrying
+a user-service access token. supplier-service forwards the header to user-service
+`GET /me` (at `USER_SERVICE_BASE_URL`, default `http://127.0.0.1:3333`) to resolve
+the caller and their role.
+
+| Situation | Response |
+| --- | --- |
+| Missing, malformed, expired, or rejected token | 401 `{ "error": "A valid bearer token is required" }` |
+| Non-admin calling `PUT` or `DELETE` | 403 `{ "error": "Administrator access is required" }` |
+| user-service unreachable or failing | 502 |
+
+Errors are JSON objects with an `error` message.
+
 ## GET /suppliers
 
 Returns HTTP 200 with a JSON array of supplier records in camelCase, plus a boolean
@@ -44,16 +60,46 @@ Both filters combine with AND. Surrounding whitespace is trimmed; blank values
 act as omitted filters. For example:
 
 ```sh
-curl "http://127.0.0.1:3000/suppliers"
-curl "http://127.0.0.1:3000/suppliers?name=cafe&type=Food%2FCoffee"
+curl -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:3000/suppliers"
+curl -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:3000/suppliers?name=cafe&type=Food%2FCoffee"
 ```
 
 Open suppliers come first, followed by closed suppliers. Each group is sorted
-by name and then UUID for stable ties. Inactive suppliers are included with
-`isOpen: false`. Opening status uses Singapore time (`Asia/Singapore`), includes
+by name and then UUID for stable ties. Students only receive active suppliers;
+administrators also receive inactive suppliers, with `isOpen: false`. Opening status uses Singapore time (`Asia/Singapore`), includes
 the opening instant, and excludes the closing instant. It checks multiple daily
 periods and overnight periods that started on the previous day. A supplier with
 no matching period is closed. Multiple matching periods return the supplier once.
+
+## PUT /suppliers/:id (administrators)
+
+Versioned update. In one transaction, the current row is marked `isActive: false`,
+and a new active row (with a new `id`) is inserted with the edited values and a copy
+of the old row's operating hours. Returns 200 with the new supplier, in the same
+shape as a `GET /suppliers` item.
+
+The JSON body must contain all of these fields:
+
+| Field | Rules |
+| --- | --- |
+| `name` | Required, at most 256 characters |
+| `type` | Required; an existing type name |
+| `buildingName` | `null` or an existing building name |
+| `floor`, `locationDescription` | `null` or at most 256 characters |
+| `latitude`, `longitude` | Number or numeric string, within ±90 and ±180 |
+| `imageUrl` | `null` or an `http`/`https` URL |
+
+Strings are trimmed; blank optional strings are stored as `null`. Invalid bodies
+return 400. Unknown or malformed ids return 404. Inactive suppliers (including
+superseded versions) return 409.
+
+## DELETE /suppliers/:id (administrators)
+
+Soft delete: marks the supplier `isActive: false` and returns 204. The row and its
+hours are kept. Unknown or malformed ids return 404; an already inactive supplier
+returns 409.
+
+`POST /suppliers` is intentionally not implemented yet.
 
 ### Route tests
 
@@ -67,7 +113,8 @@ npm test
 The PostgreSQL role must have permission to create databases. Tests create a
 uniquely named disposable database, apply migrations, check HTTP responses and
 opening-time boundaries, then drop that test database. Application data is not
-used for test fixtures.
+used for test fixtures. A stub user-service started by the tests maps fixed tokens
+to a student and an administrator.
 
 ## Docker
 

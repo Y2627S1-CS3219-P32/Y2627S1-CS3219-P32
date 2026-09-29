@@ -75,12 +75,13 @@ Editing a `package.json` rebuilds that service's image. Outside Docker, run
 
 ## AI Assistance Disclosure
 
-Tool: ChatGPT / Codex (GPT-6). Modes: boilerplate generation, debugging,
+Tools: ChatGPT / Codex (GPT-6) and Claude Code (Opus 5.5). Modes: boilerplate generation, implementation, debugging,
 documentation, and verification. Supplier-service setup assistance is recorded
 in the [service README](supplier-service/README.md). The exact Drizzle setup
 prompt, subsequent TypeScript configuration fix, schema implementation and migration,
 CSV-derived seed implementation, local database connection fix, GET suppliers route,
-Nuxt frontend implementation, key responses, affected files,
+Nuxt frontend implementation, supplier authentication and administrator PUT/DELETE
+routes (implemented to the student's stated design choices), key responses, affected files,
 and review status are in the
 [AI usage log](AI_USAGE_LOG.md).
 

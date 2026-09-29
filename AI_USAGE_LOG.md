@@ -3,6 +3,63 @@ Scope: Record this session's AI assistance.
 Author review: Checked for correctness. -->
 # AI usage log (Supplier Service)
 
+## 2026-09-29: Supplier authentication and administrator PUT/DELETE
+
+- Tool: Claude Code (Opus 5.5). Mode: Implementation, tests, documentation, and verification.
+- Exact prompt: `okay. lets go back to the supplier service backend. 1) revise GET such that it redirects to the login screen with the appropriate error code (403?) if a user is unauthenticated. 2) Implement DELETE and PUT. implement it such that admin users can hover over each card and see a horizontal "..." that they can click on in order to perform these operations. their credentials are also checked on the backend. for DELETE and PUT, it's a soft delete/put, where those rows are marked inactive (isActive=false). regular users (role = student) cannot see inactive rows, but admins can. we're deferring POST on purpose, do not implement it at this point fo time.`
+- Design decisions made by the student (asked before implementation, because
+  AGENTS.md reserves them for the student):
+  - supplier-service resolves the caller by forwarding the bearer token to
+    user-service `GET /me`.
+  - PUT is a versioned update: the old row becomes inactive and a new active row
+    is inserted.
+  - An unauthenticated GET returns 401, not 403.
+  - PUT can edit name, type, location fields, and image URL.
+- Key response:
+  - supplier-service:
+    - Added `requireAuthentication` and `requireAdministrator` middleware, a
+      `{ error }` JSON error handler, and PUT body validation.
+    - GET now hides inactive suppliers from non-admins.
+    - PUT runs in a transaction. It locks the row, deactivates it, inserts the
+      edited version, and copies its operating hours.
+    - DELETE soft-deletes (sets `isActive: false`). Unknown ids return 404, and
+      inactive ones return 409.
+  - Frontend:
+    - The Nuxt proxy routes forward the login cookie as a bearer token, and pass
+      400/401/403/404/409 through.
+    - `/suppliers` now requires login, and a 401 redirects to `/login`.
+    - Admins get a hover-revealed "⋯" menu on each active card (Edit opens a
+      dialog, Delete asks for confirmation). Inactive cards are faded.
+  - Compose: added `USER_SERVICE_BASE_URL`. POST was not implemented.
+- Affected files: `supplier-service/src/index.ts`, `supplier-service/src/auth.ts`,
+  `supplier-service/src/errors.ts`, `supplier-service/src/supplier-input.ts`,
+  `supplier-service/test/suppliers.test.mjs`, `supplier-service/README.md`,
+  `frontend-service/server/services/supplier-service/client.ts`,
+  `frontend-service/server/api/supplier-service/suppliers.get.ts`,
+  `frontend-service/server/api/supplier-service/suppliers/[id].put.ts`,
+  `frontend-service/server/api/supplier-service/suppliers/[id].delete.ts`,
+  `frontend-service/shared/services/supplier-service/types.ts`,
+  `frontend-service/app/pages/suppliers.vue`,
+  `frontend-service/app/services/supplier-service/components/SupplierDirectory.vue`,
+  `frontend-service/app/services/supplier-service/components/SupplierCard.vue`,
+  `frontend-service/app/services/supplier-service/components/SupplierEditDialog.vue`,
+  `compose.yaml`, `README.md`, and this log.
+- Verification:
+  - supplier-service `npm run typecheck` passed, and `npm test` passed 16/16
+    (9 new tests, using a stub user-service).
+  - Frontend `npm run build` and `npm run typecheck` passed.
+  - End to end through Docker, against a temporary supplier that was removed
+    afterwards:
+    - Logged out, the API returned 401 and `/suppliers` redirected to `/login`.
+    - A student got 403 on PUT and DELETE.
+    - An admin PUT with an unknown type got 400. A valid admin PUT created a new
+      version with copied hours.
+    - The student saw only the new version; the admin saw both.
+    - DELETE returned 204, and repeating it returned 409.
+  - Headless Edge showed the "⋯" menu and edit dialog for the admin, and no menu
+    for the student.
+- Author review: Pending.
+
 ## 2026-09-29: Supplier screen restyled after the original mockup
 
 - Tool: Claude Code (Opus 5.5). Mode: Implementation and verification.

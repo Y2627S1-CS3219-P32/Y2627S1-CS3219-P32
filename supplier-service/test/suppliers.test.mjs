@@ -2,10 +2,15 @@
  * AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-28.
  * Scope: HTTP and PostgreSQL integration checks for GET /suppliers.
  * Author review: Done, tests work as expected.
+ * AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-09-29.
+ * Scope: Stub user-service, authentication and role-visibility checks for GET, and
+ * PUT/DELETE /suppliers/:id checks.
+ * Author review: Pending.
  */
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
 import { once } from "node:events";
+import { createServer } from "node:http";
 import { after, before, test } from "node:test";
 import { eq } from "drizzle-orm";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
@@ -18,10 +23,32 @@ if (!process.env.TEST_DATABASE_URL) {
 const admin = new pg.Client({ connectionString: process.env.TEST_DATABASE_URL });
 const databaseName = `supplier_routes_test_${randomBytes(8).toString("hex")}`;
 let createdDatabase = false;
-let db, pool, schema, openingHoursMatch, server, baseUrl;
+let db, pool, schema, openingHoursMatch, server, baseUrl, userService;
 let foodId, coffeeId, shoppingId;
 
+// Stub user-service GET /me: each bearer token maps to a fixed caller.
+const users = {
+  "student-token": { id: 1, name: "Student", email: "student@example.com", role: "student" },
+  "admin-token": { id: 2, name: "Admin", email: "admin@example.com", role: "admin" },
+};
+
 before(async () => {
+  userService = createServer((req, res) => {
+    const token = req.headers.authorization?.replace(/^Bearer /i, "");
+    if (req.url !== "/me") {
+      res.writeHead(404).end();
+    } else if (token === "broken-token") {
+      res.writeHead(500).end();
+    } else if (users[token]) {
+      res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify(users[token]));
+    } else {
+      res.writeHead(401, { "content-type": "application/json" }).end(JSON.stringify({ error: "A valid bearer token is required" }));
+    }
+  });
+  userService.listen(0, "127.0.0.1");
+  await once(userService, "listening");
+  process.env.USER_SERVICE_BASE_URL = `http://127.0.0.1:${userService.address().port}`;
+
   await admin.connect();
   await admin.query(`CREATE DATABASE "${databaseName}"`);
   createdDatabase = true;
@@ -73,6 +100,7 @@ before(async () => {
 after(async () => {
   try {
     if (server) await new Promise((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+    if (userService) await new Promise((resolve, reject) => userService.close(error => error ? reject(error) : resolve()));
   } finally {
     try {
       if (pool) await pool.end();
@@ -83,8 +111,20 @@ after(async () => {
   }
 });
 
-async function getSuppliers(query = {}) {
-  const response = await fetch(`${baseUrl}/suppliers?${new URLSearchParams(query)}`);
+function request(path, { token, method = "GET", body } = {}) {
+  return fetch(`${baseUrl}${path}`, {
+    method,
+    headers: {
+      ...(token ? { authorization: `Bearer ${token}` } : {}),
+      ...(body === undefined ? {} : { "content-type": "application/json" }),
+    },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+}
+
+// Admins see inactive suppliers too, so filter and ordering checks run as an admin.
+async function getSuppliers(query = {}, token = "admin-token") {
+  const response = await request(`/suppliers?${new URLSearchParams(query)}`, { token });
   assert.equal(response.status, 200);
   assert.match(response.headers.get("content-type"), /application\/json/);
   return response.json();
@@ -176,4 +216,163 @@ test("Singapore opening periods handle boundaries, gaps, overnight hours, and Sa
       .from(schema.suppliers).where(eq(schema.suppliers.id, supplier.id));
     assert.equal(rows[0].isOpen, entry.open, entry.label);
   }
+});
+
+test("GET requires a bearer token that user-service accepts", async () => {
+  for (const token of [undefined, "unknown-token"]) {
+    const response = await request("/suppliers", { token });
+    assert.equal(response.status, 401);
+    assert.deepEqual(await response.json(), { error: "A valid bearer token is required" });
+  }
+  const malformed = await fetch(`${baseUrl}/suppliers`, { headers: { authorization: "Basic abc" } });
+  assert.equal(malformed.status, 401);
+});
+
+test("GET returns 502 when user-service fails", async () => {
+  assert.equal((await request("/suppliers", { token: "broken-token" })).status, 502);
+});
+
+test("students do not see inactive suppliers; admins do", async () => {
+  const studentRows = await getSuppliers({}, "student-token");
+  assert.ok(studentRows.every(row => row.isActive));
+  assert.equal(studentRows.some(row => row.name === "B Inactive Cafe"), false);
+  const adminRows = await getSuppliers();
+  assert.equal(adminRows.find(row => row.name === "B Inactive Cafe").isActive, false);
+  assert.equal(adminRows.length, studentRows.length + 1);
+});
+
+const validUpdate = {
+  name: "Edited Cafe",
+  type: "Shopping",
+  buildingName: "COM2",
+  floor: "3",
+  locationDescription: "Beside the lift",
+  latitude: 1.2945,
+  longitude: "103.7744",
+  imageUrl: "https://example.com/cafe.jpeg",
+};
+
+async function insertSupplier(name, isActive = true) {
+  const [row] = await db.insert(schema.suppliers).values({
+    name, supplierTypeId: foodId, latitude: "1.296444", longitude: "103.773032", isActive,
+  }).returning();
+  return row;
+}
+
+test("PUT and DELETE are administrator-only", async () => {
+  const supplier = await insertSupplier("Guarded Cafe");
+  for (const [method, body] of [["PUT", validUpdate], ["DELETE", undefined]]) {
+    assert.equal((await request(`/suppliers/${supplier.id}`, { method, body })).status, 401);
+    assert.equal((await request(`/suppliers/${supplier.id}`, { method, body, token: "student-token" })).status, 403);
+  }
+  const [row] = await db.select().from(schema.suppliers).where(eq(schema.suppliers.id, supplier.id));
+  assert.equal(row.isActive, true);
+  assert.equal(row.name, "Guarded Cafe");
+});
+
+test("PUT deactivates the current row and inserts an edited active version with copied hours", async () => {
+  const original = await insertSupplier("Versioned Cafe");
+  await db.insert(schema.operatingHours).values([
+    { supplierId: original.id, day: 1, openingHrs: "08:00", closingHrs: "12:00" },
+    { supplierId: original.id, day: 1, openingHrs: "13:00", closingHrs: "17:00" },
+  ]);
+
+  const response = await request(`/suppliers/${original.id}`, { method: "PUT", token: "admin-token", body: validUpdate });
+  assert.equal(response.status, 200);
+  const updated = await response.json();
+  assert.notEqual(updated.id, original.id);
+  assert.equal(updated.isActive, true);
+  assert.equal(updated.name, "Edited Cafe");
+  assert.equal(updated.type, "Shopping");
+  assert.equal(updated.buildingName, "COM2");
+  assert.equal(updated.floor, "3");
+  assert.equal(updated.locationDescription, "Beside the lift");
+  assert.equal(updated.latitude, "1.294500");
+  assert.equal(updated.longitude, "103.774400");
+  assert.equal(updated.imageUrl, "https://example.com/cafe.jpeg");
+  assert.equal(typeof updated.isOpen, "boolean");
+
+  const [old] = await db.select().from(schema.suppliers).where(eq(schema.suppliers.id, original.id));
+  assert.equal(old.isActive, false);
+  assert.equal(old.name, "Versioned Cafe");
+  const hours = await db.select().from(schema.operatingHours).where(eq(schema.operatingHours.supplierId, updated.id));
+  assert.deepEqual(hours.map(hour => [hour.day, hour.openingHrs, hour.closingHrs]).sort(), [
+    [1, "08:00:00", "12:00:00"], [1, "13:00:00", "17:00:00"],
+  ]);
+
+  const studentIds = (await getSuppliers({}, "student-token")).map(row => row.id);
+  assert.ok(studentIds.includes(updated.id));
+  assert.equal(studentIds.includes(original.id), false);
+  const adminIds = (await getSuppliers()).map(row => row.id);
+  assert.ok(adminIds.includes(updated.id) && adminIds.includes(original.id));
+});
+
+test("PUT stores blank optional fields as null", async () => {
+  const original = await insertSupplier("Sparse Cafe");
+  const response = await request(`/suppliers/${original.id}`, {
+    method: "PUT",
+    token: "admin-token",
+    body: { ...validUpdate, name: "Sparse Cafe", buildingName: null, floor: "", locationDescription: "  ", imageUrl: null },
+  });
+  assert.equal(response.status, 200);
+  const updated = await response.json();
+  assert.equal(updated.buildingName, null);
+  assert.equal(updated.floor, null);
+  assert.equal(updated.locationDescription, null);
+  assert.equal(updated.imageUrl, null);
+});
+
+test("PUT rejects invalid bodies without changing the supplier", async () => {
+  const supplier = await insertSupplier("Invalid Edit Cafe");
+  const invalidBodies = [
+    { ...validUpdate, name: " " },
+    { ...validUpdate, name: "x".repeat(257) },
+    { ...validUpdate, type: "Unknown type" },
+    { ...validUpdate, buildingName: "Unknown building" },
+    { ...validUpdate, latitude: 91 },
+    { ...validUpdate, longitude: "east" },
+    { ...validUpdate, imageUrl: "javascript:alert(1)" },
+    { ...validUpdate, floor: 3 },
+    [],
+  ];
+  for (const body of invalidBodies) {
+    const response = await request(`/suppliers/${supplier.id}`, { method: "PUT", token: "admin-token", body });
+    assert.equal(response.status, 400, JSON.stringify(body).slice(0, 80));
+    assert.equal(typeof (await response.json()).error, "string");
+  }
+  const invalidJson = await fetch(`${baseUrl}/suppliers/${supplier.id}`, {
+    method: "PUT",
+    headers: { authorization: "Bearer admin-token", "content-type": "application/json" },
+    body: "{",
+  });
+  assert.equal(invalidJson.status, 400);
+  const rows = await db.select().from(schema.suppliers).where(eq(schema.suppliers.name, "Invalid Edit Cafe"));
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].isActive, true);
+});
+
+test("PUT returns 404 for unknown or malformed ids and 409 for inactive suppliers", async () => {
+  const inactive = await insertSupplier("Retired Cafe", false);
+  const cases = [
+    ["00000000-0000-4000-8000-000000000000", 404],
+    ["not-a-uuid", 404],
+    [inactive.id, 409],
+  ];
+  for (const [id, status] of cases) {
+    assert.equal((await request(`/suppliers/${id}`, { method: "PUT", token: "admin-token", body: validUpdate })).status, status);
+  }
+});
+
+test("DELETE soft-deletes an active supplier once", async () => {
+  const supplier = await insertSupplier("Deleted Cafe");
+  const response = await request(`/suppliers/${supplier.id}`, { method: "DELETE", token: "admin-token" });
+  assert.equal(response.status, 204);
+  const [row] = await db.select().from(schema.suppliers).where(eq(schema.suppliers.id, supplier.id));
+  assert.equal(row.isActive, false);
+  assert.equal((await getSuppliers({ name: "Deleted Cafe" }, "student-token")).length, 0);
+  assert.equal((await getSuppliers({ name: "Deleted Cafe" })).length, 1);
+
+  assert.equal((await request(`/suppliers/${supplier.id}`, { method: "DELETE", token: "admin-token" })).status, 409);
+  assert.equal((await request("/suppliers/00000000-0000-4000-8000-000000000000", { method: "DELETE", token: "admin-token" })).status, 404);
+  assert.equal((await request("/suppliers/not-a-uuid", { method: "DELETE", token: "admin-token" })).status, 404);
 });

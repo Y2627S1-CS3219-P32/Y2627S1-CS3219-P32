@@ -1,20 +1,67 @@
 <!-- AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-28; Claude Code (Opus 5.5), 2026-09-29.
-Scope: Supplier directory, filtering, and request states; Tailwind styling after the supplier mockup. Author review: Done. -->
+Scope: Supplier directory, filtering, and request states; Tailwind styling after the supplier mockup. Author review: Done.
+Claude Code (Opus 5.5), 2026-09-29. Scope: Login redirect on 401 and administrator edit/delete actions. Author review: Pending. -->
 <script setup lang="ts">
-import type { SupplierFilters } from "#shared/services/supplier-service/types";
+import type { Supplier, SupplierFilters } from "#shared/services/supplier-service/types";
+import type { User } from "#shared/services/user-service/types";
 import { useSuppliers } from "../composables/useSuppliers";
 import SupplierCard from "./SupplierCard.vue";
+import SupplierEditDialog from "./SupplierEditDialog.vue";
 
+const route = useRoute();
 const filters = ref<SupplierFilters>({});
 const name = ref("");
 const selectedType = ref("");
 const { data: suppliers, pending, error, refresh } = await useSuppliers(filters);
+// The role only decides which controls to show; supplier-service enforces it.
+const { data: user } = await useFetch<User>("/api/user-service/me", { key: "supplier-directory-user" });
+const isAdmin = computed(() => user.value?.role === "admin");
 const availableTypes = useState<string[]>("supplier-service-type-options", () => []);
+const knownBuildings = useState<string[]>("supplier-service-building-options", () => []);
 watch(suppliers, (rows) => {
   availableTypes.value = [...new Set([...availableTypes.value, ...rows.map(row => row.type)])].sort();
+  knownBuildings.value = [...new Set([...knownBuildings.value, ...rows.flatMap(row => row.buildingName ? [row.buildingName] : [])])].sort();
 }, { immediate: true });
 const hasFilters = computed(() => Boolean(filters.value.name || filters.value.type));
 const openCount = computed(() => suppliers.value.filter(supplier => supplier.isOpen).length);
+const inactiveCount = computed(() => suppliers.value.filter(supplier => !supplier.isActive).length);
+
+function statusOf(value: unknown): number | undefined {
+  return typeof value === "object" && value !== null && "statusCode" in value && typeof value.statusCode === "number"
+    ? value.statusCode
+    : undefined;
+}
+
+function goToLogin() {
+  return navigateTo({ path: "/login", query: { redirect: route.fullPath } });
+}
+
+// The session can expire after the page loads.
+watch(error, (value) => {
+  if (statusOf(value) === 401) goToLogin();
+}, { immediate: true });
+
+const editing = ref<Supplier | null>(null);
+const actionMessage = ref("");
+
+async function onSaved(updated: Supplier) {
+  editing.value = null;
+  actionMessage.value = `Saved ${updated.name}.`;
+  await refresh();
+}
+
+async function remove(supplier: Supplier) {
+  if (!window.confirm(`Delete ${supplier.name}? It will be marked inactive and hidden from students.`)) return;
+  actionMessage.value = "";
+  try {
+    await $fetch(`/api/supplier-service/suppliers/${encodeURIComponent(supplier.id)}`, { method: "DELETE" });
+    actionMessage.value = `Deleted ${supplier.name}.`;
+  } catch (deleteError) {
+    if (statusOf(deleteError) === 401) return goToLogin();
+    actionMessage.value = `${supplier.name} could not be deleted. It may have already changed.`;
+  }
+  await refresh();
+}
 
 function search() {
   filters.value = {
@@ -57,10 +104,11 @@ const emptyState = "rounded-md bg-white px-5 py-12 text-center shadow-[0_2px_6px
 
       <div class="mt-5 mb-3 flex min-h-6 items-center justify-between gap-4 text-sm text-[#5b6570]">
         <p v-if="!pending && !error" aria-live="polite">
-          {{ hasFilters ? 'Found ' : '' }}{{ suppliers.length }} {{ suppliers.length === 1 ? 'supplier' : 'suppliers' }} · {{ openCount }} open now
+          {{ hasFilters ? 'Found ' : '' }}{{ suppliers.length }} {{ suppliers.length === 1 ? 'supplier' : 'suppliers' }} · {{ openCount }} open now<template v-if="isAdmin && inactiveCount"> · {{ inactiveCount }} inactive</template>
         </p>
         <button v-if="hasFilters" class="font-medium text-[#064784] hover:underline" type="button" @click="reset">Clear filters</button>
       </div>
+      <p v-if="actionMessage" class="mb-3 text-sm text-[#064784]" role="status">{{ actionMessage }}</p>
 
       <div v-if="pending" class="flex flex-col gap-3" role="status" aria-label="Loading suppliers">
         <div v-for="item in 5" :key="item" class="flex items-start gap-4 rounded-md bg-white p-3.5 shadow-[0_2px_6px_rgba(0,0,0,0.14)]" aria-hidden="true">
@@ -83,8 +131,25 @@ const emptyState = "rounded-md bg-white px-5 py-12 text-center shadow-[0_2px_6px
         <button v-if="hasFilters" :class="primaryButton" type="button" @click="reset">Explore all suppliers</button>
       </div>
       <div v-else class="flex flex-col gap-3">
-        <SupplierCard v-for="supplier in suppliers" :key="supplier.id" :supplier="supplier" />
+        <SupplierCard
+          v-for="supplier in suppliers"
+          :key="supplier.id"
+          :supplier="supplier"
+          :can-manage="isAdmin"
+          @edit="editing = $event"
+          @delete="remove"
+        />
       </div>
     </section>
+
+    <SupplierEditDialog
+      v-if="isAdmin"
+      :supplier="editing"
+      :types="availableTypes"
+      :buildings="knownBuildings"
+      @close="editing = null"
+      @saved="onSaved"
+      @unauthorized="goToLogin"
+    />
   </main>
 </template>
