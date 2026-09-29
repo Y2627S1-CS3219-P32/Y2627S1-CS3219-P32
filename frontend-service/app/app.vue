@@ -52,10 +52,10 @@ const { data: user } = await useAsyncData<User | null>("navigation-user", async 
           </NuxtLink>
           <NuxtLink
             v-if="user?.role === 'admin'"
-            to="/users"
-            :aria-current="route.path === '/users' ? 'page' : undefined"
+            to="/admin/users"
+            :aria-current="route.path.startsWith('/admin/') ? 'page' : undefined"
             class="rounded-lg px-5 py-2.5 text-sm font-medium transition-colors"
-            :class="route.path === '/users' ? 'bg-[#eef4fa] text-[#064784]' : 'text-[#5b6570] hover:bg-[#f7f9fc] hover:text-[#064784]'"
+            :class="route.path.startsWith('/admin/') ? 'bg-[#eef4fa] text-[#064784]' : 'text-[#5b6570] hover:bg-[#f7f9fc] hover:text-[#064784]'"
           >
             Users
           </NuxtLink>

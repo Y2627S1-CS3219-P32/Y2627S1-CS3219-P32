@@ -1,10 +1,8 @@
 <!-- AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-29.
 Scope: Simple user card display and request states. Author review: Done. -->
 <script setup lang="ts">
-import UserCard from "../services/user-service/components/UserCard.vue";
-import { useUsers } from "../services/user-service/composables/useUsers";
-
-definePageMeta({ middleware: ["auth", "admin"] });
+import UserCard from "../../services/user-service/components/UserCard.vue";
+import { useUsers } from "../../services/user-service/composables/useUsers";
 
 const { data: users, pending, error, refresh } = await useUsers();
 </script>
