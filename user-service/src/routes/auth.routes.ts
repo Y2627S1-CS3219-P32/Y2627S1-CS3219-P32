@@ -6,12 +6,13 @@
 **/
 import { Router } from "express";
 
-import { getCurrentUser, postLogin } from "../controllers/auth.controller";
+import { getCurrentUser, postLogin, postRegister } from "../controllers/auth.controller";
 import { requireAuthentication } from "../middleware/authentication";
 
 const router = Router();
 
 router.post("/login", postLogin);
+router.post("/register", postRegister);
 router.get("/me", requireAuthentication, getCurrentUser);
 
 export default router;

@@ -72,6 +72,11 @@ async function login() {
         </button>
       </form>
 
+      <p class="mt-6 text-center text-sm text-[#5b6570]">
+        New here?
+        <NuxtLink to="/signup" class="font-medium text-[#064784] hover:underline">Create an account</NuxtLink>
+      </p>
+
       <p class="mt-6 text-xs text-[#5b6570]">Demo password: <code>Password123!</code></p>
     </section>
   </main>

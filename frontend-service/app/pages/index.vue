@@ -10,7 +10,7 @@ Scope: Link the landing-page login action to the JWT test page. Author review: D
         <p class="mt-6 text-base text-[#777] sm:text-[17px]">A place for your campus errands</p>
         <div class="mt-8 flex flex-wrap gap-3">
           <NuxtLink
-            to="/suppliers"
+            to="/signup"
             class="rounded-lg bg-[#064784] px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-[#053765] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#064784]"
           >
             Sign Up

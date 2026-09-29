@@ -7,7 +7,7 @@
 import type { Request, Response } from "express";
 
 import { config } from "../config";
-import { getAuthenticatedUser, login } from "../services/auth.service";
+import { getAuthenticatedUser, login, register } from "../services/auth.service";
 import { HttpError } from "../errors";
 
 export function postLogin(req: Request, res: Response): void {
@@ -16,6 +16,13 @@ export function postLogin(req: Request, res: Response): void {
     ? body as Record<string, unknown>
     : {};
   res.json(login(credentials.email, credentials.password, {
+    jwtSecret: config.jwtSecret,
+    accessTokenTtl: config.jwtAccessTokenTtl,
+  }));
+}
+
+export function postRegister(req: Request, res: Response): void {
+  res.status(201).json(register(req.body, {
     jwtSecret: config.jwtSecret,
     accessTokenTtl: config.jwtAccessTokenTtl,
   }));

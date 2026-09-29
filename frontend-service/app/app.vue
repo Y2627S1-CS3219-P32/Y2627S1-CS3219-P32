@@ -27,9 +27,9 @@ const { data: user } = await useAsyncData<User | null>("navigation-user", async 
 </script>
 
 <template>
-  <div class="min-h-screen" :class="{ 'pb-16 md:pb-0': route.path !== '/login' }">
+  <div class="min-h-screen" :class="{ 'pb-16 md:pb-0': route.path !== '/login' && route.path !== '/signup' }">
     <nav
-      v-if="route.path !== '/login'"
+      v-if="route.path !== '/login' && route.path !== '/signup'"
       aria-label="Main navigation"
       class="fixed inset-x-0 bottom-0 z-50 border-t border-[#e1e6eb] bg-white/95 shadow-[0_-4px_12px_rgba(6,66,126,0.06)] backdrop-blur md:sticky md:top-0 md:border-t-0 md:border-b md:shadow-sm"
     >
