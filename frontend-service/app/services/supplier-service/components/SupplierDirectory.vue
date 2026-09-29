@@ -1,11 +1,13 @@
 <!-- AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-28; Claude Code (Opus 5.5), 2026-09-29.
 Scope: Supplier directory, filtering, and request states; Tailwind styling after the supplier mockup. Author review: Done.
-Claude Code (Opus 5.5), 2026-09-29. Scope: Login redirect on 401 and administrator edit/delete actions. Author review: Pending. -->
+Claude Code (Opus 5.5), 2026-09-29. Scope: Login redirect on 401 and administrator edit/delete actions. Author review: Pending.
+Claude Code (Opus 5.5), 2026-09-30. Scope: Administrator add-supplier button and dialog. Author review: Pending. -->
 <script setup lang="ts">
 import type { Supplier, SupplierFilters } from "#shared/services/supplier-service/types";
 import type { User } from "#shared/services/user-service/types";
 import { useSuppliers } from "../composables/useSuppliers";
 import SupplierCard from "./SupplierCard.vue";
+import SupplierCreateDialog from "./SupplierCreateDialog.vue";
 import SupplierEditDialog from "./SupplierEditDialog.vue";
 
 const route = useRoute();
@@ -47,6 +49,14 @@ const actionMessage = ref("");
 async function onSaved(updated: Supplier) {
   editing.value = null;
   actionMessage.value = `Saved ${updated.name}.`;
+  await refresh();
+}
+
+const creating = ref(false);
+
+async function onCreated(created: Supplier) {
+  creating.value = false;
+  actionMessage.value = `Added ${created.name}.`;
   await refresh();
 }
 
@@ -151,5 +161,22 @@ const emptyState = "rounded-md bg-white px-5 py-12 text-center shadow-[0_2px_6px
       @saved="onSaved"
       @unauthorized="goToLogin"
     />
+
+    <template v-if="isAdmin">
+      <button
+        type="button"
+        class="fixed right-5 bottom-20 z-40 flex size-14 items-center justify-center rounded-full bg-[#064784] text-3xl leading-none text-white shadow-lg transition-colors hover:bg-[#053765] md:right-8 md:bottom-8"
+        aria-label="Add supplier"
+        @click="creating = true"
+      >
+        <span aria-hidden="true">+</span>
+      </button>
+      <SupplierCreateDialog
+        :open="creating"
+        @close="creating = false"
+        @created="onCreated"
+        @unauthorized="goToLogin"
+      />
+    </template>
   </main>
 </template>

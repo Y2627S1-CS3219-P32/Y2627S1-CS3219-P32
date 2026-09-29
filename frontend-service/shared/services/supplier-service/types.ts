@@ -28,6 +28,15 @@ export interface SupplierUpdate {
   imageUrl: string | null;
 }
 
+// POST /suppliers takes the same body as PUT, and GET /types and GET /buildings
+// return these references (Claude Code (Opus 5.5), 2026-09-30; author review: Pending).
+export type SupplierCreate = SupplierUpdate;
+
+export interface SupplierReference {
+  id: string;
+  name: string;
+}
+
 export interface SupplierFilters {
   name?: string;
   type?: string;

@@ -3,6 +3,59 @@ Scope: Record this session's AI assistance.
 Author review: Checked for correctness. -->
 # AI usage log (Supplier Service)
 
+## 2026-09-30: Administrator POST /suppliers and add-supplier form
+
+- Tool: Claude Code (Opus 5.5). Mode: Implementation, tests, documentation, and verification.
+- Exact prompt: `next, POST. this is where the button you saw previously in the mock up was supposed to be wired to. the name, floor, and imageUrl should be an input field, supplier type a dropdown (from the existing supplier types), location_description a textarea, building_id also a dropdown from existing building types. latitude and longitude may obtain the user's location through the geolocation api as a simplified implementation first. again, this method is only accessible by admin users.`
+- Design decisions made by the student (asked before implementation, because
+  AGENTS.md reserves interface decisions for the student):
+  - The dropdown lists come from two new endpoints, `GET /types` and
+    `GET /buildings`, each returning `[{ id, name }]` and requiring login.
+  - The POST body uses the same shape as PUT, referring to the type and building
+    by name.
+- Key response:
+  - supplier-service:
+    - Added `GET /types`, `GET /buildings`, and an admin-only `POST /suppliers`.
+    - POST reuses PUT's body validation. It returns 201 with the new supplier,
+      which is active and has no operating hours.
+    - Moved the type/building name lookup into a `toSupplierRow` helper shared by
+      POST and PUT.
+  - Frontend:
+    - Added Nuxt proxy routes for `/types`, `/buildings`, and `POST /suppliers`.
+    - Added the mockup's round "+" button, shown to admins only. On phones it
+      sits above the bottom navigation.
+    - The "+" button opens `SupplierCreateDialog`:
+      - Name, floor, and image URL are text inputs.
+      - Type and building are dropdowns. Building includes a "No building" option.
+      - Location description is a textarea.
+      - A "Use my location" button fills latitude and longitude from the browser
+        geolocation API. The coordinate fields stay editable as a fallback.
+- Affected files: `supplier-service/src/index.ts`, `supplier-service/src/supplier-input.ts`
+  (header only), `supplier-service/test/suppliers.test.mjs`, `supplier-service/README.md`,
+  `frontend-service/server/services/supplier-service/client.ts`,
+  `frontend-service/server/api/supplier-service/suppliers.post.ts`,
+  `frontend-service/server/api/supplier-service/types.get.ts`,
+  `frontend-service/server/api/supplier-service/buildings.get.ts`,
+  `frontend-service/shared/services/supplier-service/types.ts`,
+  `frontend-service/app/services/supplier-service/components/SupplierCreateDialog.vue`,
+  `frontend-service/app/services/supplier-service/components/SupplierDirectory.vue`,
+  `README.md`, and this log.
+- Verification:
+  - supplier-service `npm run typecheck` passed, and `npm test` passed 20/20
+    (4 new tests).
+  - Frontend `npm run build` and `npm run typecheck` passed.
+  - End to end through Docker:
+    - Without a login, POST returned 401. A student got 403.
+    - An admin POST with an unknown building got 400, and a valid one got 201.
+    - The student could see the new supplier.
+  - Headless Edge with an emulated geolocation:
+    - The "+" button appeared for the admin but not the student.
+    - The dropdowns listed 4 types and 16 buildings, and the location
+      description was a textarea.
+    - "Use my location" filled the coordinates, and submitting added the card.
+  - The test suppliers were deleted afterwards.
+- Author review: Pending.
+
 ## 2026-09-29: Supplier authentication and administrator PUT/DELETE
 
 - Tool: Claude Code (Opus 5.5). Mode: Implementation, tests, documentation, and verification.

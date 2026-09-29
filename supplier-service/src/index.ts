@@ -5,7 +5,11 @@ Author review: Prior boilerplate reviewed; route changes await review.
 Tool: Claude Code (model: Opus 5.5), date: 2026-09-29
 Scope: Authentication on GET /suppliers, role-based visibility of inactive suppliers,
 administrator-only PUT (versioned) and DELETE (soft) /suppliers/:id, and error handling.
-Author review: Done. **/
+Author review: Done.
+Tool: Claude Code (model: Opus 5.5), date: 2026-09-30
+Scope: GET /types, GET /buildings, administrator-only POST /suppliers, and the shared
+type/building lookup used by POST and PUT.
+Author review: Pending. **/
 
 import "dotenv/config";
 import { pathToFileURL } from "node:url";
@@ -16,7 +20,7 @@ import { db } from "./db/index.js";
 import { openingHoursMatch } from "./db/opening-hours.js";
 import { buildings, operatingHours, suppliers, types } from "./db/schema.js";
 import { HttpError } from "./errors.js";
-import { parseSupplierInput } from "./supplier-input.js";
+import { parseSupplierInput, type SupplierInput } from "./supplier-input.js";
 
 export const app = express();
 const port = 3000;
@@ -49,6 +53,41 @@ function getSupplierIdParam(req: Request): string {
   return id;
 }
 
+type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+// Maps the body's type and building names to the columns stored on a supplier row.
+async function toSupplierRow(tx: Transaction, input: SupplierInput) {
+  const [type] = await tx.select({ id: types.id }).from(types).where(eq(types.name, input.type));
+  if (!type) throw new HttpError(400, `Unknown supplier type: ${input.type}`);
+
+  let buildingId: string | null = null;
+  if (input.buildingName) {
+    const [building] = await tx.select({ id: buildings.id }).from(buildings).where(eq(buildings.name, input.buildingName));
+    if (!building) throw new HttpError(400, `Unknown building: ${input.buildingName}`);
+    buildingId = building.id;
+  }
+
+  return {
+    name: input.name,
+    supplierTypeId: type.id,
+    buildingId,
+    floor: input.floor,
+    locationDescription: input.locationDescription,
+    latitude: input.latitude,
+    longitude: input.longitude,
+    imageUrl: input.imageUrl,
+    isActive: true,
+  };
+}
+
+app.get("/types", requireAuthentication, async (_req, res) => {
+  res.status(200).json(await db.select({ id: types.id, name: types.name }).from(types).orderBy(asc(types.name)));
+});
+
+app.get("/buildings", requireAuthentication, async (_req, res) => {
+  res.status(200).json(await db.select({ id: buildings.id, name: buildings.name }).from(buildings).orderBy(asc(buildings.name)));
+});
+
 app.get("/suppliers", requireAuthentication, async (req, res) => {
   const name = typeof req.query.name === "string" ? req.query.name.trim() : undefined;
   const type = typeof req.query.type === "string" ? req.query.type.trim() : undefined;
@@ -63,6 +102,20 @@ app.get("/suppliers", requireAuthentication, async (req, res) => {
   ));
 
   res.status(200).json(results);
+});
+
+// New suppliers start active, with no operating hours (so they show as closed).
+app.post("/suppliers", requireAuthentication, requireAdministrator, async (req, res) => {
+  const input = parseSupplierInput(req.body);
+
+  const newId = await db.transaction(async (tx) => {
+    const [created] = await tx.insert(suppliers).values(await toSupplierRow(tx, input)).returning({ id: suppliers.id });
+    if (!created) throw new Error("Supplier insert returned no row");
+    return created.id;
+  });
+
+  const [supplier] = await selectSuppliers(eq(suppliers.id, newId));
+  res.status(201).json(supplier);
 });
 
 // Versioned update: the current row is marked inactive and replaced by a new
@@ -80,28 +133,9 @@ app.put("/suppliers/:id", requireAuthentication, requireAdministrator, async (re
     if (!current) throw new HttpError(404, "Supplier not found");
     if (!current.isActive) throw new HttpError(409, "Only active suppliers can be updated");
 
-    const [type] = await tx.select({ id: types.id }).from(types).where(eq(types.name, input.type));
-    if (!type) throw new HttpError(400, `Unknown supplier type: ${input.type}`);
-
-    let buildingId: string | null = null;
-    if (input.buildingName) {
-      const [building] = await tx.select({ id: buildings.id }).from(buildings).where(eq(buildings.name, input.buildingName));
-      if (!building) throw new HttpError(400, `Unknown building: ${input.buildingName}`);
-      buildingId = building.id;
-    }
-
+    const row = await toSupplierRow(tx, input);
     await tx.update(suppliers).set({ isActive: false }).where(eq(suppliers.id, id));
-    const [created] = await tx.insert(suppliers).values({
-      name: input.name,
-      supplierTypeId: type.id,
-      buildingId,
-      floor: input.floor,
-      locationDescription: input.locationDescription,
-      latitude: input.latitude,
-      longitude: input.longitude,
-      imageUrl: input.imageUrl,
-      isActive: true,
-    }).returning({ id: suppliers.id });
+    const [created] = await tx.insert(suppliers).values(row).returning({ id: suppliers.id });
     if (!created) throw new Error("Supplier insert returned no row");
 
     const hours = await tx

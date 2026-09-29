@@ -6,6 +6,9 @@
  * Scope: Stub user-service, authentication and role-visibility checks for GET, and
  * PUT/DELETE /suppliers/:id checks.
  * Author review: Done.
+ * AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-09-30.
+ * Scope: GET /types, GET /buildings, and POST /suppliers checks.
+ * Author review: Pending.
  */
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
@@ -375,4 +378,77 @@ test("DELETE soft-deletes an active supplier once", async () => {
   assert.equal((await request(`/suppliers/${supplier.id}`, { method: "DELETE", token: "admin-token" })).status, 409);
   assert.equal((await request("/suppliers/00000000-0000-4000-8000-000000000000", { method: "DELETE", token: "admin-token" })).status, 404);
   assert.equal((await request("/suppliers/not-a-uuid", { method: "DELETE", token: "admin-token" })).status, 404);
+});
+
+test("GET /types and /buildings list every row by name for any logged-in user", async () => {
+  for (const token of ["student-token", "admin-token"]) {
+    const typesResponse = await request("/types", { token });
+    assert.equal(typesResponse.status, 200);
+    const typeRows = await typesResponse.json();
+    assert.deepEqual(typeRows.map(row => row.name), ["Food", "Food/Coffee", "Shopping"]);
+    assert.ok(typeRows.every(row => typeof row.id === "string"));
+
+    const buildingsResponse = await request("/buildings", { token });
+    assert.equal(buildingsResponse.status, 200);
+    // Order follows the database collation, so only the contents are compared.
+    assert.deepEqual((await buildingsResponse.json()).map(row => row.name).sort(), ["COM2", "Central Library"]);
+  }
+  assert.equal((await request("/types")).status, 401);
+  assert.equal((await request("/buildings")).status, 401);
+});
+
+test("POST is administrator-only", async () => {
+  const body = { ...validUpdate, name: "Guarded New Cafe" };
+  assert.equal((await request("/suppliers", { method: "POST", body })).status, 401);
+  assert.equal((await request("/suppliers", { method: "POST", body, token: "student-token" })).status, 403);
+  const rows = await db.select().from(schema.suppliers).where(eq(schema.suppliers.name, "Guarded New Cafe"));
+  assert.equal(rows.length, 0);
+});
+
+test("POST creates an active supplier without hours and returns 201", async () => {
+  const response = await request("/suppliers", { method: "POST", token: "admin-token", body: { ...validUpdate, name: "Brand New Cafe" } });
+  assert.equal(response.status, 201);
+  const created = await response.json();
+  assert.equal(typeof created.id, "string");
+  assert.equal(created.name, "Brand New Cafe");
+  assert.equal(created.type, "Shopping");
+  assert.equal(created.buildingName, "COM2");
+  assert.equal(created.floor, "3");
+  assert.equal(created.locationDescription, "Beside the lift");
+  assert.equal(created.latitude, "1.294500");
+  assert.equal(created.longitude, "103.774400");
+  assert.equal(created.imageUrl, "https://example.com/cafe.jpeg");
+  assert.equal(created.isActive, true);
+  assert.equal(created.isOpen, false);
+  assert.equal(Object.hasOwn(created, "supplierTypeId"), false);
+
+  const hours = await db.select().from(schema.operatingHours).where(eq(schema.operatingHours.supplierId, created.id));
+  assert.equal(hours.length, 0);
+  assert.ok((await getSuppliers({ name: "Brand New Cafe" }, "student-token")).some(row => row.id === created.id));
+});
+
+test("POST accepts a supplier without a building and rejects invalid bodies", async () => {
+  const response = await request("/suppliers", {
+    method: "POST",
+    token: "admin-token",
+    body: { ...validUpdate, name: "Roaming Cart", buildingName: null, floor: "", locationDescription: null, imageUrl: "" },
+  });
+  assert.equal(response.status, 201);
+  const created = await response.json();
+  assert.equal(created.buildingName, null);
+  assert.equal(created.floor, null);
+  assert.equal(created.imageUrl, null);
+
+  for (const body of [
+    { ...validUpdate, name: "Rejected Cafe", type: "Unknown type" },
+    { ...validUpdate, name: "Rejected Cafe", buildingName: "Unknown building" },
+    { ...validUpdate, name: "Rejected Cafe", latitude: "north" },
+    { ...validUpdate, name: "" },
+  ]) {
+    const rejected = await request("/suppliers", { method: "POST", token: "admin-token", body });
+    assert.equal(rejected.status, 400);
+    assert.equal(typeof (await rejected.json()).error, "string");
+  }
+  const rows = await db.select().from(schema.suppliers).where(eq(schema.suppliers.name, "Rejected Cafe"));
+  assert.equal(rows.length, 0);
 });

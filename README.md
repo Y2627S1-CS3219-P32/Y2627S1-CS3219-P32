@@ -80,8 +80,8 @@ documentation, and verification. Supplier-service setup assistance is recorded
 in the [service README](supplier-service/README.md). The exact Drizzle setup
 prompt, subsequent TypeScript configuration fix, schema implementation and migration,
 CSV-derived seed implementation, local database connection fix, GET suppliers route,
-Nuxt frontend implementation, supplier authentication and administrator PUT/DELETE
-routes (implemented to the student's stated design choices), key responses, affected files,
+Nuxt frontend implementation, supplier authentication, administrator POST/PUT/DELETE
+routes, and type/building list routes (implemented to the student's stated design choices), key responses, affected files,
 and review status are in the
 [AI usage log](AI_USAGE_LOG.md).
 

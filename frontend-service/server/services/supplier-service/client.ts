@@ -1,7 +1,8 @@
 // AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-28; Claude Code (Opus 5.5), 2026-09-29.
 // Scope: Server-side client for the supplier service, forwarding the user's bearer token. Author review: Done.
+// Claude Code (Opus 5.5), 2026-09-30. Scope: Types, buildings, and create calls. Author review: Pending.
 import type { H3Event } from "h3";
-import type { Supplier, SupplierFilters, SupplierUpdate } from "#shared/services/supplier-service/types";
+import type { Supplier, SupplierCreate, SupplierFilters, SupplierReference, SupplierUpdate } from "#shared/services/supplier-service/types";
 
 const FORWARDED_STATUSES = new Set([400, 401, 403, 404, 409]);
 
@@ -34,6 +35,18 @@ export function toSupplierServiceError(error: unknown) {
 
 export function fetchSuppliers(baseURL: string, token: string, query: SupplierFilters) {
   return $fetch<Supplier[]>("/suppliers", { ...options(baseURL, token), query });
+}
+
+export function fetchSupplierTypes(baseURL: string, token: string) {
+  return $fetch<SupplierReference[]>("/types", options(baseURL, token));
+}
+
+export function fetchBuildings(baseURL: string, token: string) {
+  return $fetch<SupplierReference[]>("/buildings", options(baseURL, token));
+}
+
+export function createSupplier(baseURL: string, token: string, body: SupplierCreate) {
+  return $fetch<Supplier>("/suppliers", { ...options(baseURL, token), method: "POST", body });
 }
 
 export function updateSupplier(baseURL: string, token: string, id: string, body: SupplierUpdate) {

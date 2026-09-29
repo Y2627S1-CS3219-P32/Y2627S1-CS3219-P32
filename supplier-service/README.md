@@ -1,7 +1,8 @@
 <!-- AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-28.
 Scope: Drizzle setup and usage documentation. Prior content reviewed;
 seed, local database access, and route documentation changes await review.
-Claude Code (Opus 5.5), 2026-09-29: authentication, PUT, and DELETE documentation. Author review: Done. -->
+Claude Code (Opus 5.5), 2026-09-29: authentication, PUT, and DELETE documentation. Author review: Done.
+Claude Code (Opus 5.5), 2026-09-30: POST, GET /types, and GET /buildings documentation. Author review: Pending. -->
 # Supplier Service
 
 Run commands from `supplier-service/`:
@@ -30,7 +31,7 @@ such as `process`. `npm run build` uses `tsconfig.build.json` to compile only
 
 ## Authentication
 
-Every `/suppliers` route requires an `Authorization: Bearer <token>` header carrying
+Every `/suppliers`, `/types`, and `/buildings` route requires an `Authorization: Bearer <token>` header carrying
 a user-service access token. supplier-service forwards the header to user-service
 `GET /me` (at `USER_SERVICE_BASE_URL`, default `http://127.0.0.1:3333`) to resolve
 the caller and their role.
@@ -38,7 +39,7 @@ the caller and their role.
 | Situation | Response |
 | --- | --- |
 | Missing, malformed, expired, or rejected token | 401 `{ "error": "A valid bearer token is required" }` |
-| Non-admin calling `PUT` or `DELETE` | 403 `{ "error": "Administrator access is required" }` |
+| Non-admin calling `POST`, `PUT`, or `DELETE` | 403 `{ "error": "Administrator access is required" }` |
 | user-service unreachable or failing | 502 |
 
 Errors are JSON objects with an `error` message.
@@ -99,7 +100,18 @@ Soft delete: marks the supplier `isActive: false` and returns 204. The row and i
 hours are kept. Unknown or malformed ids return 404; an already inactive supplier
 returns 409.
 
-`POST /suppliers` is intentionally not implemented yet.
+## POST /suppliers (administrators)
+
+Creates an active supplier and returns 201 with it, in the same shape as a
+`GET /suppliers` item. The body and its validation are the same as for PUT (see the
+table above). The new supplier has no operating hours, so it reports `isOpen: false`
+until hours are added.
+
+## GET /types and GET /buildings
+
+Return 200 with every supplier type or building as `[{ "id", "name" }]`, sorted by
+name (in database collation order). Any logged-in user can call them. The frontend
+uses them for the add-supplier dropdowns.
 
 ### Route tests
 
