@@ -1,5 +1,5 @@
 <!-- AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-29.
-Scope: Display the authenticated user's profile and end the JWT session. Author review: Pending. -->
+Scope: Display the authenticated user's profile and end the JWT session. Author review: Done. -->
 <script setup lang="ts">
 import type { User } from "#shared/services/user-service/types";
 
@@ -23,8 +23,7 @@ async function logout() {
     <section class="mx-auto w-full max-w-2xl rounded-xl border border-[#e1e6eb] bg-white p-8 shadow-sm">
       <div class="flex items-start justify-between gap-4">
         <div>
-          <NuxtLink to="/" class="text-sm font-medium text-[#064784] hover:underline">Friends of Campus</NuxtLink>
-          <h1 class="mt-5 text-3xl font-bold">Your profile</h1>
+          <div class="mt-5 text-3xl font-bold">Your profile</div>
         </div>
         <button
           type="button"

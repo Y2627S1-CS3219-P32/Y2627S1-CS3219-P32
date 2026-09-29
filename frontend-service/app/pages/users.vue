@@ -12,7 +12,7 @@ const { data: users, pending, error, refresh } = await useUsers();
 <template>
   <main class="min-h-screen bg-[#f7f9fc] px-6 py-12 text-[#06427e] sm:px-12">
     <section class="mx-auto w-full max-w-4xl">
-      <h1 class="text-3xl font-bold">Users</h1>
+      <div class="text-3xl font-bold">Users</div>
 
       <p v-if="pending" class="mt-6" role="status">Loading users...</p>
       <div v-else-if="error" class="mt-6 rounded-lg border border-red-200 bg-white p-5" role="alert">
