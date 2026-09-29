@@ -1,0 +1,31 @@
+services:
+  user-service:
+    build:
+      context: ./user-service
+    environment:
+      PORT: "3333"
+    ports:
+      - "3333:3333"
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3333/users').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+  frontend-service:
+    build:
+      context: ./frontend-service
+    environment:
+      NITRO_HOST: 0.0.0.0
+      NITRO_PORT: "3000"
+      NUXT_USER_SERVICE_BASE_URL: http://user-service:3333
+    ports:
+      - "3001:3000"
+    depends_on:
+      user-service:
+        condition: service_healthy
