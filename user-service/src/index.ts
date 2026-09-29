@@ -25,7 +25,31 @@ if (!Number.isSafeInteger(jwtAccessTokenTtl) || jwtAccessTokenTtl <= 0) {
 
 app.use(express.json({ limit: "10kb" }));
 
-app.get('/users', (_req, res) => {
+function requireAdministrator(_req: Request, res: Response, next: NextFunction): void {
+  const userId: unknown = res.locals.userId;
+  if (typeof userId !== "number") {
+    res.status(401).json({ error: "A valid bearer token is required" });
+    return;
+  }
+
+  const user = getPublicUserById(userId);
+  if (!user) {
+    res.status(401).json({ error: "Token user no longer exists" });
+    return;
+  }
+  if (user.role !== "admin") {
+    res.status(403).json({ error: "Administrator access is required" });
+    return;
+  }
+
+  next();
+}
+
+app.get('/health', (_req, res) => {
+  res.json({ status: "ok" });
+});
+
+app.get('/users', requireAuthentication, requireAdministrator, (_req, res) => {
   res.json(getAllUsers());
 });
 

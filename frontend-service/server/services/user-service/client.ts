@@ -2,9 +2,10 @@
 // Scope: Server-side client for the user service. Author review: Done.
 import type { User } from "#shared/services/user-service/types";
 
-export function fetchUsers(baseURL: string) {
+export function fetchUsers(baseURL: string, token: string) {
   return $fetch<User[]>("/users", {
     baseURL,
+    headers: { authorization: `Bearer ${token}` },
     timeout: 5000,
     retry: 0,
   });

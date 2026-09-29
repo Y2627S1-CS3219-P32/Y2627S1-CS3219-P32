@@ -4,10 +4,11 @@
 import { fetchUsers } from "../../services/user-service/client";
 
 export default defineEventHandler(async (event) => {
-  const config = useRuntimeConfig(event);
-  try {
-    return await fetchUsers(config.userServiceBaseUrl);
-  } catch {
-    throw createError({ statusCode: 502, statusMessage: "Users are temporarily unavailable. Please try again." });
+  const token = getCookie(event, "user_access_token");
+  if (!token) {
+    throw createError({ statusCode: 401, statusMessage: "A login is required." });
   }
+
+  const config = useRuntimeConfig(event);
+  return fetchUsers(config.userServiceBaseUrl, token);
 });

@@ -4,6 +4,8 @@ Scope: Simple user card display and request states. Author review: Done. -->
 import UserCard from "../services/user-service/components/UserCard.vue";
 import { useUsers } from "../services/user-service/composables/useUsers";
 
+definePageMeta({ middleware: ["auth", "admin"] });
+
 const { data: users, pending, error, refresh } = await useUsers();
 </script>
 
