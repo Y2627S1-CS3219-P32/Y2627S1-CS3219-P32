@@ -61,6 +61,18 @@ supplier, user, order, and credit service. It starts independently of the
 supplier service; run `docker compose up -d supplier-service` for supplier data,
 which Nuxt fetches over the Compose network. The supplier API remains on host port 3000.
 
+## Develop with hot reloading
+
+```sh
+docker compose -f compose.yaml -f compose.dev.yaml up --build --watch
+```
+
+[`compose.dev.yaml`](compose.dev.yaml) runs the supplier and user services with
+`tsx watch` and the frontend with `nuxt dev`. Compose syncs source edits into the
+containers, which restart (backends) or hot-swap modules (frontend) on change.
+Editing a `package.json` rebuilds that service's image. Outside Docker, run
+`npm run dev` in any of these service folders.
+
 ## AI Assistance Disclosure
 
 Tool: ChatGPT / Codex (GPT-6). Modes: boilerplate generation, debugging,

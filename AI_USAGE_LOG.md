@@ -3,6 +3,26 @@ Scope: Record this session's AI assistance.
 Author review: Checked for correctness. -->
 # AI usage log (Supplier Service)
 
+## 2026-09-29: Hot reloading for development
+
+- Tool: Claude Code (Opus 5.5). Mode: Configuration, documentation, and verification.
+- Exact prompts: `how do i enable hot reloading for these services?`, then
+  `help me implement the changes`
+- Key response: Added `tsx` to supplier-service and `tsx watch` `dev` scripts to
+  supplier-service and user-service. Added a `compose.dev.yaml` override that runs
+  the backends with `tsx watch` and the frontend with `nuxt dev` (reusing the
+  existing `tooling` and `build` Dockerfile stages), using Compose `develop.watch`
+  to sync source edits into containers instead of bind mounts, which do not
+  reliably propagate file events on Windows.
+- Affected files: `compose.dev.yaml`, `supplier-service/package.json`,
+  npm-generated `supplier-service/package-lock.json`, `user-service/package.json`,
+  `README.md`, and this log.
+- Verification: With `docker compose -f compose.yaml -f compose.dev.yaml up --build --watch`,
+  all services started; editing `src/index.ts` restarted supplier-service and
+  user-service; editing `frontend-service/app/app.vue` triggered a Vite HMR update.
+  Test edits were reverted.
+- Author review: Check for correctness.
+
 ## 2026-09-28: Frontend decoupling from supplier service
 
 - Tool: Claude Code (Opus 5.5). Mode: Configuration, documentation, and git.

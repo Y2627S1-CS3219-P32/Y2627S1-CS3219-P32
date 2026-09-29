@@ -1,10 +1,11 @@
 {
-  "//": "AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-29. Scope: User-service auth test script. Author review: Done.",
+  "//": "AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-29. Scope: User-service auth test script. Author review: Done. Claude Code (Opus 5.5), 2026-09-29. Scope: tsx watch dev script. Author review: Check for correctness.",
   "name": "user-service",
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
   "scripts": {
+    "dev": "tsx watch src/index.ts",
     "start": "tsx src/index.ts",
     "test": "tsx --test src/auth.test.ts"
   },
