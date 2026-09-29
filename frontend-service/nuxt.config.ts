@@ -1,19 +1,25 @@
 // AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-28.
-// Scope: Nuxt runtime and frontend configuration. Author review: pending.
+// Scope: Nuxt runtime and frontend configuration. Author review: Done.
+import tailwindcss from "@tailwindcss/vite";
+
 export default defineNuxtConfig({
   compatibilityDate: "2026-09-28",
   devtools: { enabled: false },
   css: ["~/assets/css/main.css"],
   runtimeConfig: {
     supplierServiceBaseUrl: "http://127.0.0.1:3000",
+    userServiceBaseUrl: "http://127.0.0.1:3333",
   },
   nitro: { preset: "node-server" },
   typescript: { strict: true },
+  vite: {
+    plugins: [tailwindcss()],
+  },
   app: {
     head: {
-      title: "Explore suppliers · Friend on Campus",
+      title: "Friends of Campus",
       htmlAttrs: { lang: "en" },
-      meta: [{ name: "description", content: "Find food, essentials and services around campus with Friend on Campus." }],
+      meta: [{ name: "description", content: "A place for your campus errands." }],
     },
   },
 });

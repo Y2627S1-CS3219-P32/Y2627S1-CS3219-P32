@@ -1,5 +1,5 @@
 # AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-28.
-# Scope: Independent Nuxt production build and runtime. Author review: pending.
+# Scope: Independent Nuxt production build and runtime. Author review: Done.
 FROM node:22-bookworm-slim AS build
 WORKDIR /app
 COPY package.json package-lock.json ./

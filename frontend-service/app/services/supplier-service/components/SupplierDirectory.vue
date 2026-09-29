@@ -1,5 +1,5 @@
 <!-- AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-28.
-Scope: Supplier directory, filtering, and request states. Author review: pending. -->
+Scope: Supplier directory, filtering, and request states. Author review: Done. -->
 <script setup lang="ts">
 import type { SupplierFilters } from "#shared/services/supplier-service/types";
 import { useSuppliers } from "../composables/useSuppliers";

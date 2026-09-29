@@ -16,7 +16,7 @@ Author review: Checked for correctness. -->
   the root `compose.yaml`, `README.md`, `.env.example`, and this log on `supplier`.
 - Affected files: `compose.yaml`, `README.md`, `frontend-service/README.md`, and
   this log.
-- Author review: Pending review of these changes.
+- Author review: Done review of these changes.
 - Verification: With supplier-service stopped, the frontend started and served the
   page (200); the proxy route returned 502 and the page showed its error state.
   After restarting supplier-service, the route returned all 21 suppliers.
@@ -34,7 +34,7 @@ for context, frontend-service is being set up. The frontend’s supplier screen 
   `frontend-service/app/services/supplier-service/components/SupplierDirectory.vue`,
   `frontend-service/app/services/supplier-service/composables/useSuppliers.ts`,
   `frontend-service/server/services/supplier-service/client.ts`, and this log.
-- Author review: Pending review of these changes.
+- Author review: Done review of these changes.
 - Verification: `npm run build` and `npm run typecheck` passed. Compose started the
   database, supplier-service, and frontend on port 3001. The Nuxt route returned
   all 21 suppliers from supplier-service over the Compose network, `?name=cafe`
@@ -59,7 +59,7 @@ for context, frontend-service is being set up. The frontend’s supplier screen 
   are copies of the user-supplied repository assets, not AI-generated images.
 - Follow-up: Verification, a typecheck fix, and removal of the Compose dependency
   were done with Claude Code; see the two entries above.
-- Author review: Pending review of these frontend changes.
+- Author review: Done review of these frontend changes.
 
 ## 2026-09-28: Supplier response joins
 

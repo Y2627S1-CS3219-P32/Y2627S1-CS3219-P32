@@ -1,6 +1,6 @@
 // AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-28.
 // Scope: Nuxt endpoint forwarding supplier filters on the Compose network.
-// Author review: pending.
+// Author review: Done.
 import { fetchSuppliers } from "../../services/supplier-service/client";
 
 export default defineEventHandler(async (event) => {
