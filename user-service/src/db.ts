@@ -1,38 +1,19 @@
 /**
     AI Assistance Disclosure:
     Tool: ChatGPT (model: GPT-6), date: 2026-09-29
-    Scope: Password-hash seeding and public/authenticated user queries
+    Scope: Database initialization and development-user password seeding
     Author review: Pending
 **/
 import { drizzle } from 'drizzle-orm/node-sqlite';
 import { eq } from 'drizzle-orm';
 
 import { hashPassword } from './auth';
-import { usersTable, PublicUser, User } from './db/schema';
+import { usersTable } from './db/schema';
 
 export const db = drizzle(process.env.DATABASE_PATH ?? "./users.sqlite");
 
-const publicUserColumns = {
-  id: usersTable.id,
-  name: usersTable.name,
-  email: usersTable.email,
-  role: usersTable.role,
-};
-
-export function getAllUsers(): PublicUser[] {
-  return db.select(publicUserColumns).from(usersTable).all();
-}
-
-export function getUserByEmail(email: string): User | undefined {
-  return db.select().from(usersTable).where(eq(usersTable.email, email)).get();
-}
-
-export function getPublicUserById(id: number): PublicUser | undefined {
-  return db.select(publicUserColumns).from(usersTable).where(eq(usersTable.id, id)).get();
-}
-
 function seedUserTableIfEmpty(): void {
-  const currentUsers = getAllUsers();
+  const currentUsers = db.select({ id: usersTable.id }).from(usersTable).all();
 
   if (currentUsers.length === 0) {
     db.insert(usersTable).values([
