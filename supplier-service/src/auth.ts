@@ -1,7 +1,7 @@
 /**AI Assistance Disclosure:
 Tool: Claude Code (model: Opus 5.5), date: 2026-09-29
 Scope: Authentication and administrator middleware that resolves the caller through user-service GET /me.
-Author review: Pending. **/
+Author review: Done. **/
 
 import type { NextFunction, Request, Response } from "express";
 import { HttpError } from "./errors.js";

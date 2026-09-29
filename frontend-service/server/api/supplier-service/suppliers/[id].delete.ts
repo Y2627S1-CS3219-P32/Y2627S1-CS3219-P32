@@ -1,5 +1,5 @@
 // AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-09-29.
-// Scope: Nuxt endpoint forwarding an administrator's supplier soft delete. Author review: Pending.
+// Scope: Nuxt endpoint forwarding an administrator's supplier soft delete. Author review: Done.
 import { deleteSupplier, requireSupplierToken, toSupplierServiceError } from "../../../services/supplier-service/client";
 
 export default defineEventHandler(async (event) => {

@@ -58,7 +58,7 @@ Author review: Checked for correctness. -->
     - DELETE returned 204, and repeating it returned 409.
   - Headless Edge showed the "⋯" menu and edit dialog for the admin, and no menu
     for the student.
-- Author review: Pending.
+- Author review: Done.
 
 ## 2026-09-29: Supplier screen restyled after the original mockup
 
@@ -78,7 +78,7 @@ Author review: Checked for correctness. -->
   this log.
 - Verification: `npm run typecheck` passed. Headless Edge screenshots at 1280px and
   390px showed the list layout, with no horizontal overflow on the phone width.
-- Author review: Pending.
+- Author review: Done, description looks like what I described.
 
 ## 2026-09-29: Tailwind refactor of the frontend supplier module
 

@@ -5,7 +5,7 @@ Author review: Prior boilerplate reviewed; route changes await review.
 Tool: Claude Code (model: Opus 5.5), date: 2026-09-29
 Scope: Authentication on GET /suppliers, role-based visibility of inactive suppliers,
 administrator-only PUT (versioned) and DELETE (soft) /suppliers/:id, and error handling.
-Author review: Pending. **/
+Author review: Done. **/
 
 import "dotenv/config";
 import { pathToFileURL } from "node:url";

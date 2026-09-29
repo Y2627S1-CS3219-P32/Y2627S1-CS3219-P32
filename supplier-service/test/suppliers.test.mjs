@@ -5,7 +5,7 @@
  * AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-09-29.
  * Scope: Stub user-service, authentication and role-visibility checks for GET, and
  * PUT/DELETE /suppliers/:id checks.
- * Author review: Pending.
+ * Author review: Done.
  */
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";

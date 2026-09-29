@@ -1,7 +1,7 @@
 /**
  * AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-28.
  * Scope: Evaluate documented daily and overnight supplier opening periods.
- * Author review: pending.
+ * Author review: Done.
  */
 import { sql } from "drizzle-orm";
 import { operatingHours, suppliers } from "./schema.js";

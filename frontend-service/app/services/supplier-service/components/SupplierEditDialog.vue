@@ -1,5 +1,5 @@
 <!-- AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-09-29.
-Scope: Administrator edit form for PUT /suppliers/:id. Author review: Pending. -->
+Scope: Administrator edit form for PUT /suppliers/:id. Author review: Done. -->
 <script setup lang="ts">
 import type { Supplier, SupplierUpdate } from "#shared/services/supplier-service/types";
 

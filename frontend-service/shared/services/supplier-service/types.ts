@@ -16,7 +16,7 @@ export interface Supplier {
   isOpen: boolean;
 }
 
-// Body of PUT /suppliers/:id (Claude Code (Opus 5.5), 2026-09-29; author review pending).
+// Body of PUT /suppliers/:id (Claude Code (Opus 5.5), 2026-09-29; author review: Done).
 export interface SupplierUpdate {
   name: string;
   type: string;

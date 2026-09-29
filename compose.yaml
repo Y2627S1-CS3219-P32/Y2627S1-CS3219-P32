@@ -45,7 +45,7 @@ services:
       - "3000:3000"
     environment:
       DATABASE_URL: postgres://supplier:supplier@supplier-db:5432/suppliers
-      # Claude Code (Opus 5.5), 2026-09-29: caller lookup via user-service GET /me. Author review: Pending.
+      # Claude Code (Opus 5.5), 2026-09-29: caller lookup via user-service GET /me. Author review: Completed.
       USER_SERVICE_BASE_URL: http://user-service:3333
     depends_on:
       supplier-db:

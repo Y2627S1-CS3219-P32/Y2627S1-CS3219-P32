@@ -1,5 +1,5 @@
 // AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-28; Claude Code (Opus 5.5), 2026-09-29.
-// Scope: Server-side client for the supplier service, forwarding the user's bearer token. Author review: Pending.
+// Scope: Server-side client for the supplier service, forwarding the user's bearer token. Author review: Done.
 import type { H3Event } from "h3";
 import type { Supplier, SupplierFilters, SupplierUpdate } from "#shared/services/supplier-service/types";
 

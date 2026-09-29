@@ -1,6 +1,6 @@
 // AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-28; Claude Code (Opus 5.5), 2026-09-29.
 // Scope: Nuxt endpoint forwarding supplier filters and the user's token on the Compose network.
-// Author review: Pending.
+// Author review: Done.
 import { fetchSuppliers, requireSupplierToken, toSupplierServiceError } from "../../services/supplier-service/client";
 
 export default defineEventHandler(async (event) => {

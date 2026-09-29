@@ -1,5 +1,5 @@
 // AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-09-29.
-// Scope: Nuxt endpoint forwarding an administrator's supplier update. Author review: Pending.
+// Scope: Nuxt endpoint forwarding an administrator's supplier update. Author review: Done.
 import type { SupplierUpdate } from "#shared/services/supplier-service/types";
 import { requireSupplierToken, toSupplierServiceError, updateSupplier } from "../../../services/supplier-service/client";
 

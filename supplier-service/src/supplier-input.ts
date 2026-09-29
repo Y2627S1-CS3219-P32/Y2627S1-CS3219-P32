@@ -1,7 +1,7 @@
 /**AI Assistance Disclosure:
 Tool: Claude Code (model: Opus 5.5), date: 2026-09-29
 Scope: Request body validation for PUT /suppliers/:id.
-Author review: Pending. **/
+Author review: Done. **/
 
 import { HttpError } from "./errors.js";
 

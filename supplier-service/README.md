@@ -1,7 +1,7 @@
 <!-- AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-28.
 Scope: Drizzle setup and usage documentation. Prior content reviewed;
 seed, local database access, and route documentation changes await review.
-Claude Code (Opus 5.5), 2026-09-29: authentication, PUT, and DELETE documentation. Author review: Pending. -->
+Claude Code (Opus 5.5), 2026-09-29: authentication, PUT, and DELETE documentation. Author review: Done. -->
 # Supplier Service
 
 Run commands from `supplier-service/`:
