@@ -3,6 +3,27 @@ Scope: Record this session's AI assistance.
 Author review: Checked for correctness. -->
 # AI usage log (Supplier Service)
 
+## 2026-09-29: Tailwind refactor of the frontend supplier module
+
+- Tool: Claude Code (Opus 5.5). Mode: Refactoring and verification.
+- Exact prompt: `refactor the frontend service supplier module to use tailwind`
+- Key response: Replaced the supplier directory's custom CSS classes with Tailwind
+  utilities in `SupplierDirectory.vue` and `SupplierCard.vue`, keeping the original
+  breakpoints (480/700/1000/1500px) as arbitrary variants. Reduced `main.css` to a
+  `@theme` font and a `@layer base` block, and removed the unused hero, header, and
+  footer styles. Global element rules now sit in the base layer, so utilities on
+  other pages win over them. For example, the nav links now show their own colours
+  instead of `a{color:inherit}`.
+- Affected files: `frontend-service/app/assets/css/main.css`,
+  `frontend-service/app/services/supplier-service/components/SupplierDirectory.vue`,
+  `frontend-service/app/services/supplier-service/components/SupplierCard.vue`, and
+  this log.
+- Verification: `npm run build` and `npm run typecheck` passed. Headless Edge
+  screenshots of the old build and the refactor at 1440, 850, 600 and 390px were
+  pixel-compared. The supplier layout matched, apart from a sub-pixel 1px shift in
+  the desktop search panel.
+- Author review: Done, refactor looks as expected.
+
 ## 2026-09-29: Hot reloading for development
 
 - Tool: Claude Code (Opus 5.5). Mode: Configuration, documentation, and verification.
