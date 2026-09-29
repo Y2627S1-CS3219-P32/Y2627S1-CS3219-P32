@@ -13,6 +13,7 @@ const { data: user } = await useAsyncData<User>(
 
 async function logout() {
   await $fetch("/api/user-service/logout", { method: "POST" });
+  clearNuxtData("navigation-user");
   await navigateTo("/login");
 }
 </script>
