@@ -8,6 +8,7 @@ export default defineNuxtConfig({
   css: ["~/assets/css/main.css"],
   runtimeConfig: {
     supplierServiceBaseUrl: "http://127.0.0.1:3000",
+    userServiceBaseUrl: "http://127.0.0.1:3333",
   },
   nitro: { preset: "node-server" },
   typescript: { strict: true },
