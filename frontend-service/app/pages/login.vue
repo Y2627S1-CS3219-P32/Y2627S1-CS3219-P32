@@ -35,7 +35,7 @@ async function login() {
 <template>
   <main class="flex min-h-screen items-center justify-center bg-[#f7f9fc] px-6 py-12 text-[#06427e]">
     <section class="w-full max-w-md rounded-xl border border-[#e1e6eb] bg-white p-8 shadow-sm">
-      <NuxtLink to="/" class="text-sm font-medium text-[#064784] hover:underline">Friends of Campus</NuxtLink>
+      <NuxtLink to="/" class="text-sm font-medium text-[#064784] hover:underline">Return to home page</NuxtLink>
       <div class="mt-5 text-3xl font-bold">Welcome Back!</div>
 
       <form class="mt-7 space-y-5" @submit.prevent="login">
