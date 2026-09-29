@@ -3,6 +3,26 @@ Scope: Record this session's AI assistance.
 Author review: Checked for correctness. -->
 # AI usage log (Supplier Service)
 
+## 2026-09-29: Supplier screen restyled after the original mockup
+
+- Tool: Claude Code (Opus 5.5). Mode: Implementation and verification.
+- Exact prompt: `this was the original design of the supplier screen. could we keep the current search functionality, add the image on the right of every card element from the mockup and add the location description from the mockup too?`
+  (with a screenshot of the mockup)
+- Key response: Replaced the three-column card grid with the mockup's layout: a
+  centred "Suppliers" title and a single column of cards. Each card shows the name,
+  a status badge and a type badge, then a pin with the location. The supplier photo
+  (or initials) sits on the right of each card. The location reads
+  `Building · Level N (description)` and links to Google Maps. The name/type search
+  was kept, restyled in the blue palette the other pages use. The status badge shows
+  Open now, Closed now, or Inactive, not the mockup's Active/Inactive. The mockup's
+  "+" button was not added.
+- Affected files: `frontend-service/app/services/supplier-service/components/SupplierDirectory.vue`,
+  `frontend-service/app/services/supplier-service/components/SupplierCard.vue`, and
+  this log.
+- Verification: `npm run typecheck` passed. Headless Edge screenshots at 1280px and
+  390px showed the list layout, with no horizontal overflow on the phone width.
+- Author review: Pending.
+
 ## 2026-09-29: Tailwind refactor of the frontend supplier module
 
 - Tool: Claude Code (Opus 5.5). Mode: Refactoring and verification.
