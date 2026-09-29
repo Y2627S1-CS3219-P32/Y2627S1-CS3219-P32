@@ -32,31 +32,7 @@ function reset() {
 
 <template>
   <div class="site-shell">
-    <a class="skip-link" href="#suppliers">Skip to suppliers</a>
-    <header class="site-header">
-      <a href="/" class="brand" aria-label="Friend on Campus home">
-        <span class="brand-mark" aria-hidden="true">foc<span>.</span></span>
-        <span class="brand-name">Friend on Campus</span>
-      </a>
-      <nav aria-label="Main navigation"><a href="#suppliers" aria-current="page">Explore suppliers <span aria-hidden="true">↗</span></a></nav>
-    </header>
-
     <main>
-      <section class="hero" aria-labelledby="page-title">
-        <div>
-          <p class="eyebrow"><span /> YOUR CAMPUS DIRECTORY</p>
-          <h1 id="page-title">Everyday essentials.<br><span>Right here on campus.</span></h1>
-          <p class="hero-description">A coffee between classes. A quick bite. That last-minute print.<br class="desktop-break"> Discover the places that keep your campus day going.</p>
-        </div>
-        <aside class="campus-note" aria-label="Campus and local time">
-          <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="m3 11 13-7 13 7-13 7-13-7Z"/><path d="M8 14v9c5 4 11 4 16 0v-9M29 11v12"/></svg>
-          <strong>Around NUS</strong>
-          <span>Singapore · GMT+8</span>
-          <div class="note-divider" />
-          <p>Open places.<br>First in line.</p>
-        </aside>
-      </section>
-
       <section id="suppliers" class="directory" aria-labelledby="directory-title">
         <form class="search-panel" role="search" @submit.prevent="search">
           <div class="search-field">
@@ -81,7 +57,6 @@ function reset() {
             <p v-if="!pending && !error" aria-live="polite">{{ suppliers.length }} {{ suppliers.length === 1 ? 'supplier' : 'suppliers' }} <span class="count-divider">/</span> <span class="open-count">{{ openCount }} open now</span></p>
           </div>
           <button v-if="hasFilters" class="clear-button" type="button" @click="reset">Clear filters <span aria-hidden="true">×</span></button>
-          <span v-else class="sort-note"><span aria-hidden="true">↓</span> Open suppliers first</span>
         </div>
 
         <div v-if="pending" class="supplier-grid" role="status" aria-label="Loading suppliers">
@@ -104,6 +79,5 @@ function reset() {
         </div>
       </section>
     </main>
-    <footer class="site-footer"><span>Friend on Campus</span><span>A little help, a little closer.</span></footer>
   </div>
 </template>
