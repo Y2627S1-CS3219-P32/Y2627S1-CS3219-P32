@@ -33,24 +33,33 @@ const { data: user } = await useAsyncData<User | null>("navigation-user", async 
       aria-label="Main navigation"
       class="fixed inset-x-0 bottom-0 z-50 border-t border-[#e1e6eb] bg-white/95 shadow-[0_-4px_12px_rgba(6,66,126,0.06)] backdrop-blur md:sticky md:top-0 md:border-t-0 md:border-b md:shadow-sm"
     >
-      <div class="mx-auto flex max-w-7xl justify-center gap-2 px-4 py-2 md:justify-end md:px-8 md:py-3">
+      <div class="mx-auto flex max-w-7xl items-center justify-center gap-2 px-4 py-2 md:justify-between md:px-8 md:py-3">
         <NuxtLink
-          to="/profile"
-          :aria-current="route.path === '/profile' ? 'page' : undefined"
-          class="rounded-lg px-5 py-2.5 text-sm font-medium transition-colors"
-          :class="route.path === '/profile' ? 'bg-[#eef4fa] text-[#064784]' : 'text-[#5b6570] hover:bg-[#f7f9fc] hover:text-[#064784]'"
+          to="/"
+          class="hidden items-center text-base font-semibold tracking-tight text-[#064784] md:flex"
         >
-          Profile
+          Frineds of Campus
         </NuxtLink>
-        <NuxtLink
-          v-if="user?.role === 'admin'"
-          to="/users"
-          :aria-current="route.path === '/users' ? 'page' : undefined"
-          class="rounded-lg px-5 py-2.5 text-sm font-medium transition-colors"
-          :class="route.path === '/users' ? 'bg-[#eef4fa] text-[#064784]' : 'text-[#5b6570] hover:bg-[#f7f9fc] hover:text-[#064784]'"
-        >
-          Users
-        </NuxtLink>
+
+        <div class="flex items-center justify-center gap-2">
+          <NuxtLink
+            to="/profile"
+            :aria-current="route.path === '/profile' ? 'page' : undefined"
+            class="rounded-lg px-5 py-2.5 text-sm font-medium transition-colors"
+            :class="route.path === '/profile' ? 'bg-[#eef4fa] text-[#064784]' : 'text-[#5b6570] hover:bg-[#f7f9fc] hover:text-[#064784]'"
+          >
+            Profile
+          </NuxtLink>
+          <NuxtLink
+            v-if="user?.role === 'admin'"
+            to="/users"
+            :aria-current="route.path === '/users' ? 'page' : undefined"
+            class="rounded-lg px-5 py-2.5 text-sm font-medium transition-colors"
+            :class="route.path === '/users' ? 'bg-[#eef4fa] text-[#064784]' : 'text-[#5b6570] hover:bg-[#f7f9fc] hover:text-[#064784]'"
+          >
+            Users
+          </NuxtLink>
+        </div>
       </div>
     </nav>
 
