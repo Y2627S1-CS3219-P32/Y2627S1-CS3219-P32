@@ -38,7 +38,7 @@ const { data: user } = await useAsyncData<User | null>("navigation-user", async 
           to="/"
           class="hidden items-center text-base font-semibold tracking-tight text-[#064784] md:flex"
         >
-          Frineds of Campus
+          Friends of Campus
         </NuxtLink>
 
         <div class="flex items-center justify-center gap-2">
