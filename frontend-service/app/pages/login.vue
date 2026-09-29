@@ -1,34 +1,28 @@
 <!-- AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-29.
 Scope: JWT login test page. Author review: Pending. -->
 <script setup lang="ts">
-import type { User } from "#shared/services/user-service/types";
-
-interface LoginResponse {
-  token: string;
-}
+const route = useRoute();
 
 const email = ref("admin@foc.com");
 const password = ref("Password123!");
-const token = ref("");
-const authenticatedUser = ref<User>();
 const pending = ref(false);
 const errorMessage = ref("");
 
 async function login() {
   pending.value = true;
   errorMessage.value = "";
-  authenticatedUser.value = undefined;
-  token.value = "";
 
   try {
-    const response = await $fetch<LoginResponse>("/api/user-service/login", {
+    await $fetch("/api/user-service/login", {
       method: "POST",
       body: { email: email.value, password: password.value },
     });
-    token.value = response.token;
-    authenticatedUser.value = await $fetch<User>("/api/user-service/me", {
-      headers: { authorization: `Bearer ${response.token}` },
-    });
+    const redirect = typeof route.query.redirect === "string" &&
+      route.query.redirect.startsWith("/") &&
+      !route.query.redirect.startsWith("//")
+      ? route.query.redirect
+      : "/profile";
+    await navigateTo(redirect);
   } catch {
     errorMessage.value = "Login failed. Check the email and password, then try again.";
   } finally {
@@ -76,12 +70,6 @@ async function login() {
           {{ pending ? "Signing in..." : "Sign in" }}
         </button>
       </form>
-
-      <section v-if="authenticatedUser" class="mt-6 rounded-lg bg-[#eef4fa] p-4" aria-live="polite">
-        <h2 class="font-semibold">JWT verified</h2>
-        <p class="mt-1 text-sm">{{ authenticatedUser.name }} ({{ authenticatedUser.email }})</p>
-        <p class="mt-3 break-all font-mono text-xs text-[#5b6570]">{{ token }}</p>
-      </section>
 
       <p class="mt-6 text-xs text-[#5b6570]">Demo password: <code>Password123!</code></p>
     </section>
