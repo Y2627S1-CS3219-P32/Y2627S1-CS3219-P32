@@ -2,7 +2,7 @@
     AI Assistance Disclosure:
     Tool: ChatGPT (model: GPT-6), date: 2026-09-29
     Scope: Password-hash and JWT helper tests
-    Author review: Pending
+    Author review: Done
 **/
 import assert from "node:assert/strict";
 import test from "node:test";

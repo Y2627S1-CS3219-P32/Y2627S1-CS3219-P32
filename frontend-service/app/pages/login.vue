@@ -1,5 +1,5 @@
 <!-- AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-29.
-Scope: JWT login test page. Author review: Pending. -->
+Scope: JWT login test page. Author review: Done. -->
 <script setup lang="ts">
 const route = useRoute();
 

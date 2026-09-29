@@ -2,7 +2,7 @@
     AI Assistance Disclosure:
     Tool: ChatGPT (model: GPT-6), date: 2026-09-29
     Scope: Credential authentication and JWT issuance service
-    Author review: Pending
+    Author review: Done
 **/
 import { createAccessToken, verifyPassword } from "../auth";
 import { HttpError } from "../errors";

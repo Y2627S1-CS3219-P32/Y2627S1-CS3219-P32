@@ -1,5 +1,5 @@
 // AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-29.
-// Scope: Nuxt proxy for the JWT-protected current-user endpoint. Author review: Pending.
+// Scope: Nuxt proxy for the JWT-protected current-user endpoint. Author review: Done.
 export default defineEventHandler(async (event) => {
   const token = getCookie(event, "user_access_token");
   if (!token) {

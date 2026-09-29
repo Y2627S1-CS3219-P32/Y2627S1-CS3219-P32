@@ -2,7 +2,7 @@
     AI Assistance Disclosure:
     Tool: ChatGPT (model: GPT-6), date: 2026-09-29
     Scope: Drizzle repository for user CRUD and credential lookup
-    Author review: Pending
+    Author review: Done
 **/
 import { eq } from "drizzle-orm";
 

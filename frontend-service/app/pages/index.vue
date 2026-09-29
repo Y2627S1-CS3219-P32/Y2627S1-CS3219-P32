@@ -1,5 +1,5 @@
 <!-- AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-29.
-Scope: Link the landing-page login action to the JWT test page. Author review: Pending. -->
+Scope: Link the landing-page login action to the JWT test page. Author review: Done. -->
 <template>
   <main class="flex min-h-screen items-center bg-[#f7f9fc] px-6 py-12 text-[#06427e] sm:px-12 lg:px-[5%]">
     <section class="mx-auto grid w-full max-w-[1280px] items-center gap-12 md:grid-cols-2 md:gap-16">

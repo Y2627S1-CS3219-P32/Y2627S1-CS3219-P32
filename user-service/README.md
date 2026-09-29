@@ -1,5 +1,5 @@
 <!-- AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-29.
-Scope: User-service JWT setup and demo credentials documentation. Author review: Pending. -->
+Scope: User-service JWT setup and demo credentials documentation. Author review: Done. -->
 # Local Development
 
 Run the following commands:

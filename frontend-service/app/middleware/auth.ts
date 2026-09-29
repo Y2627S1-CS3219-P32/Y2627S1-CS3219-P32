@@ -1,5 +1,5 @@
 // AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-29.
-// Scope: Require an active user-service JWT session for protected pages. Author review: Pending.
+// Scope: Require an active user-service JWT session for protected pages. Author review: Done.
 function isUnauthorized(error: unknown): boolean {
   if (typeof error !== "object" || error === null) return false;
   if ("statusCode" in error && error.statusCode === 401) return true;

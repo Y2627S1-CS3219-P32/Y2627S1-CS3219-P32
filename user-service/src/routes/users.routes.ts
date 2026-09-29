@@ -2,7 +2,7 @@
     AI Assistance Disclosure:
     Tool: ChatGPT (model: GPT-6), date: 2026-09-29
     Scope: Administrator-only user CRUD route definitions
-    Author review: Pending
+    Author review: Done
 **/
 import { Router } from "express";
 

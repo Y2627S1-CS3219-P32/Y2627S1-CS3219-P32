@@ -2,7 +2,7 @@
     AI Assistance Disclosure:
     Tool: ChatGPT (model: GPT-6), date: 2026-09-29
     Scope: User password-hash column and public-user type
-    Author review: Pending
+    Author review: Done
 **/
 import { int, sqliteTable, text } from "drizzle-orm/sqlite-core";
 

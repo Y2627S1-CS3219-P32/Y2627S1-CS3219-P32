@@ -2,7 +2,7 @@
     AI Assistance Disclosure:
     Tool: ChatGPT (model: GPT-6), date: 2026-09-29
     Scope: Role-based authorization middleware
-    Author review: Pending
+    Author review: Done
 **/
 import type { NextFunction, Request, Response } from "express";
 

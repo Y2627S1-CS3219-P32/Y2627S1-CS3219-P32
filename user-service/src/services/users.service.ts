@@ -2,7 +2,7 @@
     AI Assistance Disclosure:
     Tool: ChatGPT (model: GPT-6), date: 2026-09-29
     Scope: Validated administrator user CRUD operations
-    Author review: Pending
+    Author review: Done
 **/
 import { hashPassword } from "../auth";
 import type { PublicUser, User } from "../db/schema";

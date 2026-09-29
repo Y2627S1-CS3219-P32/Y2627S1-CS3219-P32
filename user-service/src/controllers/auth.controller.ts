@@ -2,7 +2,7 @@
     AI Assistance Disclosure:
     Tool: ChatGPT (model: GPT-6), date: 2026-09-29
     Scope: HTTP handlers for login and current-user endpoints
-    Author review: Pending
+    Author review: Done
 **/
 import type { Request, Response } from "express";
 

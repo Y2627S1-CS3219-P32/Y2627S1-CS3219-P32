@@ -4,7 +4,7 @@ import "dotenv/config";
     AI Assistance Disclosure:
     Tool: ChatGPT (model: GPT-6), date: 2026-09-29
     Scope: Validated user-service environment configuration
-    Author review: Pending
+    Author review: Done
 **/
 const jwtSecret = process.env.JWT_SECRET;
 if (!jwtSecret || Buffer.byteLength(jwtSecret) < 32) {

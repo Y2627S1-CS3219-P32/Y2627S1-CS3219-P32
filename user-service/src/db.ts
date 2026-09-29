@@ -2,7 +2,7 @@
     AI Assistance Disclosure:
     Tool: ChatGPT (model: GPT-6), date: 2026-09-29
     Scope: Database initialization and development-user password seeding
-    Author review: Pending
+    Author review: Done
 **/
 import { drizzle } from 'drizzle-orm/node-sqlite';
 import { eq } from 'drizzle-orm';
