@@ -1,5 +1,5 @@
 // AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-29.
-// Scope: Nuxt proxy for user-service login. Author review: Pending.
+// Scope: Nuxt proxy for user-service login. Author review: Done.
 export default defineEventHandler(async (event) => {
   const config = useRuntimeConfig(event);
   const body = await readBody<{ email?: unknown; password?: unknown }>(event);
