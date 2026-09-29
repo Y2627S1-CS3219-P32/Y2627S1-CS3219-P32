@@ -1,8 +1,8 @@
 /**
     AI Assistance Disclosure:
     Tool: ChatGPT (model: GPT-6), date: 2026-09-28
-    Scope: Drizzle config boilerplate
-    Author review: Validated filepaths
+    Scope: Drizzle config and configurable database path
+    Author review: Pending
 **/
 
 import 'dotenv/config';
@@ -13,6 +13,6 @@ export default defineConfig({
   schema: './src/db/schema.ts',
   dialect: 'sqlite',
   dbCredentials: {
-    url: './users.sqlite',
+    url: process.env.DATABASE_PATH ?? './users.sqlite',
   },
 });

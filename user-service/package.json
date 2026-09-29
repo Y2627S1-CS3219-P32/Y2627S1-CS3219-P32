@@ -1,11 +1,12 @@
 {
+  "//": "AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-29. Scope: User-service auth test script. Author review: Pending.",
   "name": "user-service",
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
   "scripts": {
     "start": "tsx src/index.ts",
-    "test": "tsx src/index.ts"
+    "test": "tsx --test src/auth.test.ts"
   },
   "keywords": [],
   "author": "",
