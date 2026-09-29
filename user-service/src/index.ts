@@ -11,7 +11,7 @@ import express from 'express';
 import { getAllUsers } from './db';
 
 const app = express();
-const port = Number(process.env.PORT ?? 3000);
+const port = Number(process.env.PORT ?? 3333);
 
 app.get('/users', (_req, res) => {
   res.json(getAllUsers());
