@@ -1,0 +1,25 @@
+{
+  "//": "AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-29. Scope: User-service auth test script. Author review: Done.",
+  "name": "user-service",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "test": "tsx --test src/auth.test.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "dotenv": "^18.0.4",
+    "drizzle-orm": "^1.0.0-rc.4",
+    "express": "^5.2.1"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "drizzle-kit": "^1.0.0-rc.4",
+    "tsx": "^4.23.15"
+  }
+}
