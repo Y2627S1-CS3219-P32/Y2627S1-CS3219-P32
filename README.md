@@ -1,3 +1,5 @@
+<!-- AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-28.
+Scope: Consolidated AI disclosure. Author review: Done. -->
 # CS3219 — Software Design and Architecture (AY2627 Sem 1)
 
 ## Friend on Campus (FoC)
@@ -46,3 +48,45 @@ microservice (`user-service/`, `supplier-service/`, `order-service/`,
   one-service-per-folder skeleton** for core implementation.
 
 ---
+
+## Run the frontend
+
+```sh
+docker compose up -d --build frontend-service
+```
+
+Open **http://127.0.0.1:3001**. The independent Nuxt app lives in
+[`frontend-service/`](frontend-service/README.md), with frontend code grouped by
+supplier, user, order, and credit service. It starts independently of the
+supplier service; run `docker compose up -d supplier-service` for supplier data,
+which Nuxt fetches over the Compose network. The supplier API remains on host port 3000.
+
+## Develop with hot reloading
+
+```sh
+docker compose -f compose.yaml -f compose.dev.yaml up --build --watch
+```
+
+[`compose.dev.yaml`](compose.dev.yaml) runs the supplier and user services with
+`tsx watch` and the frontend with `nuxt dev`. Compose syncs source edits into the
+containers, which restart (backends) or hot-swap modules (frontend) on change.
+Editing a `package.json` rebuilds that service's image. Outside Docker, run
+`npm run dev` in any of these service folders.
+
+## AI Assistance Disclosure
+
+Tools: ChatGPT / Codex (GPT-6) and Claude Code (Opus 5.5). Modes: boilerplate generation, implementation, debugging,
+documentation, and verification. Supplier-service setup assistance is recorded
+in the [service README](supplier-service/README.md). The exact Drizzle setup
+prompt, subsequent TypeScript configuration fix, schema implementation and migration,
+CSV-derived seed implementation, local database connection fix, GET suppliers route,
+Nuxt frontend implementation, supplier authentication, administrator POST/PUT/DELETE
+routes, and type/building list routes (implemented to the student's stated design choices), key responses, affected files,
+and review status are in the
+[AI usage log](AI_USAGE_LOG.md).
+
+Drizzle assistance covers connection and tooling boilerplate and implementation
+of the student-defined database schema. Database schema and architecture decisions
+remain with the student. Prior setup was reviewed; the latest schema, migration, and seed
+changes await student review.
+Link this README from the submission slide deck when it is created.

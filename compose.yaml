@@ -28,8 +28,70 @@ services:
       NITRO_HOST: 0.0.0.0
       NITRO_PORT: "3000"
       NUXT_USER_SERVICE_BASE_URL: http://user-service:3333
+      NUXT_SUPPLIER_SERVICE_BASE_URL: http://supplier-service:3000
     ports:
       - "3001:3000"
     depends_on:
       user-service:
         condition: service_healthy
+        
+  # AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-28.
+  # Scope: Service orchestration, Nuxt frontend, local database access, and automatic supplier migrations.
+  # Author review: Check for correctness.
+
+  supplier-db-migrate:
+    build:
+      context: ./supplier-service
+      target: tooling
+    command: ["npm", "run", "db:migrate"]
+    environment:
+      DATABASE_URL: "postgres://supplier:supplier@supplier-db:5432/suppliers"
+    depends_on:
+      supplier-db:
+        condition: service_healthy
+
+  supplier-service:
+    build: ./supplier-service
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgres://supplier:supplier@supplier-db:5432/suppliers
+      # Claude Code (Opus 5.5), 2026-09-29: caller lookup via user-service GET /me. Author review: Completed.
+      USER_SERVICE_BASE_URL: http://user-service:3333
+    depends_on:
+      supplier-db-migrate:
+        condition: service_completed_successfully
+
+  supplier-db-tools:
+    profiles: ["tools"]
+    build:
+      context: ./supplier-service
+      target: tooling
+    environment:
+      DATABASE_URL: postgres://supplier:supplier@supplier-db:5432/suppliers
+    volumes:
+      - ./supplier-service/src:/app/src
+      - ./supplier-service/drizzle:/app/drizzle
+      - ./supplier-service/drizzle.config.ts:/app/drizzle.config.ts:ro
+    depends_on:
+      supplier-db:
+        condition: service_healthy
+
+  supplier-db:
+    image: postgres:17
+    ports:
+      - "127.0.0.1:5433:5432"
+    environment:
+      POSTGRES_USER: supplier
+      POSTGRES_PASSWORD: supplier
+      POSTGRES_DB: suppliers
+    volumes:
+      - supplier-db-data:/var/lib/postgresql/data
+      - ./supplier-service/db/init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U supplier -d suppliers"]
+      interval: 5s
+      retries: 5
+
+volumes:
+  supplier-db-data:

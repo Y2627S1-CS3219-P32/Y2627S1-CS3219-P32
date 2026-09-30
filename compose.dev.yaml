@@ -1,0 +1,46 @@
+# AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-09-29.
+# Scope: Development override with hot reloading via Compose watch.
+# Author review: Check for correctness.
+#
+# Usage: docker compose -f compose.yaml -f compose.dev.yaml up --build --watch
+services:
+  supplier-service:
+    build:
+      target: tooling
+    command: ["npx", "tsx", "watch", "src/index.ts"]
+    develop:
+      watch:
+        - action: sync
+          path: ./supplier-service/src
+          target: /app/src
+        - action: rebuild
+          path: ./supplier-service/package.json
+
+  user-service:
+    command: ["npx", "tsx", "watch", "src/index.ts"]
+    develop:
+      watch:
+        - action: sync
+          path: ./user-service/src
+          target: /app/src
+        - action: rebuild
+          path: ./user-service/package.json
+
+  frontend-service:
+    build:
+      target: build
+    command: ["npx", "nuxt", "dev", "--host", "0.0.0.0", "--port", "3000"]
+    environment:
+      NODE_ENV: development
+    develop:
+      watch:
+        - action: sync
+          path: ./frontend-service
+          target: /app
+          ignore:
+            - node_modules/
+            - .nuxt/
+            - .output/
+            - .data/
+        - action: rebuild
+          path: ./frontend-service/package.json

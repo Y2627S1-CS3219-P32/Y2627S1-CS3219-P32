@@ -3,6 +3,192 @@ Scope: Record this session's AI assistance.
 Author review: Checked for correctness. -->
 # AI usage log (Supplier Service)
 
+## 2026-09-30: Automatic migrations during Docker Compose startup
+
+- Tool: ChatGPT (GPT-6). Mode: Debugging, implementation, documentation, and verification.
+- Exact prompt: `supplier-service-1 | cause: error: relation "suppliers" does not exist ... This happens when I run docker compose up --build.`
+- Key response:
+  - Diagnosed that PostgreSQL health only verified connectivity and that Compose
+    started the supplier API without applying its Drizzle migration.
+  - Added a one-shot Compose migration service and made the API wait for its
+    successful completion. Included migration files in the tooling image.
+  - Documented automatic Compose migrations and the separate manual migration
+    step for direct npm startup.
+- Affected files: `compose.yaml`, `supplier-service/Dockerfile`,
+  `supplier-service/README.md`.
+- Author review: Pending.
+
+## 2026-09-30: Administrator POST /suppliers and add-supplier form
+
+- Tool: Claude Code (Opus 5.5). Mode: Implementation, tests, documentation, and verification.
+- Exact prompt: `next, POST. this is where the button you saw previously in the mock up was supposed to be wired to. the name, floor, and imageUrl should be an input field, supplier type a dropdown (from the existing supplier types), location_description a textarea, building_id also a dropdown from existing building types. latitude and longitude may obtain the user's location through the geolocation api as a simplified implementation first. again, this method is only accessible by admin users.`
+- Design decisions made by the student (asked before implementation, because
+  AGENTS.md reserves interface decisions for the student):
+  - The dropdown lists come from two new endpoints, `GET /types` and
+    `GET /buildings`, each returning `[{ id, name }]` and requiring login.
+  - The POST body uses the same shape as PUT, referring to the type and building
+    by name.
+- Key response:
+  - supplier-service:
+    - Added `GET /types`, `GET /buildings`, and an admin-only `POST /suppliers`.
+    - POST reuses PUT's body validation. It returns 201 with the new supplier,
+      which is active and has no operating hours.
+    - Moved the type/building name lookup into a `toSupplierRow` helper shared by
+      POST and PUT.
+  - Frontend:
+    - Added Nuxt proxy routes for `/types`, `/buildings`, and `POST /suppliers`.
+    - Added the mockup's round "+" button, shown to admins only. On phones it
+      sits above the bottom navigation.
+    - The "+" button opens `SupplierCreateDialog`:
+      - Name, floor, and image URL are text inputs.
+      - Type and building are dropdowns. Building includes a "No building" option.
+      - Location description is a textarea.
+      - A "Use my location" button fills latitude and longitude from the browser
+        geolocation API. The coordinate fields stay editable as a fallback.
+- Affected files: `supplier-service/src/index.ts`, `supplier-service/src/supplier-input.ts`
+  (header only), `supplier-service/test/suppliers.test.mjs`, `supplier-service/README.md`,
+  `frontend-service/server/services/supplier-service/client.ts`,
+  `frontend-service/server/api/supplier-service/suppliers.post.ts`,
+  `frontend-service/server/api/supplier-service/types.get.ts`,
+  `frontend-service/server/api/supplier-service/buildings.get.ts`,
+  `frontend-service/shared/services/supplier-service/types.ts`,
+  `frontend-service/app/services/supplier-service/components/SupplierCreateDialog.vue`,
+  `frontend-service/app/services/supplier-service/components/SupplierDirectory.vue`,
+  `README.md`, and this log.
+- Verification:
+  - supplier-service `npm run typecheck` passed, and `npm test` passed 20/20
+    (4 new tests).
+  - Frontend `npm run build` and `npm run typecheck` passed.
+  - End to end through Docker:
+    - Without a login, POST returned 401. A student got 403.
+    - An admin POST with an unknown building got 400, and a valid one got 201.
+    - The student could see the new supplier.
+  - Headless Edge with an emulated geolocation:
+    - The "+" button appeared for the admin but not the student.
+    - The dropdowns listed 4 types and 16 buildings, and the location
+      description was a textarea.
+    - "Use my location" filled the coordinates, and submitting added the card.
+  - The test suppliers were deleted afterwards.
+- Author review: Done.
+
+## 2026-09-29: Supplier authentication and administrator PUT/DELETE
+
+- Tool: Claude Code (Opus 5.5). Mode: Implementation, tests, documentation, and verification.
+- Exact prompt: `okay. lets go back to the supplier service backend. 1) revise GET such that it redirects to the login screen with the appropriate error code (403?) if a user is unauthenticated. 2) Implement DELETE and PUT. implement it such that admin users can hover over each card and see a horizontal "..." that they can click on in order to perform these operations. their credentials are also checked on the backend. for DELETE and PUT, it's a soft delete/put, where those rows are marked inactive (isActive=false). regular users (role = student) cannot see inactive rows, but admins can. we're deferring POST on purpose, do not implement it at this point fo time.`
+- Design decisions made by the student (asked before implementation, because
+  AGENTS.md reserves them for the student):
+  - supplier-service resolves the caller by forwarding the bearer token to
+    user-service `GET /me`.
+  - PUT is a versioned update: the old row becomes inactive and a new active row
+    is inserted.
+  - An unauthenticated GET returns 401, not 403.
+  - PUT can edit name, type, location fields, and image URL.
+- Key response:
+  - supplier-service:
+    - Added `requireAuthentication` and `requireAdministrator` middleware, a
+      `{ error }` JSON error handler, and PUT body validation.
+    - GET now hides inactive suppliers from non-admins.
+    - PUT runs in a transaction. It locks the row, deactivates it, inserts the
+      edited version, and copies its operating hours.
+    - DELETE soft-deletes (sets `isActive: false`). Unknown ids return 404, and
+      inactive ones return 409.
+  - Frontend:
+    - The Nuxt proxy routes forward the login cookie as a bearer token, and pass
+      400/401/403/404/409 through.
+    - `/suppliers` now requires login, and a 401 redirects to `/login`.
+    - Admins get a hover-revealed "⋯" menu on each active card (Edit opens a
+      dialog, Delete asks for confirmation). Inactive cards are faded.
+  - Compose: added `USER_SERVICE_BASE_URL`. POST was not implemented.
+- Affected files: `supplier-service/src/index.ts`, `supplier-service/src/auth.ts`,
+  `supplier-service/src/errors.ts`, `supplier-service/src/supplier-input.ts`,
+  `supplier-service/test/suppliers.test.mjs`, `supplier-service/README.md`,
+  `frontend-service/server/services/supplier-service/client.ts`,
+  `frontend-service/server/api/supplier-service/suppliers.get.ts`,
+  `frontend-service/server/api/supplier-service/suppliers/[id].put.ts`,
+  `frontend-service/server/api/supplier-service/suppliers/[id].delete.ts`,
+  `frontend-service/shared/services/supplier-service/types.ts`,
+  `frontend-service/app/pages/suppliers.vue`,
+  `frontend-service/app/services/supplier-service/components/SupplierDirectory.vue`,
+  `frontend-service/app/services/supplier-service/components/SupplierCard.vue`,
+  `frontend-service/app/services/supplier-service/components/SupplierEditDialog.vue`,
+  `compose.yaml`, `README.md`, and this log.
+- Verification:
+  - supplier-service `npm run typecheck` passed, and `npm test` passed 16/16
+    (9 new tests, using a stub user-service).
+  - Frontend `npm run build` and `npm run typecheck` passed.
+  - End to end through Docker, against a temporary supplier that was removed
+    afterwards:
+    - Logged out, the API returned 401 and `/suppliers` redirected to `/login`.
+    - A student got 403 on PUT and DELETE.
+    - An admin PUT with an unknown type got 400. A valid admin PUT created a new
+      version with copied hours.
+    - The student saw only the new version; the admin saw both.
+    - DELETE returned 204, and repeating it returned 409.
+  - Headless Edge showed the "⋯" menu and edit dialog for the admin, and no menu
+    for the student.
+- Author review: Done.
+
+## 2026-09-29: Supplier screen restyled after the original mockup
+
+- Tool: Claude Code (Opus 5.5). Mode: Implementation and verification.
+- Exact prompt: `this was the original design of the supplier screen. could we keep the current search functionality, add the image on the right of every card element from the mockup and add the location description from the mockup too?`
+  (with a screenshot of the mockup)
+- Key response: Replaced the three-column card grid with the mockup's layout: a
+  centred "Suppliers" title and a single column of cards. Each card shows the name,
+  a status badge and a type badge, then a pin with the location. The supplier photo
+  (or initials) sits on the right of each card. The location reads
+  `Building · Level N (description)` and links to Google Maps. The name/type search
+  was kept, restyled in the blue palette the other pages use. The status badge shows
+  Open now, Closed now, or Inactive, not the mockup's Active/Inactive. The mockup's
+  "+" button was not added.
+- Affected files: `frontend-service/app/services/supplier-service/components/SupplierDirectory.vue`,
+  `frontend-service/app/services/supplier-service/components/SupplierCard.vue`, and
+  this log.
+- Verification: `npm run typecheck` passed. Headless Edge screenshots at 1280px and
+  390px showed the list layout, with no horizontal overflow on the phone width.
+- Author review: Done, description looks like what I described.
+
+## 2026-09-29: Tailwind refactor of the frontend supplier module
+
+- Tool: Claude Code (Opus 5.5). Mode: Refactoring and verification.
+- Exact prompt: `refactor the frontend service supplier module to use tailwind`
+- Key response: Replaced the supplier directory's custom CSS classes with Tailwind
+  utilities in `SupplierDirectory.vue` and `SupplierCard.vue`, keeping the original
+  breakpoints (480/700/1000/1500px) as arbitrary variants. Reduced `main.css` to a
+  `@theme` font and a `@layer base` block, and removed the unused hero, header, and
+  footer styles. Global element rules now sit in the base layer, so utilities on
+  other pages win over them. For example, the nav links now show their own colours
+  instead of `a{color:inherit}`.
+- Affected files: `frontend-service/app/assets/css/main.css`,
+  `frontend-service/app/services/supplier-service/components/SupplierDirectory.vue`,
+  `frontend-service/app/services/supplier-service/components/SupplierCard.vue`, and
+  this log.
+- Verification: `npm run build` and `npm run typecheck` passed. Headless Edge
+  screenshots of the old build and the refactor at 1440, 850, 600 and 390px were
+  pixel-compared. The supplier layout matched, apart from a sub-pixel 1px shift in
+  the desktop search panel.
+- Author review: Done, refactor looks as expected.
+
+## 2026-09-29: Hot reloading for development
+
+- Tool: Claude Code (Opus 5.5). Mode: Configuration, documentation, and verification.
+- Exact prompts: `how do i enable hot reloading for these services?`, then
+  `help me implement the changes`
+- Key response: Added `tsx` to supplier-service and `tsx watch` `dev` scripts to
+  supplier-service and user-service. Added a `compose.dev.yaml` override that runs
+  the backends with `tsx watch` and the frontend with `nuxt dev` (reusing the
+  existing `tooling` and `build` Dockerfile stages), using Compose `develop.watch`
+  to sync source edits into containers instead of bind mounts, which do not
+  reliably propagate file events on Windows.
+- Affected files: `compose.dev.yaml`, `supplier-service/package.json`,
+  npm-generated `supplier-service/package-lock.json`, `user-service/package.json`,
+  `README.md`, and this log.
+- Verification: With `docker compose -f compose.yaml -f compose.dev.yaml up --build --watch`,
+  all services started; editing `src/index.ts` restarted supplier-service and
+  user-service; editing `frontend-service/app/app.vue` triggered a Vite HMR update.
+  Test edits were reverted.
+- Author review: Check for correctness.
+
 ## 2026-09-28: Frontend decoupling from supplier service
 
 - Tool: Claude Code (Opus 5.5). Mode: Configuration, documentation, and git.

@@ -16,6 +16,27 @@ export interface Supplier {
   isOpen: boolean;
 }
 
+// Body of PUT /suppliers/:id (Claude Code (Opus 5.5), 2026-09-29; author review: Done).
+export interface SupplierUpdate {
+  name: string;
+  type: string;
+  buildingName: string | null;
+  floor: string | null;
+  locationDescription: string | null;
+  latitude: string;
+  longitude: string;
+  imageUrl: string | null;
+}
+
+// POST /suppliers takes the same body as PUT, and GET /types and GET /buildings
+// return these references (Claude Code (Opus 5.5), 2026-09-30; author review: Done).
+export type SupplierCreate = SupplierUpdate;
+
+export interface SupplierReference {
+  id: string;
+  name: string;
+}
+
 export interface SupplierFilters {
   name?: string;
   type?: string;

@@ -1,20 +1,77 @@
-<!-- AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-28.
-Scope: Supplier directory, filtering, and request states. Author review: Done. -->
+<!-- AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-28; Claude Code (Opus 5.5), 2026-09-29.
+Scope: Supplier directory, filtering, and request states; Tailwind styling after the supplier mockup. Author review: Done.
+Claude Code (Opus 5.5), 2026-09-29. Scope: Login redirect on 401 and administrator edit/delete actions. Author review: Done.
+Claude Code (Opus 5.5), 2026-09-30. Scope: Administrator add-supplier button and dialog. Author review: Done. -->
 <script setup lang="ts">
-import type { SupplierFilters } from "#shared/services/supplier-service/types";
+import type { Supplier, SupplierFilters } from "#shared/services/supplier-service/types";
+import type { User } from "#shared/services/user-service/types";
 import { useSuppliers } from "../composables/useSuppliers";
 import SupplierCard from "./SupplierCard.vue";
+import SupplierCreateDialog from "./SupplierCreateDialog.vue";
+import SupplierEditDialog from "./SupplierEditDialog.vue";
 
+const route = useRoute();
 const filters = ref<SupplierFilters>({});
 const name = ref("");
 const selectedType = ref("");
 const { data: suppliers, pending, error, refresh } = await useSuppliers(filters);
+// The role only decides which controls to show; supplier-service enforces it.
+const { data: user } = await useFetch<User>("/api/user-service/me", { key: "supplier-directory-user" });
+const isAdmin = computed(() => user.value?.role === "admin");
 const availableTypes = useState<string[]>("supplier-service-type-options", () => []);
+const knownBuildings = useState<string[]>("supplier-service-building-options", () => []);
 watch(suppliers, (rows) => {
   availableTypes.value = [...new Set([...availableTypes.value, ...rows.map(row => row.type)])].sort();
+  knownBuildings.value = [...new Set([...knownBuildings.value, ...rows.flatMap(row => row.buildingName ? [row.buildingName] : [])])].sort();
 }, { immediate: true });
 const hasFilters = computed(() => Boolean(filters.value.name || filters.value.type));
 const openCount = computed(() => suppliers.value.filter(supplier => supplier.isOpen).length);
+const inactiveCount = computed(() => suppliers.value.filter(supplier => !supplier.isActive).length);
+
+function statusOf(value: unknown): number | undefined {
+  return typeof value === "object" && value !== null && "statusCode" in value && typeof value.statusCode === "number"
+    ? value.statusCode
+    : undefined;
+}
+
+function goToLogin() {
+  return navigateTo({ path: "/login", query: { redirect: route.fullPath } });
+}
+
+// The session can expire after the page loads.
+watch(error, (value) => {
+  if (statusOf(value) === 401) goToLogin();
+}, { immediate: true });
+
+const editing = ref<Supplier | null>(null);
+const actionMessage = ref("");
+
+async function onSaved(updated: Supplier) {
+  editing.value = null;
+  actionMessage.value = `Saved ${updated.name}.`;
+  await refresh();
+}
+
+const creating = ref(false);
+
+async function onCreated(created: Supplier) {
+  creating.value = false;
+  actionMessage.value = `Added ${created.name}.`;
+  await refresh();
+}
+
+async function remove(supplier: Supplier) {
+  if (!window.confirm(`Delete ${supplier.name}? It will be marked inactive and hidden from students.`)) return;
+  actionMessage.value = "";
+  try {
+    await $fetch(`/api/supplier-service/suppliers/${encodeURIComponent(supplier.id)}`, { method: "DELETE" });
+    actionMessage.value = `Deleted ${supplier.name}.`;
+  } catch (deleteError) {
+    if (statusOf(deleteError) === 401) return goToLogin();
+    actionMessage.value = `${supplier.name} could not be deleted. It may have already changed.`;
+  }
+  await refresh();
+}
 
 function search() {
   filters.value = {
@@ -28,82 +85,98 @@ function reset() {
   selectedType.value = "";
   filters.value = {};
 }
+
+const primaryButton = "inline-flex items-center justify-center gap-2 rounded-lg bg-[#064784] px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-[#053765]";
+const fieldLabel = "mb-1.5 block text-xs font-medium text-[#5b6570]";
+const fieldInput = "w-full rounded-lg border border-[#cfd5da] bg-white px-3 py-2 text-sm text-[#25313c] focus:border-[#064784] focus:outline-none focus:ring-2 focus:ring-[#064784]/20";
+const emptyState = "rounded-md bg-white px-5 py-12 text-center shadow-[0_2px_6px_rgba(0,0,0,0.14)]";
 </script>
 
 <template>
-  <div class="site-shell">
-    <a class="skip-link" href="#suppliers">Skip to suppliers</a>
-    <header class="site-header">
-      <a href="/" class="brand" aria-label="Friend on Campus home">
-        <span class="brand-mark" aria-hidden="true">foc<span>.</span></span>
-        <span class="brand-name">Friend on Campus</span>
-      </a>
-      <nav aria-label="Main navigation"><a href="#suppliers" aria-current="page">Explore suppliers <span aria-hidden="true">↗</span></a></nav>
-    </header>
+  <main class="min-h-screen bg-[#f7f9fc] px-4 py-8 text-[#25313c] sm:px-6 sm:py-10">
+    <section id="suppliers" class="mx-auto w-full max-w-xl" aria-labelledby="directory-title">
+      <h1 id="directory-title" class="text-center text-3xl font-bold text-black">Suppliers</h1>
 
-    <main>
-      <section class="hero" aria-labelledby="page-title">
+      <form class="mt-6 grid gap-3 rounded-md bg-white p-4 shadow-[0_2px_6px_rgba(0,0,0,0.14)] sm:grid-cols-[1fr_10rem_auto] sm:items-end" role="search" @submit.prevent="search">
         <div>
-          <p class="eyebrow"><span /> YOUR CAMPUS DIRECTORY</p>
-          <h1 id="page-title">Everyday essentials.<br><span>Right here on campus.</span></h1>
-          <p class="hero-description">A coffee between classes. A quick bite. That last-minute print.<br class="desktop-break"> Discover the places that keep your campus day going.</p>
+          <label for="supplier-name" :class="fieldLabel">Name</label>
+          <input id="supplier-name" v-model="name" type="search" placeholder="e.g. cafe" autocomplete="off" :class="fieldInput">
         </div>
-        <aside class="campus-note" aria-label="Campus and local time">
-          <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="m3 11 13-7 13 7-13 7-13-7Z"/><path d="M8 14v9c5 4 11 4 16 0v-9M29 11v12"/></svg>
-          <strong>Around NUS</strong>
-          <span>Singapore · GMT+8</span>
-          <div class="note-divider" />
-          <p>Open places.<br>First in line.</p>
-        </aside>
-      </section>
+        <div>
+          <label for="supplier-type" :class="fieldLabel">Type</label>
+          <select id="supplier-type" v-model="selectedType" :class="fieldInput">
+            <option value="">All types</option>
+            <option v-for="type in availableTypes" :key="type" :value="type">{{ type }}</option>
+          </select>
+        </div>
+        <button type="submit" :class="primaryButton" :disabled="pending">{{ pending ? 'Searching…' : 'Search' }}</button>
+      </form>
 
-      <section id="suppliers" class="directory" aria-labelledby="directory-title">
-        <form class="search-panel" role="search" @submit.prevent="search">
-          <div class="search-field">
-            <label for="supplier-name">FIND A SUPPLIER</label>
-            <div class="input-wrap">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg>
-              <input id="supplier-name" v-model="name" type="search" placeholder="Search by name, e.g. cafe" autocomplete="off">
-            </div>
-          </div>
-          <div class="type-field">
-            <label for="supplier-type">WHAT ARE YOU LOOKING FOR?</label>
-            <select id="supplier-type" v-model="selectedType">
-              <option value="">All types</option>
-              <option v-for="type in availableTypes" :key="type" :value="type">{{ type }}</option>
-            </select>
-          </div>
-          <button type="submit" class="primary-button" :disabled="pending">{{ pending ? 'Searching…' : 'Search suppliers' }}<span v-if="!pending" aria-hidden="true">→</span></button>
-        </form>
+      <div class="mt-5 mb-3 flex min-h-6 items-center justify-between gap-4 text-sm text-[#5b6570]">
+        <p v-if="!pending && !error" aria-live="polite">
+          {{ hasFilters ? 'Found ' : '' }}{{ suppliers.length }} {{ suppliers.length === 1 ? 'supplier' : 'suppliers' }} · {{ openCount }} open now<template v-if="isAdmin && inactiveCount"> · {{ inactiveCount }} inactive</template>
+        </p>
+        <button v-if="hasFilters" class="font-medium text-[#064784] hover:underline" type="button" @click="reset">Clear filters</button>
+      </div>
+      <p v-if="actionMessage" class="mb-3 text-sm text-[#064784]" role="status">{{ actionMessage }}</p>
 
-        <div class="directory-heading">
-          <div><h2 id="directory-title">{{ hasFilters ? 'Your search results' : 'Explore suppliers' }}</h2>
-            <p v-if="!pending && !error" aria-live="polite">{{ suppliers.length }} {{ suppliers.length === 1 ? 'supplier' : 'suppliers' }} <span class="count-divider">/</span> <span class="open-count">{{ openCount }} open now</span></p>
+      <div v-if="pending" class="flex flex-col gap-3" role="status" aria-label="Loading suppliers">
+        <div v-for="item in 5" :key="item" class="flex items-start gap-4 rounded-md bg-white p-3.5 shadow-[0_2px_6px_rgba(0,0,0,0.14)]" aria-hidden="true">
+          <div class="flex-1">
+            <div class="h-4 w-1/2 rounded bg-[#e6ecf2]"/>
+            <div class="mt-2.5 h-3.5 w-1/3 rounded-full bg-[#e6ecf2]"/>
+            <div class="mt-2.5 h-3.5 w-2/3 rounded bg-[#e6ecf2]"/>
           </div>
-          <button v-if="hasFilters" class="clear-button" type="button" @click="reset">Clear filters <span aria-hidden="true">×</span></button>
-          <span v-else class="sort-note"><span aria-hidden="true">↓</span> Open suppliers first</span>
+          <div class="size-16 rounded-md bg-[#e6ecf2]"/>
         </div>
+      </div>
+      <div v-else-if="error" :class="emptyState" role="alert">
+        <h2 class="text-lg font-semibold">We couldn’t load the suppliers.</h2>
+        <p class="mt-1 mb-5 text-sm text-[#5b6570]">Please try again in a moment.</p>
+        <button :class="primaryButton" type="button" @click="refresh()">Try again</button>
+      </div>
+      <div v-else-if="!suppliers.length" :class="emptyState" role="status">
+        <h2 class="text-lg font-semibold">{{ hasFilters ? 'No suppliers found.' : 'No suppliers to show yet.' }}</h2>
+        <p class="mt-1 text-sm text-[#5b6570]" :class="{ 'mb-5': hasFilters }">{{ hasFilters ? 'Try a different name or explore all supplier types.' : 'Check back soon for places around campus.' }}</p>
+        <button v-if="hasFilters" :class="primaryButton" type="button" @click="reset">Explore all suppliers</button>
+      </div>
+      <div v-else class="flex flex-col gap-3">
+        <SupplierCard
+          v-for="supplier in suppliers"
+          :key="supplier.id"
+          :supplier="supplier"
+          :can-manage="isAdmin"
+          @edit="editing = $event"
+          @delete="remove"
+        />
+      </div>
+    </section>
 
-        <div v-if="pending" class="supplier-grid" role="status" aria-label="Loading suppliers">
-          <div v-for="item in 6" :key="item" class="supplier-card skeleton-card" aria-hidden="true"><div class="skeleton-avatar"/><div class="skeleton-line"/><div class="skeleton-line short"/></div>
-        </div>
-        <div v-else-if="error" class="empty-state" role="alert">
-          <span class="empty-icon" aria-hidden="true">!</span>
-          <h3>We couldn’t load the suppliers.</h3>
-          <p>Please try again in a moment.</p>
-          <button class="primary-button" type="button" @click="refresh()">Try again <span aria-hidden="true">↻</span></button>
-        </div>
-        <div v-else-if="!suppliers.length" class="empty-state" role="status">
-          <span class="empty-icon" aria-hidden="true">⌕</span>
-          <h3>{{ hasFilters ? 'No suppliers found.' : 'No suppliers to show yet.' }}</h3>
-          <p>{{ hasFilters ? 'Try a different name or explore all supplier types.' : 'Check back soon for places around campus.' }}</p>
-          <button v-if="hasFilters" class="primary-button" type="button" @click="reset">Explore all suppliers <span aria-hidden="true">→</span></button>
-        </div>
-        <div v-else class="supplier-grid">
-          <SupplierCard v-for="supplier in suppliers" :key="supplier.id" :supplier="supplier" />
-        </div>
-      </section>
-    </main>
-    <footer class="site-footer"><span>Friend on Campus</span><span>A little help, a little closer.</span></footer>
-  </div>
+    <SupplierEditDialog
+      v-if="isAdmin"
+      :supplier="editing"
+      :types="availableTypes"
+      :buildings="knownBuildings"
+      @close="editing = null"
+      @saved="onSaved"
+      @unauthorized="goToLogin"
+    />
+
+    <template v-if="isAdmin">
+      <button
+        type="button"
+        class="fixed right-5 bottom-20 z-40 flex size-14 items-center justify-center rounded-full bg-[#064784] text-3xl leading-none text-white shadow-lg transition-colors hover:bg-[#053765] md:right-8 md:bottom-8"
+        aria-label="Add supplier"
+        @click="creating = true"
+      >
+        <span aria-hidden="true">+</span>
+      </button>
+      <SupplierCreateDialog
+        :open="creating"
+        @close="creating = false"
+        @created="onCreated"
+        @unauthorized="goToLogin"
+      />
+    </template>
+  </main>
 </template>

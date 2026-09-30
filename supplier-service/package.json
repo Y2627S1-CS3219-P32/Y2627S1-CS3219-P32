@@ -1,0 +1,41 @@
+{
+  "//": "AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-28. Scope: Drizzle dependencies and scripts; package-lock.json is npm-generated. Author review: Check for correctness. Claude Code (Opus 5.5), 2026-09-29. Scope: tsx watch dev script. Author review: Check for correctness.",
+  "name": "supplier-service",
+  "version": "1.0.0",
+  "description": "Supplier Service",
+  "main": "dist/index.js",
+  "type": "module",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit",
+    "db:check": "npm run build && node dist/db/check.js",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:studio": "drizzle-kit studio",
+    "db:seed": "npm run build && node dist/db/seed.js",
+    "test": "npm run build && node --test test/suppliers.test.mjs"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.6.3",
+    "@types/pg": "^8.23.1",
+    "drizzle-kit": "^0.31.11",
+    "ts-node": "^10.9.2",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  },
+  "dependencies": {
+    "dotenv": "^18.0.4",
+    "drizzle-orm": "^0.45.3",
+    "express": "^5.2.1",
+    "pg": "^8.23.0"
+  }
+}
