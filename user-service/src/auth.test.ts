@@ -7,6 +7,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { assertAdministratorCanBeDemoted } from "./administrator-constraints";
 import { createAccessToken, hashPassword, verifyAccessToken, verifyPassword } from "./auth";
 import {
   validateDisplayName,
@@ -15,6 +16,18 @@ import {
 } from "./registration-validation";
 
 const secret = "a-test-secret-that-is-at-least-32-bytes-long";
+
+test("administrator role changes reject self-demotion and demoting the last admin", async () => {
+  await assert.rejects(
+    assertAdministratorCanBeDemoted(7, 7, async () => 2),
+    { statusCode: 409, message: "You cannot demote your own administrator account" },
+  );
+  await assert.rejects(
+    assertAdministratorCanBeDemoted(8, 7, async () => 1),
+    { statusCode: 409, message: "The last administrator cannot be demoted" },
+  );
+  await assert.doesNotReject(assertAdministratorCanBeDemoted(8, 7, async () => 2));
+});
 
 test("password hashes verify the correct password only", () => {
   const hash = hashPassword("Password123!");

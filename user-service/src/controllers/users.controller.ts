@@ -34,8 +34,7 @@ export async function createUser(req: Request, res: Response): Promise<void> {
 }
 
 export async function updateUser(req: Request, res: Response): Promise<void> {
-  getActingUserId(res);
-  res.json(await users.updateUser(getUserIdParam(req), req.body));
+  res.json(await users.updateUser(getUserIdParam(req), getActingUserId(res), req.body));
 }
 
 export async function deleteUser(req: Request, res: Response): Promise<void> {

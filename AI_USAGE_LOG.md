@@ -4,6 +4,30 @@ Author review: Checked for correctness. -->
 
 # AI usage log (User Service)
 
+## 2026-09-30: Administrator user management
+
+- Tool: ChatGPT (GPT-6). Mode: Implementation and verification.
+- Exact prompt: `under /admin/users, insert UI to remove a user, promote a user to admin, and demote an admin to user; prevent the current admin from demoting or deleting themselves.`
+- Key response:
+  - Added administrator-only Nuxt proxy routes for updating a user's role and
+    deleting a user, forwarding authentication and service errors.
+  - Added role promotion/demotion and deletion controls to `/admin/users`,
+    including confirmations, pending states, success/error feedback, and
+    hiding self-demotion and self-deletion actions.
+  - Enforced self-demotion prevention in the user service, alongside its
+    existing self-deletion and last-administrator protections.
+- Affected files: `AI_USAGE_LOG.md`,
+  `frontend-service/app/pages/admin/users.vue`,
+  `frontend-service/server/api/user-service/users/[id].put.ts`,
+  `frontend-service/server/api/user-service/users/[id].delete.ts`,
+  `user-service/src/administrator-constraints.ts`,
+  `user-service/src/auth.test.ts`,
+  `user-service/src/controllers/users.controller.ts`,
+  `user-service/src/services/users.service.ts`.
+- Verification: user-service tests (6/6), frontend Nuxt typecheck, backend
+  TypeScript compilation, and `git diff --check` passed.
+- Author review: Done.
+
 ## 2026-09-30: Root environment example
 
 - Tool: ChatGPT (GPT-6). Mode: Implementation and documentation.

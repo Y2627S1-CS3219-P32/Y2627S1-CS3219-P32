@@ -5,6 +5,7 @@
     Author review: Done
 **/
 import { hashPassword } from "../auth";
+import { assertAdministratorCanBeDemoted } from "../administrator-constraints";
 import type { PublicUser, User } from "../db/schema";
 import { HttpError, isPostgresUniqueViolation } from "../errors";
 import {
@@ -143,7 +144,11 @@ export async function createUser(input: unknown): Promise<PublicUser> {
   }
 }
 
-export async function updateUser(idParam: string, input: unknown): Promise<PublicUser> {
+export async function updateUser(
+  idParam: string,
+  actingUserId: number,
+  input: unknown,
+): Promise<PublicUser> {
   const id = parseUserId(idParam);
   const current = await findPublicUserById(id);
   if (!current) throw new HttpError(404, "User not found");
@@ -153,12 +158,8 @@ export async function updateUser(idParam: string, input: unknown): Promise<Publi
   if (Object.keys(fields).length === 0 && password === undefined) {
     throw new HttpError(400, "Provide at least one field to update");
   }
-  if (
-    current.role === "admin" &&
-    fields.role === "student" &&
-    await countAdministrators() === 1
-  ) {
-    throw new HttpError(409, "The last administrator cannot be demoted");
+  if (current.role === "admin" && fields.role === "student") {
+    await assertAdministratorCanBeDemoted(id, actingUserId, countAdministrators);
   }
   if (fields.email) await ensureUniqueEmail(fields.email, id);
   if (fields.displayName) await ensureUniqueDisplayName(fields.displayName, id);
