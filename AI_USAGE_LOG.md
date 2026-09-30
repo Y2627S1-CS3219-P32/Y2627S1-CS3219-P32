@@ -4,6 +4,34 @@ Author review: Checked for correctness. -->
 
 # AI usage log (User Service)
 
+## 2026-09-30: Migrating user-service storage to PostgreSQL
+
+- Tool: ChatGPT (GPT-6). Mode: Implementation, tests, documentation, and verification.
+- Exact prompt: `Migrate user service sqlite to postgresql. Dont worry about the existing db. Treat it as a fresh start.`
+- Key response:
+  - Replaced the SQLite schema and synchronous database calls with PostgreSQL,
+    Drizzle's node-postgres driver, and asynchronous repository/service/controller
+    flows.
+  - Added PostgreSQL startup seeding, case-insensitive unique display-name
+    indexing, and explicit PostgreSQL unique-constraint handling.
+  - Added a Compose PostgreSQL database and schema migration job; the user
+    service waits for the migration to complete before starting.
+  - Updated Docker, package dependencies, setup documentation, and the demo
+    seed email address.
+- Affected files: `compose.yaml`, `user-service/Dockerfile`,
+  `user-service/README.md`, `user-service/drizzle.config.ts`,
+  `user-service/package.json`, `user-service/package-lock.json`,
+  `user-service/src/controllers/auth.controller.ts`,
+  `user-service/src/controllers/users.controller.ts`, `user-service/src/db.ts`,
+  `user-service/src/db/schema.ts`, `user-service/src/errors.ts`,
+  `user-service/src/index.ts`, `user-service/src/middleware/authorization.ts`,
+  `user-service/src/repositories/users.repository.ts`,
+  `user-service/src/services/auth.service.ts`,
+  `user-service/src/services/users.service.ts`, and this log.
+- Verification: user-service tests and TypeScript checks passed; Compose
+  configuration validation passed.
+- Author review: Done.
+
 ## 2026-09-30: Account registration validation and display names
 
 - Tool: ChatGPT (GPT-6). Mode: Implementation, tests, documentation, and verification.

@@ -14,11 +14,18 @@ export class HttpError extends Error {
   }
 }
 
-export function errorHasMessage(error: unknown, message: string): boolean {
+export function isPostgresUniqueViolation(error: unknown, constraint: string): boolean {
   let cause = error;
-  while (cause instanceof Error) {
-    if (cause.message.includes(message)) return true;
-    cause = cause.cause;
+  while (typeof cause === "object" && cause !== null) {
+    if (
+      "code" in cause &&
+      cause.code === "23505" &&
+      "constraint" in cause &&
+      cause.constraint === constraint
+    ) {
+      return true;
+    }
+    cause = "cause" in cause ? cause.cause : undefined;
   }
   return false;
 }

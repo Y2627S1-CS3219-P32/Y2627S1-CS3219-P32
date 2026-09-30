@@ -1,14 +1,20 @@
 <!-- AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-30.
-Scope: User-service setup, demo credentials, and registration requirements. Author review: Done. -->
+Scope: PostgreSQL setup, demo credentials, and registration requirements. Author review: Done. -->
 # Local Development
 
 Run the following commands:
 ```bash
 npm i
-npx drizzle-kit push
+npm run db:migrate
 npm test
 npm start
 ```
+
+Set `DATABASE_URL` to the PostgreSQL connection string before running database commands
+or starting the service. For the local Compose database, use
+`postgres://user:user@localhost:5434/users`. Compose provisions PostgreSQL and applies
+the schema automatically with `user-db-migrate`. The credentials in Compose are for local
+development only. Existing SQLite data is not imported; the PostgreSQL database starts fresh.
 
 Set `JWT_SECRET` to a random value of at least 32 bytes before starting the service. For example:
 ```bash
@@ -35,7 +41,7 @@ The development seed users both use `Password123!`:
 | Email | Role |
 | --- | --- |
 | `admin@foc.com` | admin |
-| `john@u.nus.edu` | student |
+| `john@foc.com` | student |
 
 Passwords are stored as salted scrypt hashes. The `/login` endpoint returns a short-lived
 HS256 bearer token, which the login page can verify against `/me`.
@@ -45,5 +51,3 @@ matching email confirmation, and password. Display names must be unique (case-in
 2–50 characters, and contain only letters and hyphens with a letter at each end. Registration
 emails must use `u.nus.edu`, `nus.edu.sg`, or `foc.com`. Passwords must contain at least 8
 characters, an uppercase letter, a lowercase letter, and a number, and be no more than 256 bytes.
-Existing SQLite accounts are assigned a unique display name from their existing name when valid,
-or a generated fallback, when the service starts after upgrade.

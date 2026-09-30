@@ -1,11 +1,11 @@
 /**
     AI Assistance Disclosure:
     Tool: ChatGPT (model: GPT-6), date: 2026-09-29
-    Scope: Registration validation, credential authentication, and JWT issuance
+    Scope: Async PostgreSQL-backed registration, authentication, and JWT issuance
     Author review: Done
 **/
 import { createAccessToken, hashPassword, verifyPassword } from "../auth";
-import { errorHasMessage, HttpError } from "../errors";
+import { HttpError, isPostgresUniqueViolation } from "../errors";
 import {
   findPublicUserById,
   findUserByDisplayName,
@@ -23,7 +23,7 @@ export interface AuthConfiguration {
   accessTokenTtl: number;
 }
 
-export function register(input: unknown, config: AuthConfiguration) {
+export async function register(input: unknown, config: AuthConfiguration) {
   if (typeof input !== "object" || input === null || Array.isArray(input)) {
     throw new HttpError(400, "Request body must be an object");
   }
@@ -48,16 +48,16 @@ export function register(input: unknown, config: AuthConfiguration) {
   if (confirmEmail !== email) {
     throw new HttpError(400, "Email addresses do not match");
   }
-  if (findUserByDisplayName(displayName)) {
+  if (await findUserByDisplayName(displayName)) {
     throw new HttpError(409, "A user with this display name already exists");
   }
-  if (findUserByEmail(email)) {
+  if (await findUserByEmail(email)) {
     throw new HttpError(409, "A user with this email already exists");
   }
 
   let user;
   try {
-    user = insertUser({
+    user = await insertUser({
       name,
       displayName,
       email,
@@ -65,10 +65,10 @@ export function register(input: unknown, config: AuthConfiguration) {
       passwordHash: hashPassword(password),
     });
   } catch (error) {
-    if (errorHasMessage(error, "UNIQUE constraint failed: users.email")) {
+    if (isPostgresUniqueViolation(error, "users_email_unique")) {
       throw new HttpError(409, "A user with this email already exists");
     }
-    if (errorHasMessage(error, "users_display_name_unique")) {
+    if (isPostgresUniqueViolation(error, "users_display_name_unique")) {
       throw new HttpError(409, "A user with this display name already exists");
     }
     throw error;
@@ -80,7 +80,7 @@ export function register(input: unknown, config: AuthConfiguration) {
   };
 }
 
-export function login(email: unknown, password: unknown, config: AuthConfiguration) {
+export async function login(email: unknown, password: unknown, config: AuthConfiguration) {
   if (
     typeof email !== "string" ||
     typeof password !== "string" ||
@@ -91,7 +91,7 @@ export function login(email: unknown, password: unknown, config: AuthConfigurati
     throw new HttpError(400, "Email and password are required");
   }
 
-  const user = findUserByEmail(email.trim().toLowerCase());
+  const user = await findUserByEmail(email.trim().toLowerCase());
   if (!user || !verifyPassword(password, user.passwordHash)) {
     throw new HttpError(401, "Invalid email or password");
   }
@@ -108,8 +108,8 @@ export function login(email: unknown, password: unknown, config: AuthConfigurati
   };
 }
 
-export function getAuthenticatedUser(userId: number) {
-  const user = findPublicUserById(userId);
+export async function getAuthenticatedUser(userId: number) {
+  const user = await findPublicUserById(userId);
   if (!user) throw new HttpError(401, "Token user no longer exists");
   return user;
 }

@@ -1,12 +1,12 @@
 /**
     AI Assistance Disclosure:
     Tool: ChatGPT (model: GPT-6), date: 2026-09-29
-    Scope: Validated administrator user CRUD including display names
+    Scope: Async PostgreSQL-backed administrator user CRUD
     Author review: Done
 **/
 import { hashPassword } from "../auth";
 import type { PublicUser, User } from "../db/schema";
-import { errorHasMessage, HttpError } from "../errors";
+import { HttpError, isPostgresUniqueViolation } from "../errors";
 import {
   countAdministrators,
   deleteUser as removeUser,
@@ -92,40 +92,40 @@ function getPassword(input: unknown, creating: boolean): string | undefined {
   return password;
 }
 
-function ensureUniqueEmail(email: string, excludedId?: number): void {
-  const existing = findUserByEmail(email);
+async function ensureUniqueEmail(email: string, excludedId?: number): Promise<void> {
+  const existing = await findUserByEmail(email);
   if (existing && existing.id !== excludedId) {
     throw new HttpError(409, "A user with this email already exists");
   }
 }
 
-function ensureUniqueDisplayName(displayName: string, excludedId?: number): void {
-  const existing = findUserByDisplayName(displayName);
+async function ensureUniqueDisplayName(displayName: string, excludedId?: number): Promise<void> {
+  const existing = await findUserByDisplayName(displayName);
   if (existing && existing.id !== excludedId) {
     throw new HttpError(409, "A user with this display name already exists");
   }
 }
 
-export function listUsers(): PublicUser[] {
+export async function listUsers(): Promise<PublicUser[]> {
   return findAllUsers();
 }
 
-export function getUser(idParam: string): PublicUser {
-  const user = findPublicUserById(parseUserId(idParam));
+export async function getUser(idParam: string): Promise<PublicUser> {
+  const user = await findPublicUserById(parseUserId(idParam));
   if (!user) throw new HttpError(404, "User not found");
   return user;
 }
 
-export function createUser(input: unknown): PublicUser {
+export async function createUser(input: unknown): Promise<PublicUser> {
   const fields = normalizeFields(input, true);
   const password = getPassword(input, true);
   if (!fields.name || !fields.email || !fields.role || !password) {
     throw new Error("Validated create-user fields are missing");
   }
-  ensureUniqueEmail(fields.email);
-  if (fields.displayName) ensureUniqueDisplayName(fields.displayName);
+  await ensureUniqueEmail(fields.email);
+  if (fields.displayName) await ensureUniqueDisplayName(fields.displayName);
   try {
-    return insertUser({
+    return await insertUser({
       name: fields.name,
       ...(fields.displayName ? { displayName: fields.displayName } : {}),
       email: fields.email,
@@ -133,17 +133,19 @@ export function createUser(input: unknown): PublicUser {
       passwordHash: hashPassword(password),
     });
   } catch (error) {
-    if (isEmailConflict(error)) throw new HttpError(409, "A user with this email already exists");
-    if (isDisplayNameConflict(error)) {
+    if (isPostgresUniqueViolation(error, "users_email_unique")) {
+      throw new HttpError(409, "A user with this email already exists");
+    }
+    if (isPostgresUniqueViolation(error, "users_display_name_unique")) {
       throw new HttpError(409, "A user with this display name already exists");
     }
     throw error;
   }
 }
 
-export function updateUser(idParam: string, input: unknown): PublicUser {
+export async function updateUser(idParam: string, input: unknown): Promise<PublicUser> {
   const id = parseUserId(idParam);
-  const current = findPublicUserById(id);
+  const current = await findPublicUserById(id);
   if (!current) throw new HttpError(404, "User not found");
 
   const fields = normalizeFields(input, false);
@@ -154,43 +156,37 @@ export function updateUser(idParam: string, input: unknown): PublicUser {
   if (
     current.role === "admin" &&
     fields.role === "student" &&
-    countAdministrators() === 1
+    await countAdministrators() === 1
   ) {
     throw new HttpError(409, "The last administrator cannot be demoted");
   }
-  if (fields.email) ensureUniqueEmail(fields.email, id);
-  if (fields.displayName) ensureUniqueDisplayName(fields.displayName, id);
+  if (fields.email) await ensureUniqueEmail(fields.email, id);
+  if (fields.displayName) await ensureUniqueDisplayName(fields.displayName, id);
 
   const updates: Partial<Pick<User, "name" | "displayName" | "email" | "role" | "passwordHash">> = { ...fields };
   if (password !== undefined) updates.passwordHash = hashPassword(password);
   try {
-    const user = persistUserUpdate(id, updates);
+    const user = await persistUserUpdate(id, updates);
     if (!user) throw new HttpError(404, "User not found");
     return user;
   } catch (error) {
-    if (isEmailConflict(error)) throw new HttpError(409, "A user with this email already exists");
-    if (isDisplayNameConflict(error)) {
+    if (isPostgresUniqueViolation(error, "users_email_unique")) {
+      throw new HttpError(409, "A user with this email already exists");
+    }
+    if (isPostgresUniqueViolation(error, "users_display_name_unique")) {
       throw new HttpError(409, "A user with this display name already exists");
     }
     throw error;
   }
 }
 
-export function deleteUser(idParam: string, actingUserId: number): void {
+export async function deleteUser(idParam: string, actingUserId: number): Promise<void> {
   const id = parseUserId(idParam);
-  const user = findPublicUserById(id);
+  const user = await findPublicUserById(id);
   if (!user) throw new HttpError(404, "User not found");
   if (id === actingUserId) throw new HttpError(409, "You cannot delete your own account");
-  if (user.role === "admin" && countAdministrators() === 1) {
+  if (user.role === "admin" && await countAdministrators() === 1) {
     throw new HttpError(409, "The last administrator cannot be deleted");
   }
-  if (!removeUser(id)) throw new HttpError(404, "User not found");
-}
-
-function isEmailConflict(error: unknown): boolean {
-  return errorHasMessage(error, "UNIQUE constraint failed: users.email");
-}
-
-function isDisplayNameConflict(error: unknown): boolean {
-  return errorHasMessage(error, "users_display_name_unique");
+  if (!await removeUser(id)) throw new HttpError(404, "User not found");
 }

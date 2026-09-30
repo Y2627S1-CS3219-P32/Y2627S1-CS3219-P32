@@ -1,7 +1,7 @@
 /**
     AI Assistance Disclosure:
     Tool: ChatGPT (model: GPT-6), date: 2026-09-29
-    Scope: Drizzle user repository including display-name lookup
+    Scope: Asynchronous PostgreSQL-backed user repository
     Author review: Done
 **/
 import { eq, sql } from "drizzle-orm";
@@ -17,53 +17,57 @@ const publicUserColumns = {
   role: usersTable.role,
 };
 
-export function findAllUsers(): PublicUser[] {
-  return db.select(publicUserColumns).from(usersTable).all();
+export async function findAllUsers(): Promise<PublicUser[]> {
+  return db.select(publicUserColumns).from(usersTable);
 }
 
-export function findPublicUserById(id: number): PublicUser | undefined {
-  return db.select(publicUserColumns).from(usersTable).where(eq(usersTable.id, id)).get();
+export async function findPublicUserById(id: number): Promise<PublicUser | undefined> {
+  const [user] = await db.select(publicUserColumns).from(usersTable)
+    .where(eq(usersTable.id, id)).limit(1);
+  return user;
 }
 
-export function findUserByEmail(email: string): User | undefined {
-  return db.select().from(usersTable).where(eq(usersTable.email, email)).get();
+export async function findUserByEmail(email: string): Promise<User | undefined> {
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.email, email)).limit(1);
+  return user;
 }
 
-export function findUserByDisplayName(displayName: string): User | undefined {
-  return db.select().from(usersTable)
+export async function findUserByDisplayName(displayName: string): Promise<User | undefined> {
+  const [user] = await db.select().from(usersTable)
     .where(sql`lower(${usersTable.displayName}) = ${displayName.toLowerCase()}`)
-    .get();
+    .limit(1);
+  return user;
 }
 
-export function countAdministrators(): number {
-  return db.select({ id: usersTable.id })
+export async function countAdministrators(): Promise<number> {
+  const admins = await db.select({ id: usersTable.id })
     .from(usersTable)
     .where(eq(usersTable.role, "admin"))
-    .all()
-    .length;
+  return admins.length;
 }
 
-export function insertUser(values: {
+export async function insertUser(values: {
   name: string;
   displayName?: string;
   email: string;
   role: "student" | "admin";
   passwordHash: string;
-}): PublicUser {
-  const result = db.insert(usersTable).values(values).run();
-  const user = findPublicUserById(Number(result.lastInsertRowid));
+}): Promise<PublicUser> {
+  const [user] = await db.insert(usersTable).values(values).returning(publicUserColumns);
   if (!user) throw new Error("Inserted user could not be found");
   return user;
 }
 
-export function updateUser(
+export async function updateUser(
   id: number,
   values: Partial<Pick<User, "name" | "displayName" | "email" | "role" | "passwordHash">>,
-): PublicUser | undefined {
-  db.update(usersTable).set(values).where(eq(usersTable.id, id)).run();
-  return findPublicUserById(id);
+): Promise<PublicUser | undefined> {
+  const [user] = await db.update(usersTable).set(values)
+    .where(eq(usersTable.id, id)).returning(publicUserColumns);
+  return user;
 }
 
-export function deleteUser(id: number): boolean {
-  return db.delete(usersTable).where(eq(usersTable.id, id)).run().changes > 0;
+export async function deleteUser(id: number): Promise<boolean> {
+  const deleted = await db.delete(usersTable).where(eq(usersTable.id, id)).returning({ id: usersTable.id });
+  return deleted.length > 0;
 }

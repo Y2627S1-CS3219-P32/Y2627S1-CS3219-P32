@@ -1,7 +1,7 @@
 /**
     AI Assistance Disclosure:
-    Tool: ChatGPT (model: GPT-6), date: 2026-09-28
-    Scope: Drizzle config and configurable database path
+    Tool: ChatGPT (model: GPT-6), date: 2026-09-30
+    Scope: PostgreSQL Drizzle configuration and fresh schema migration
     Author review: Done
 **/
 
@@ -11,8 +11,8 @@ import { defineConfig } from 'drizzle-kit';
 export default defineConfig({
   out: './drizzle',
   schema: './src/db/schema.ts',
-  dialect: 'sqlite',
-  dbCredentials: {
-    url: process.env.DATABASE_PATH ?? './users.sqlite',
-  },
+  dialect: "postgresql",
+  schema: "./src/db/schema.ts",
+  out: "./drizzle",
+  ...(process.env.DATABASE_URL ? { dbCredentials: { url: process.env.DATABASE_URL } } : {}),
 });
