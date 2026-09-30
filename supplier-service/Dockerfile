@@ -1,5 +1,5 @@
 # AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-28.
-# Scope: Add a development target for Drizzle tooling. Author review: Done.
+# Scope: Add a development target for Drizzle tooling and Compose migrations. Author review: Check for correctness.
 FROM node:22-bookworm-slim AS tooling
 
 WORKDIR /app
@@ -10,6 +10,7 @@ RUN npm ci
 COPY tsconfig.json tsconfig.build.json ./
 COPY drizzle.config.ts ./
 COPY src ./src
+COPY drizzle ./drizzle
 CMD ["npm", "run", "db:check"]
 
 FROM tooling AS build

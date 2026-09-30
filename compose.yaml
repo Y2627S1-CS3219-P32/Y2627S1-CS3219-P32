@@ -36,8 +36,19 @@ services:
         condition: service_healthy
         
   # AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-28.
-  # Scope: Service orchestration, Nuxt frontend, and local database access.
+  # Scope: Service orchestration, Nuxt frontend, local database access, and automatic supplier migrations.
   # Author review: Check for correctness.
+
+  supplier-db-migrate:
+    build:
+      context: ./supplier-service
+      target: tooling
+    command: ["npm", "run", "db:migrate"]
+    environment:
+      DATABASE_URL: "postgres://supplier:supplier@supplier-db:5432/suppliers"
+    depends_on:
+      supplier-db:
+        condition: service_healthy
 
   supplier-service:
     build: ./supplier-service
@@ -48,8 +59,8 @@ services:
       # Claude Code (Opus 5.5), 2026-09-29: caller lookup via user-service GET /me. Author review: Completed.
       USER_SERVICE_BASE_URL: http://user-service:3333
     depends_on:
-      supplier-db:
-        condition: service_healthy
+      supplier-db-migrate:
+        condition: service_completed_successfully
 
   supplier-db-tools:
     profiles: ["tools"]

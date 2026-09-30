@@ -3,6 +3,21 @@ Scope: Record this session's AI assistance.
 Author review: Checked for correctness. -->
 # AI usage log (Supplier Service)
 
+## 2026-09-30: Automatic migrations during Docker Compose startup
+
+- Tool: ChatGPT (GPT-6). Mode: Debugging, implementation, documentation, and verification.
+- Exact prompt: `supplier-service-1 | cause: error: relation "suppliers" does not exist ... This happens when I run docker compose up --build.`
+- Key response:
+  - Diagnosed that PostgreSQL health only verified connectivity and that Compose
+    started the supplier API without applying its Drizzle migration.
+  - Added a one-shot Compose migration service and made the API wait for its
+    successful completion. Included migration files in the tooling image.
+  - Documented automatic Compose migrations and the separate manual migration
+    step for direct npm startup.
+- Affected files: `compose.yaml`, `supplier-service/Dockerfile`,
+  `supplier-service/README.md`.
+- Author review: Pending.
+
 ## 2026-09-30: Administrator POST /suppliers and add-supplier form
 
 - Tool: Claude Code (Opus 5.5). Mode: Implementation, tests, documentation, and verification.

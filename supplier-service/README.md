@@ -2,7 +2,8 @@
 Scope: Drizzle setup and usage documentation. Prior content reviewed;
 seed, local database access, and route documentation changes await review.
 Claude Code (Opus 5.5), 2026-09-29: authentication, PUT, and DELETE documentation. Author review: Done.
-Claude Code (Opus 5.5), 2026-09-30: POST, GET /types, and GET /buildings documentation. Author review: Done. -->
+Claude Code (Opus 5.5), 2026-09-30: POST, GET /types, and GET /buildings documentation. Author review: Done.
+ChatGPT (GPT-6), 2026-09-30: Docker Compose migration startup documentation. Author review: Pending. -->
 # Supplier Service
 
 Run commands from `supplier-service/`:
@@ -137,7 +138,10 @@ docker compose up -d --build supplier-service
 ```
 
 The service is available at `http://localhost:3000`. Running this command again
-rebuilds the image and replaces the existing service container.
+rebuilds the image and replaces the existing service container. Compose first
+runs a one-shot Drizzle migration service after PostgreSQL is healthy, then starts
+the API only after migrations complete. This applies pending migrations to both
+new and existing database volumes.
 
 To run the service locally with npm instead, first free port 3000:
 
@@ -221,6 +225,9 @@ npm run db:studio
 
 `db:generate` works offline without `DATABASE_URL`; the other database commands
 need a reachable database. Drizzle Studio is intended for this host workflow.
+When starting the API directly with `npm run dev` or `npm start`, apply migrations
+separately with `npm run db:migrate`; only the Compose startup path runs them
+automatically.
 
 Reference: [Drizzle PostgreSQL setup](https://orm.drizzle.team/docs/get-started/postgresql-new).
 
