@@ -9,13 +9,16 @@
  * AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-09-30.
  * Scope: GET /types, GET /buildings, and POST /suppliers checks.
  * Author review: Done.
+ * AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-09-30.
+ * Scope: In-place PUT (with the isActive toggle) and hard DELETE checks.
+ * Author review: Pending.
  */
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
 import { once } from "node:events";
 import { createServer } from "node:http";
 import { after, before, test } from "node:test";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import pg from "pg";
 
@@ -273,8 +276,8 @@ test("PUT and DELETE are administrator-only", async () => {
   assert.equal(row.name, "Guarded Cafe");
 });
 
-test("PUT deactivates the current row and inserts an edited active version with copied hours", async () => {
-  const original = await insertSupplier("Versioned Cafe");
+test("PUT updates the supplier in place and keeps its id, hours, and active state", async () => {
+  const original = await insertSupplier("In-place Cafe");
   await db.insert(schema.operatingHours).values([
     { supplierId: original.id, day: 1, openingHrs: "08:00", closingHrs: "12:00" },
     { supplierId: original.id, day: 1, openingHrs: "13:00", closingHrs: "17:00" },
@@ -283,7 +286,7 @@ test("PUT deactivates the current row and inserts an edited active version with 
   const response = await request(`/suppliers/${original.id}`, { method: "PUT", token: "admin-token", body: validUpdate });
   assert.equal(response.status, 200);
   const updated = await response.json();
-  assert.notEqual(updated.id, original.id);
+  assert.equal(updated.id, original.id);
   assert.equal(updated.isActive, true);
   assert.equal(updated.name, "Edited Cafe");
   assert.equal(updated.type, "Shopping");
@@ -295,19 +298,35 @@ test("PUT deactivates the current row and inserts an edited active version with 
   assert.equal(updated.imageUrl, "https://example.com/cafe.jpeg");
   assert.equal(typeof updated.isOpen, "boolean");
 
-  const [old] = await db.select().from(schema.suppliers).where(eq(schema.suppliers.id, original.id));
-  assert.equal(old.isActive, false);
-  assert.equal(old.name, "Versioned Cafe");
-  const hours = await db.select().from(schema.operatingHours).where(eq(schema.operatingHours.supplierId, updated.id));
+  // No copy is left behind under either name.
+  const rows = await db.select().from(schema.suppliers).where(inArray(schema.suppliers.name, ["In-place Cafe", "Edited Cafe"]));
+  assert.deepEqual(rows.map(row => row.id), [original.id]);
+  const hours = await db.select().from(schema.operatingHours).where(eq(schema.operatingHours.supplierId, original.id));
   assert.deepEqual(hours.map(hour => [hour.day, hour.openingHrs, hour.closingHrs]).sort(), [
     [1, "08:00:00", "12:00:00"], [1, "13:00:00", "17:00:00"],
   ]);
+});
 
-  const studentIds = (await getSuppliers({}, "student-token")).map(row => row.id);
-  assert.ok(studentIds.includes(updated.id));
-  assert.equal(studentIds.includes(original.id), false);
-  const adminIds = (await getSuppliers()).map(row => row.id);
-  assert.ok(adminIds.includes(updated.id) && adminIds.includes(original.id));
+test("PUT isActive toggles student visibility, and inactive suppliers can still be edited", async () => {
+  const supplier = await insertSupplier("Toggle Cafe");
+  const body = { ...validUpdate, name: "Toggle Cafe" };
+
+  const hidden = await request(`/suppliers/${supplier.id}`, { method: "PUT", token: "admin-token", body: { ...body, isActive: false } });
+  assert.equal(hidden.status, 200);
+  assert.equal((await hidden.json()).isActive, false);
+  assert.equal((await getSuppliers({ name: "Toggle Cafe" }, "student-token")).length, 0);
+  assert.equal((await getSuppliers({ name: "Toggle Cafe" })).length, 1);
+
+  // Omitting isActive keeps the current value.
+  const edited = await request(`/suppliers/${supplier.id}`, { method: "PUT", token: "admin-token", body: { ...body, floor: "4" } });
+  assert.equal(edited.status, 200);
+  const editedRow = await edited.json();
+  assert.equal(editedRow.isActive, false);
+  assert.equal(editedRow.floor, "4");
+
+  const shown = await request(`/suppliers/${supplier.id}`, { method: "PUT", token: "admin-token", body: { ...body, isActive: true } });
+  assert.equal((await shown.json()).isActive, true);
+  assert.deepEqual((await getSuppliers({ name: "Toggle Cafe" }, "student-token")).map(row => row.id), [supplier.id]);
 });
 
 test("PUT stores blank optional fields as null", async () => {
@@ -336,6 +355,7 @@ test("PUT rejects invalid bodies without changing the supplier", async () => {
     { ...validUpdate, longitude: "east" },
     { ...validUpdate, imageUrl: "javascript:alert(1)" },
     { ...validUpdate, floor: 3 },
+    { ...validUpdate, isActive: "false" },
     [],
   ];
   for (const body of invalidBodies) {
@@ -354,30 +374,31 @@ test("PUT rejects invalid bodies without changing the supplier", async () => {
   assert.equal(rows[0].isActive, true);
 });
 
-test("PUT returns 404 for unknown or malformed ids and 409 for inactive suppliers", async () => {
-  const inactive = await insertSupplier("Retired Cafe", false);
-  const cases = [
-    ["00000000-0000-4000-8000-000000000000", 404],
-    ["not-a-uuid", 404],
-    [inactive.id, 409],
-  ];
-  for (const [id, status] of cases) {
-    assert.equal((await request(`/suppliers/${id}`, { method: "PUT", token: "admin-token", body: validUpdate })).status, status);
+test("PUT returns 404 for unknown or malformed ids", async () => {
+  for (const id of ["00000000-0000-4000-8000-000000000000", "not-a-uuid"]) {
+    assert.equal((await request(`/suppliers/${id}`, { method: "PUT", token: "admin-token", body: validUpdate })).status, 404);
   }
 });
 
-test("DELETE soft-deletes an active supplier once", async () => {
+test("DELETE removes the supplier and its hours", async () => {
   const supplier = await insertSupplier("Deleted Cafe");
+  await db.insert(schema.operatingHours).values({ supplierId: supplier.id, day: 1, openingHrs: "08:00", closingHrs: "12:00" });
+
   const response = await request(`/suppliers/${supplier.id}`, { method: "DELETE", token: "admin-token" });
   assert.equal(response.status, 204);
-  const [row] = await db.select().from(schema.suppliers).where(eq(schema.suppliers.id, supplier.id));
-  assert.equal(row.isActive, false);
-  assert.equal((await getSuppliers({ name: "Deleted Cafe" }, "student-token")).length, 0);
-  assert.equal((await getSuppliers({ name: "Deleted Cafe" })).length, 1);
+  assert.equal((await db.select().from(schema.suppliers).where(eq(schema.suppliers.id, supplier.id))).length, 0);
+  assert.equal((await db.select().from(schema.operatingHours).where(eq(schema.operatingHours.supplierId, supplier.id))).length, 0);
+  assert.equal((await getSuppliers({ name: "Deleted Cafe" })).length, 0);
 
-  assert.equal((await request(`/suppliers/${supplier.id}`, { method: "DELETE", token: "admin-token" })).status, 409);
+  assert.equal((await request(`/suppliers/${supplier.id}`, { method: "DELETE", token: "admin-token" })).status, 404);
   assert.equal((await request("/suppliers/00000000-0000-4000-8000-000000000000", { method: "DELETE", token: "admin-token" })).status, 404);
   assert.equal((await request("/suppliers/not-a-uuid", { method: "DELETE", token: "admin-token" })).status, 404);
+});
+
+test("DELETE also removes inactive suppliers", async () => {
+  const supplier = await insertSupplier("Retired Cafe", false);
+  assert.equal((await request(`/suppliers/${supplier.id}`, { method: "DELETE", token: "admin-token" })).status, 204);
+  assert.equal((await db.select().from(schema.suppliers).where(eq(schema.suppliers.id, supplier.id))).length, 0);
 });
 
 test("GET /types and /buildings list every row by name for any logged-in user", async () => {
@@ -451,4 +472,11 @@ test("POST accepts a supplier without a building and rejects invalid bodies", as
   }
   const rows = await db.select().from(schema.suppliers).where(eq(schema.suppliers.name, "Rejected Cafe"));
   assert.equal(rows.length, 0);
+});
+
+test("POST can create an inactive supplier", async () => {
+  const response = await request("/suppliers", { method: "POST", token: "admin-token", body: { ...validUpdate, name: "Hidden New Cafe", isActive: false } });
+  assert.equal(response.status, 201);
+  assert.equal((await response.json()).isActive, false);
+  assert.equal((await getSuppliers({ name: "Hidden New Cafe" }, "student-token")).length, 0);
 });

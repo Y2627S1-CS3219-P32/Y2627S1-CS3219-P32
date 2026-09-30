@@ -187,6 +187,37 @@ Author review: Checked for correctness. -->
 
 # AI usage log (Supplier Service)
 
+## 2026-09-30: Supplier PUT and DELETE changed to plain CRUD
+
+- Tool: Claude Code (Opus 5.5). Mode: Implementation, tests, documentation, and verification.
+- Exact prompt: `turns out the versioned edit/delete thing was for another service. just make it work like a normal crud operation where the writes/deletes update the database directly, no need to create copies. isActive is just a simple toggle (admin sees all, student sees only active ones)`
+- Design decisions made by the student: PUT and DELETE write directly to the
+  database with no copies; `isActive` is a plain toggle, with admins seeing all
+  suppliers and students only active ones.
+- Key response:
+  - supplier-service:
+    - PUT updates the row in place (same `id`, hours untouched). It accepts an
+      optional boolean `isActive`; omitting it keeps the current value.
+      Inactive suppliers can now be edited (the 409 is gone).
+    - DELETE removes the operating hours and then the supplier in one
+      transaction. Missing ids return 404 (the 409 is gone).
+    - POST accepts the same optional `isActive`, defaulting to active.
+  - Frontend: the edit dialog has an "Active" checkbox and no longer mentions
+    versions. Inactive cards now show the "⋯" menu. The delete confirmation
+    says the delete is permanent and points to the Active toggle.
+- Affected files: `supplier-service/src/index.ts`,
+  `supplier-service/src/supplier-input.ts`,
+  `supplier-service/test/suppliers.test.mjs`, `supplier-service/README.md`,
+  `frontend-service/shared/services/supplier-service/types.ts`,
+  `frontend-service/server/api/supplier-service/suppliers/[id].delete.ts`,
+  `frontend-service/app/services/supplier-service/components/SupplierEditDialog.vue`,
+  `frontend-service/app/services/supplier-service/components/SupplierCard.vue`,
+  `frontend-service/app/services/supplier-service/components/SupplierDirectory.vue`,
+  and this log.
+- Verification: supplier-service `npm run typecheck` passed, and `npm test`
+  passed 23/23. Frontend `npm run typecheck` passed.
+- Author review: Pending.
+
 ## 2026-09-30: Automatic migrations during Docker Compose startup
 
 - Tool: ChatGPT (GPT-6). Mode: Debugging, implementation, documentation, and verification.

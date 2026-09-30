@@ -9,7 +9,11 @@ Author review: Done.
 Tool: Claude Code (model: Opus 5.5), date: 2026-09-30
 Scope: GET /types, GET /buildings, administrator-only POST /suppliers, and the shared
 type/building lookup used by POST and PUT.
-Author review: Done. **/
+Author review: Done.
+Tool: Claude Code (model: Opus 5.5), date: 2026-09-30
+Scope: PUT updates the supplier in place (including the isActive toggle), and
+DELETE removes the supplier and its operating hours.
+Author review: Pending. **/
 
 import "dotenv/config";
 import { pathToFileURL } from "node:url";
@@ -76,7 +80,7 @@ async function toSupplierRow(tx: Transaction, input: SupplierInput) {
     latitude: input.latitude,
     longitude: input.longitude,
     imageUrl: input.imageUrl,
-    isActive: true,
+    isActive: input.isActive,
   };
 }
 
@@ -109,7 +113,8 @@ app.post("/suppliers", requireAuthentication, requireAdministrator, async (req, 
   const input = parseSupplierInput(req.body);
 
   const newId = await db.transaction(async (tx) => {
-    const [created] = await tx.insert(suppliers).values(await toSupplierRow(tx, input)).returning({ id: suppliers.id });
+    const row = await toSupplierRow(tx, input);
+    const [created] = await tx.insert(suppliers).values({ ...row, isActive: row.isActive ?? true }).returning({ id: suppliers.id });
     if (!created) throw new Error("Supplier insert returned no row");
     return created.id;
   });
@@ -118,55 +123,31 @@ app.post("/suppliers", requireAuthentication, requireAdministrator, async (req, 
   res.status(201).json(supplier);
 });
 
-// Versioned update: the current row is marked inactive and replaced by a new
-// active row (with a new id) that carries the edited values and copied hours.
+// Omitting isActive keeps its current value.
 app.put("/suppliers/:id", requireAuthentication, requireAdministrator, async (req, res) => {
   const id = getSupplierIdParam(req);
   const input = parseSupplierInput(req.body);
 
-  const newId = await db.transaction(async (tx) => {
-    const [current] = await tx
-      .select({ isActive: suppliers.isActive })
-      .from(suppliers)
-      .where(eq(suppliers.id, id))
-      .for("update");
-    if (!current) throw new HttpError(404, "Supplier not found");
-    if (!current.isActive) throw new HttpError(409, "Only active suppliers can be updated");
-
-    const row = await toSupplierRow(tx, input);
-    await tx.update(suppliers).set({ isActive: false }).where(eq(suppliers.id, id));
-    const [created] = await tx.insert(suppliers).values(row).returning({ id: suppliers.id });
-    if (!created) throw new Error("Supplier insert returned no row");
-
-    const hours = await tx
-      .select({ day: operatingHours.day, openingHrs: operatingHours.openingHrs, closingHrs: operatingHours.closingHrs })
-      .from(operatingHours)
-      .where(eq(operatingHours.supplierId, id));
-    if (hours.length) {
-      await tx.insert(operatingHours).values(hours.map(hour => ({ ...hour, supplierId: created.id })));
-    }
-    return created.id;
+  const found = await db.transaction(async (tx) => {
+    const updated = await tx.update(suppliers).set(await toSupplierRow(tx, input)).where(eq(suppliers.id, id)).returning({ id: suppliers.id });
+    return updated.length > 0;
   });
+  if (!found) throw new HttpError(404, "Supplier not found");
 
-  const [supplier] = await selectSuppliers(eq(suppliers.id, newId));
+  const [supplier] = await selectSuppliers(eq(suppliers.id, id));
   res.status(200).json(supplier);
 });
 
-// Soft delete: the row is kept and marked inactive.
+// Hard delete: operating hours reference the supplier, so they are removed first.
 app.delete("/suppliers/:id", requireAuthentication, requireAdministrator, async (req, res) => {
   const id = getSupplierIdParam(req);
-  const updated = await db
-    .update(suppliers)
-    .set({ isActive: false })
-    .where(and(eq(suppliers.id, id), eq(suppliers.isActive, true)))
-    .returning({ id: suppliers.id });
+  const found = await db.transaction(async (tx) => {
+    await tx.delete(operatingHours).where(eq(operatingHours.supplierId, id));
+    const deleted = await tx.delete(suppliers).where(eq(suppliers.id, id)).returning({ id: suppliers.id });
+    return deleted.length > 0;
+  });
 
-  if (!updated.length) {
-    const [existing] = await db.select({ id: suppliers.id }).from(suppliers).where(eq(suppliers.id, id));
-    throw existing
-      ? new HttpError(409, "Supplier is already inactive")
-      : new HttpError(404, "Supplier not found");
-  }
+  if (!found) throw new HttpError(404, "Supplier not found");
   res.status(204).end();
 });
 

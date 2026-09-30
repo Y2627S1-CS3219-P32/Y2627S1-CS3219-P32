@@ -1,5 +1,6 @@
 <!-- AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-09-29.
-Scope: Administrator edit form for PUT /suppliers/:id. Author review: Done. -->
+Scope: Administrator edit form for PUT /suppliers/:id. Author review: Done.
+Claude Code (Opus 5.5), 2026-09-30. Scope: Active toggle; edits save in place. Author review: Pending. -->
 <script setup lang="ts">
 import type { Supplier, SupplierUpdate } from "#shared/services/supplier-service/types";
 
@@ -12,7 +13,7 @@ const saving = ref(false);
 const errorMessage = ref("");
 
 function emptyForm(): SupplierUpdate {
-  return { name: "", type: "", buildingName: "", floor: "", locationDescription: "", latitude: "", longitude: "", imageUrl: "" };
+  return { name: "", type: "", buildingName: "", floor: "", locationDescription: "", latitude: "", longitude: "", imageUrl: "", isActive: true };
 }
 
 watch(() => props.supplier, (supplier) => {
@@ -30,6 +31,7 @@ watch(() => props.supplier, (supplier) => {
     latitude: supplier.latitude,
     longitude: supplier.longitude,
     imageUrl: supplier.imageUrl ?? "",
+    isActive: supplier.isActive,
   };
   nextTick(() => dialog.value?.showModal());
 });
@@ -79,7 +81,6 @@ const input = "w-full rounded-lg border border-[#cfd5da] bg-white px-3 py-2 text
   >
     <form class="p-5" @submit.prevent="save">
       <h2 id="edit-supplier-title" class="text-lg font-semibold">Edit supplier</h2>
-      <p class="mt-1 text-xs text-[#5b6570]">Saving creates a new version. The current version is kept as inactive.</p>
 
       <div class="mt-4 grid gap-3 sm:grid-cols-2">
         <div class="sm:col-span-2">
@@ -119,6 +120,12 @@ const input = "w-full rounded-lg border border-[#cfd5da] bg-white px-3 py-2 text
         <div class="sm:col-span-2">
           <label for="edit-image" :class="label">Image URL</label>
           <input id="edit-image" v-model="form.imageUrl" type="url" :class="input">
+        </div>
+        <div class="sm:col-span-2">
+          <label for="edit-active" class="flex items-center gap-2 text-sm text-[#25313c]">
+            <input id="edit-active" v-model="form.isActive" type="checkbox" class="size-4 accent-[#064784]">
+            Active <span class="text-xs text-[#5b6570]">(inactive suppliers are hidden from students)</span>
+          </label>
         </div>
       </div>
 

@@ -26,6 +26,8 @@ export interface SupplierUpdate {
   latitude: string;
   longitude: string;
   imageUrl: string | null;
+  // Omitted keeps the current value (Claude Code (Opus 5.5), 2026-09-30; author review: Pending).
+  isActive?: boolean;
 }
 
 // POST /suppliers takes the same body as PUT, and GET /types and GET /buildings

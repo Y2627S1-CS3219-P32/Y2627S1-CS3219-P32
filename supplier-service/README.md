@@ -3,7 +3,9 @@ Scope: Drizzle setup and usage documentation. Prior content, seed, local databas
 access, and route documentation reviewed.
 Claude Code (Opus 5.5), 2026-09-29: authentication, PUT, and DELETE documentation. Author review: Done.
 Claude Code (Opus 5.5), 2026-09-30: POST, GET /types, and GET /buildings documentation. Author review: Done.
+Claude Code (Opus 5.5), 2026-09-30: In-place PUT and hard DELETE documentation. Author review: Pending.
 ChatGPT (GPT-6), 2026-09-30: Docker Compose migration startup documentation. Author review: Done. -->
+
 # Supplier Service
 
 Run commands from `supplier-service/`:
@@ -75,12 +77,10 @@ no matching period is closed. Multiple matching periods return the supplier once
 
 ## PUT /suppliers/:id (administrators)
 
-Versioned update. In one transaction, the current row is marked `isActive: false`,
-and a new active row (with a new `id`) is inserted with the edited values and a copy
-of the old row's operating hours. Returns 200 with the new supplier, in the same
-shape as a `GET /suppliers` item.
+Updates the supplier row in place; its `id` and operating hours are unchanged.
+Returns 200 with the updated supplier, in the same shape as a `GET /suppliers` item.
 
-The JSON body must contain all of these fields:
+The JSON body must contain all of these fields (except `isActive`):
 
 | Field | Rules |
 | --- | --- |
@@ -90,20 +90,22 @@ The JSON body must contain all of these fields:
 | `floor`, `locationDescription` | `null` or at most 256 characters |
 | `latitude`, `longitude` | Number or numeric string, within ±90 and ±180 |
 | `imageUrl` | `null` or an `http`/`https` URL |
+| `isActive` | Optional boolean. Omitted keeps the current value. `false` hides the supplier from students |
 
 Strings are trimmed; blank optional strings are stored as `null`. Invalid bodies
-return 400. Unknown or malformed ids return 404. Inactive suppliers (including
-superseded versions) return 409.
+return 400. Unknown or malformed ids return 404. Inactive suppliers can be edited
+and reactivated.
 
 ## DELETE /suppliers/:id (administrators)
 
-Soft delete: marks the supplier `isActive: false` and returns 204. The row and its
-hours are kept. Unknown or malformed ids return 404; an already inactive supplier
-returns 409.
+Permanently deletes the supplier and its operating hours in one transaction, and
+returns 204. Active and inactive suppliers can both be deleted. Unknown, malformed,
+or already deleted ids return 404. To hide a supplier from students without
+deleting it, set `isActive: false` with PUT.
 
 ## POST /suppliers (administrators)
 
-Creates an active supplier and returns 201 with it, in the same shape as a
+Creates a supplier (active unless the body sets `isActive: false`) and returns 201 with it, in the same shape as a
 `GET /suppliers` item. The body and its validation are the same as for PUT (see the
 table above). The new supplier has no operating hours, so it reports `isOpen: false`
 until hours are added.
