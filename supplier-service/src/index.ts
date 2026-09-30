@@ -13,6 +13,9 @@ Author review: Done.
 Tool: Claude Code (model: Opus 5.5), date: 2026-09-30
 Scope: PUT updates the supplier in place (including the isActive toggle), and
 DELETE removes the supplier and its operating hours.
+Author review: Pending.
+Tool: Claude Code (model: Opus 5.5), date: 2026-09-30
+Scope: POST /suppliers inserts the supplier's operating hours in the same transaction.
 Author review: Pending. **/
 
 import "dotenv/config";
@@ -24,6 +27,7 @@ import { db } from "./db/index.js";
 import { openingHoursMatch } from "./db/opening-hours.js";
 import { buildings, operatingHours, suppliers, types } from "./db/schema.js";
 import { HttpError } from "./errors.js";
+import { parseOperatingHours } from "./operating-hours-input.js";
 import { parseSupplierInput, type SupplierInput } from "./supplier-input.js";
 
 export const app = express();
@@ -108,14 +112,18 @@ app.get("/suppliers", requireAuthentication, async (req, res) => {
   res.status(200).json(results);
 });
 
-// New suppliers start active, with no operating hours (so they show as closed).
+// New suppliers start active. Without operating hours they show as closed.
 app.post("/suppliers", requireAuthentication, requireAdministrator, async (req, res) => {
   const input = parseSupplierInput(req.body);
+  const hours = parseOperatingHours(req.body);
 
   const newId = await db.transaction(async (tx) => {
     const row = await toSupplierRow(tx, input);
     const [created] = await tx.insert(suppliers).values({ ...row, isActive: row.isActive ?? true }).returning({ id: suppliers.id });
     if (!created) throw new Error("Supplier insert returned no row");
+    if (hours.length > 0) {
+      await tx.insert(operatingHours).values(hours.map(period => ({ supplierId: created.id, ...period })));
+    }
     return created.id;
   });
 

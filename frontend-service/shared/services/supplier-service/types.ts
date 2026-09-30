@@ -30,9 +30,21 @@ export interface SupplierUpdate {
   isActive?: boolean;
 }
 
-// POST /suppliers takes the same body as PUT, and GET /types and GET /buildings
-// return these references (Claude Code (Opus 5.5), 2026-09-30; author review: Done).
-export type SupplierCreate = SupplierUpdate;
+// One operating period. day is 0 (Sunday) to 6 (Saturday); times are "HH:MM", and
+// closingHrs may be "24:00". A closing time at or before the opening time runs past
+// midnight (Claude Code (Opus 5.5), 2026-09-30; author review: Pending).
+export interface OperatingPeriod {
+  day: number;
+  openingHrs: string;
+  closingHrs: string;
+}
+
+// POST /suppliers takes the same body as PUT plus its operating hours, and GET /types
+// and GET /buildings return these references (Claude Code (Opus 5.5), 2026-09-30;
+// author review: Done; operatingHours: Pending).
+export interface SupplierCreate extends SupplierUpdate {
+  operatingHours: OperatingPeriod[];
+}
 
 export interface SupplierReference {
   id: string;

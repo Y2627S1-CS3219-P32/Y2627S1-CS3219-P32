@@ -12,6 +12,9 @@
  * AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-09-30.
  * Scope: In-place PUT (with the isActive toggle) and hard DELETE checks.
  * Author review: Pending.
+ * AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-09-30.
+ * Scope: POST /suppliers operating hours checks.
+ * Author review: Pending.
  */
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
@@ -479,4 +482,58 @@ test("POST can create an inactive supplier", async () => {
   assert.equal(response.status, 201);
   assert.equal((await response.json()).isActive, false);
   assert.equal((await getSuppliers({ name: "Hidden New Cafe" }, "student-token")).length, 0);
+});
+
+test("POST stores operating hours, including 24-hour and overnight periods", async () => {
+  const operatingHours = Array.from({ length: 7 }, (_, day) => ({ day, openingHrs: "00:00", closingHrs: "24:00" }));
+  const response = await request("/suppliers", { method: "POST", token: "admin-token", body: { ...validUpdate, name: "Always Open Cafe", operatingHours } });
+  assert.equal(response.status, 201);
+  const created = await response.json();
+  assert.equal(created.isOpen, true);
+  const hours = await db.select().from(schema.operatingHours).where(eq(schema.operatingHours.supplierId, created.id));
+  assert.equal(hours.length, 7);
+
+  const split = await request("/suppliers", {
+    method: "POST",
+    token: "admin-token",
+    body: {
+      ...validUpdate,
+      name: "Split Shift Bar",
+      operatingHours: [
+        { day: 1, openingHrs: "09:00", closingHrs: "12:00" },
+        { day: 1, openingHrs: "12:00", closingHrs: "15:00" },
+        { day: 1, openingHrs: "22:00", closingHrs: "02:00" },
+        { day: 2, openingHrs: "02:00", closingHrs: "05:00" },
+        { day: 6, openingHrs: "23:00", closingHrs: "00:00" },
+        { day: 0, openingHrs: "00:00", closingHrs: "01:00" },
+      ],
+    },
+  });
+  assert.equal(split.status, 201);
+  const splitRows = await db.select().from(schema.operatingHours).where(eq(schema.operatingHours.supplierId, (await split.json()).id));
+  assert.deepEqual(
+    splitRows.map(row => `${row.day} ${row.openingHrs}-${row.closingHrs}`).sort(),
+    ["0 00:00:00-01:00:00", "1 09:00:00-12:00:00", "1 12:00:00-15:00:00", "1 22:00:00-02:00:00", "2 02:00:00-05:00:00", "6 23:00:00-00:00:00"],
+  );
+});
+
+test("POST rejects invalid or overlapping operating hours without creating the supplier", async () => {
+  for (const operatingHours of [
+    "always",
+    [{ day: 7, openingHrs: "09:00", closingHrs: "17:00" }],
+    [{ day: 1.5, openingHrs: "09:00", closingHrs: "17:00" }],
+    [{ day: 1, openingHrs: "9am", closingHrs: "17:00" }],
+    [{ day: 1, openingHrs: "24:00", closingHrs: "17:00" }],
+    [{ day: 1, openingHrs: "09:00", closingHrs: "09:00" }],
+    [{ day: 1, openingHrs: "09:00", closingHrs: "17:00" }, { day: 1, openingHrs: "09:00", closingHrs: "10:00" }],
+    [{ day: 1, openingHrs: "09:00", closingHrs: "17:00" }, { day: 1, openingHrs: "16:00", closingHrs: "18:00" }],
+    [{ day: 1, openingHrs: "22:00", closingHrs: "03:00" }, { day: 2, openingHrs: "02:00", closingHrs: "05:00" }],
+    [{ day: 6, openingHrs: "22:00", closingHrs: "03:00" }, { day: 0, openingHrs: "02:00", closingHrs: "05:00" }],
+  ]) {
+    const rejected = await request("/suppliers", { method: "POST", token: "admin-token", body: { ...validUpdate, name: "Bad Hours Cafe", operatingHours } });
+    assert.equal(rejected.status, 400, JSON.stringify(operatingHours));
+    assert.equal(typeof (await rejected.json()).error, "string");
+  }
+  const rows = await db.select().from(schema.suppliers).where(eq(schema.suppliers.name, "Bad Hours Cafe"));
+  assert.equal(rows.length, 0);
 });

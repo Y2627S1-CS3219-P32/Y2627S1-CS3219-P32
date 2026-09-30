@@ -3,6 +3,7 @@ Scope: Drizzle setup and usage documentation. Prior content, seed, local databas
 access, and route documentation reviewed.
 Claude Code (Opus 5.5), 2026-09-29: authentication, PUT, and DELETE documentation. Author review: Done.
 Claude Code (Opus 5.5), 2026-09-30: POST, GET /types, and GET /buildings documentation. Author review: Done.
+Claude Code (Opus 5.5), 2026-09-30: POST operatingHours documentation. Author review: Pending.
 Claude Code (Opus 5.5), 2026-09-30: In-place PUT and hard DELETE documentation. Author review: Pending.
 ChatGPT (GPT-6), 2026-09-30: Docker Compose migration startup documentation. Author review: Done. -->
 
@@ -107,8 +108,29 @@ deleting it, set `isActive: false` with PUT.
 
 Creates a supplier (active unless the body sets `isActive: false`) and returns 201 with it, in the same shape as a
 `GET /suppliers` item. The body and its validation are the same as for PUT (see the
-table above). The new supplier has no operating hours, so it reports `isOpen: false`
-until hours are added.
+table above), plus an optional `operatingHours` array. The supplier and its hours
+are inserted in one transaction; any invalid period rejects the whole request with 400.
+
+```json
+"operatingHours": [
+  { "day": 1, "openingHrs": "09:00", "closingHrs": "17:00" },
+  { "day": 5, "openingHrs": "22:00", "closingHrs": "02:00" },
+  { "day": 6, "openingHrs": "00:00", "closingHrs": "24:00" }
+]
+```
+
+| Field | Rules |
+| --- | --- |
+| `day` | Integer from 0 (Sunday) to 6 (Saturday) |
+| `openingHrs` | `HH:MM`, from `00:00` to `23:59` |
+| `closingHrs` | `HH:MM`, from `00:00` to `24:00`; must differ from `openingHrs` |
+
+A closing time earlier than the opening time runs past midnight into the next day
+(Saturday wraps to Sunday). `00:00` to `24:00` is open all day. A day may have
+several periods, but no two periods (including overnight spill-over) may overlap;
+periods that only touch, such as `09:00`–`12:00` and `12:00`–`15:00`, are allowed.
+At most 50 periods are accepted. Days without a period are closed, so omitting
+`operatingHours` (or sending `[]`) creates a supplier that reports `isOpen: false`.
 
 ## GET /types and GET /buildings
 
