@@ -4,6 +4,36 @@ Author review: Checked for correctness. -->
 
 # AI usage log (User Service)
 
+## 2026-09-30: Cloud Build and Cloud Run deployment scripts
+
+- Tool: Claude Code (Opus 5.5). Mode: Boilerplate generation (deployment config) and verification.
+- Exact prompt: `yes go ahead, sg sounds good, pull from main and go on a branch first`
+  (following a discussion about the database size, Secret Manager usage, ingress/egress, and
+  internal vs public services).
+- Key response: Added a Cloud Build config that builds and pushes the frontend, user,
+  supplier, and supplier tooling images to Artifact Registry (`asia-southeast1`, repository
+  `foc`); a `.gcloudignore`; and `deploy.sh` with one-time setup (Cloud SQL PostgreSQL,
+  databases, Secret Manager secrets, IAM, Private Google Access), migration jobs, service
+  deployment, and a supplier seed job.
+- Affected files: `cloudbuild.yaml`, `.gcloudignore`, `deploy.sh`, `README.md`, and this log.
+- Verification: `gcloud builds submit --config cloudbuild.yaml` succeeded and pushed all four
+  images; `bash -n deploy.sh` passed. `deploy.sh` has not yet been run against GCP.
+- Author review: Done.
+
+## 2026-09-30: Supplier database over Cloud SQL private IP
+
+- Tool: Claude Code (Opus 5.5). Mode: Debugging and implementation.
+- Exact prompt: `We couldn't load the suppliers. Please try again in a moment.`
+- Key response: Diagnosed from Cloud Run logs that supplier-service's all-traffic VPC egress
+  also routed its Cloud SQL connector traffic, which could not reach the instance's public IP.
+  After the student chose Cloud SQL private IP over Cloud NAT, updated `deploy.sh` to set up
+  Private Service Access, attach the instance to the VPC, and connect supplier-service and its
+  migrate/seed jobs to the private IP; user-service keeps the Cloud SQL connector.
+- Affected files: `deploy.sh` and this log.
+- Verification: redeployed with `./deploy.sh`; `supplier-migrate` connected over the private IP
+  and the student confirmed the supplier directory loads on the deployed frontend.
+- Author review: Pending.
+
 ## 2026-09-30: Redirect to first-administrator setup
 
 - Tool: ChatGPT (GPT-6). Mode: Implementation and verification.
