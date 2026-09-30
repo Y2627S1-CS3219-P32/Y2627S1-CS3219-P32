@@ -51,7 +51,7 @@ async function register() {
         password: password.value,
       },
     });
-    clearNuxtData("navigation-user");
+    await refreshNuxtData("navigation-user");
     await navigateTo("/profile");
   } catch (error) {
     errorMessage.value = getErrorMessage(error) ?? "Account creation failed. Please try again.";

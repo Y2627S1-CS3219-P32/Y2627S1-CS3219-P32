@@ -22,7 +22,7 @@ async function login() {
       !route.query.redirect.startsWith("//")
       ? route.query.redirect
       : "/profile";
-    clearNuxtData("navigation-user");
+    await refreshNuxtData("navigation-user");
     await navigateTo(redirect);
   } catch {
     errorMessage.value = "Login failed. Check the email and password, then try again.";
