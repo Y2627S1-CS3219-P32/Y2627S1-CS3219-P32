@@ -3,7 +3,9 @@ Tool: Claude Code (model: Opus 5.5), date: 2026-09-29
 Scope: Request body validation for PUT /suppliers/:id.
 Author review: Done.
 Tool: Claude Code (model: Opus 5.5), date: 2026-09-30
-Scope: Reused unchanged for POST /suppliers. Author review: Done. **/
+Scope: Reused unchanged for POST /suppliers. Author review: Done.
+Tool: Claude Code (model: Opus 5.5), date: 2026-09-30
+Scope: Optional isActive toggle. Author review: Pending. **/
 
 import { HttpError } from "./errors.js";
 
@@ -16,6 +18,8 @@ export interface SupplierInput {
   latitude: string;
   longitude: string;
   imageUrl: string | null;
+  // Omitted keeps the current value on PUT; POST defaults to active.
+  isActive: boolean | undefined;
 }
 
 const MAX_LENGTH = 256;
@@ -59,6 +63,12 @@ function imageUrl(body: Record<string, unknown>): string | null {
   throw new HttpError(400, "imageUrl must be an http or https URL");
 }
 
+function optionalBoolean(body: Record<string, unknown>, field: string): boolean | undefined {
+  const value = body[field];
+  if (value === undefined || typeof value === "boolean") return value;
+  throw new HttpError(400, `${field} must be a boolean`);
+}
+
 export function parseSupplierInput(body: unknown): SupplierInput {
   if (typeof body !== "object" || body === null || Array.isArray(body)) {
     throw new HttpError(400, "Request body must be a JSON object");
@@ -73,5 +83,6 @@ export function parseSupplierInput(body: unknown): SupplierInput {
     latitude: coordinate(fields, "latitude", 90),
     longitude: coordinate(fields, "longitude", 180),
     imageUrl: imageUrl(fields),
+    isActive: optionalBoolean(fields, "isActive"),
   };
 }

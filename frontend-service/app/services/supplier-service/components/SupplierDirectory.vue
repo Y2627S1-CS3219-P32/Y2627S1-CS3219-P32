@@ -1,7 +1,8 @@
 <!-- AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-28; Claude Code (Opus 5.5), 2026-09-29.
 Scope: Supplier directory, filtering, and request states; Tailwind styling after the supplier mockup. Author review: Done.
 Claude Code (Opus 5.5), 2026-09-29. Scope: Login redirect on 401 and administrator edit/delete actions. Author review: Done.
-Claude Code (Opus 5.5), 2026-09-30. Scope: Administrator add-supplier button and dialog. Author review: Done. -->
+Claude Code (Opus 5.5), 2026-09-30. Scope: Administrator add-supplier button and dialog. Author review: Done.
+Claude Code (Opus 5.5), 2026-09-30. Scope: Delete confirmation for permanent deletes. Author review: Pending. -->
 <script setup lang="ts">
 import type { Supplier, SupplierFilters } from "#shared/services/supplier-service/types";
 import type { User } from "#shared/services/user-service/types";
@@ -61,14 +62,14 @@ async function onCreated(created: Supplier) {
 }
 
 async function remove(supplier: Supplier) {
-  if (!window.confirm(`Delete ${supplier.name}? It will be marked inactive and hidden from students.`)) return;
+  if (!window.confirm(`Delete ${supplier.name}? This permanently removes it and its operating hours. To hide it from students instead, edit it and untick Active.`)) return;
   actionMessage.value = "";
   try {
     await $fetch(`/api/supplier-service/suppliers/${encodeURIComponent(supplier.id)}`, { method: "DELETE" });
     actionMessage.value = `Deleted ${supplier.name}.`;
   } catch (deleteError) {
     if (statusOf(deleteError) === 401) return goToLogin();
-    actionMessage.value = `${supplier.name} could not be deleted. It may have already changed.`;
+    actionMessage.value = `${supplier.name} could not be deleted. It may have already been removed.`;
   }
   await refresh();
 }

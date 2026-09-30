@@ -1,6 +1,7 @@
 <!-- AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-28; Claude Code (Opus 5.5), 2026-09-29.
 Scope: Supplier card using the existing API fields; Tailwind styling after the supplier mockup. Author review: Done.
-Claude Code (Opus 5.5), 2026-09-29. Scope: Administrator actions menu. Author review: Done. -->
+Claude Code (Opus 5.5), 2026-09-29. Scope: Administrator actions menu. Author review: Done.
+Claude Code (Opus 5.5), 2026-09-30. Scope: Actions menu on inactive cards too. Author review: Pending. -->
 <script setup lang="ts">
 import type { Supplier } from "#shared/services/supplier-service/types";
 
@@ -56,7 +57,7 @@ const mapUrl = computed(() => `https://www.google.com/maps/search/?api=1&query=$
 
 <template>
   <article class="group relative flex items-start gap-4 rounded-md bg-white p-3.5 shadow-[0_2px_6px_rgba(0,0,0,0.14)]" :class="{ 'opacity-60': !supplier.isActive }">
-    <div v-if="canManage && supplier.isActive" ref="menuRoot" class="absolute top-1.5 right-1.5 z-10" @keydown.esc="closeMenu(true)">
+    <div v-if="canManage" ref="menuRoot" class="absolute top-1.5 right-1.5 z-10" @keydown.esc="closeMenu(true)">
       <button
         ref="menuButton"
         type="button"
