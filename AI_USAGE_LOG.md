@@ -32,6 +32,47 @@ Author review: Checked for correctness. -->
   configuration validation passed.
 - Author review: Done.
 
+## 2026-09-30: Self-service account updates
+
+- Tool: ChatGPT (GPT-6). Mode: Implementation, validation, and documentation.
+- Exact prompt: `FR6.2 allow users to change display name according to FR; FR6.3 change email according to FR; FR6.4 change password according to FR; FR6.5 reject new passwords equal to old password.`
+- Key response:
+  - Added authenticated `PATCH /me` and a frontend proxy for self-service
+    updates to display name, university email, and password.
+  - Reused the registration validators and uniqueness constraints for profile
+    changes; email changes require a matching confirmation.
+  - Password changes require the current password, enforce password policy,
+    and reject reuse of the existing password.
+  - Added profile edit fields and success/error feedback.
+- Affected files: `frontend-service/app/pages/profile.vue`,
+  `frontend-service/server/api/user-service/me.patch.ts`,
+  `user-service/README.md`, `user-service/src/controllers/auth.controller.ts`,
+  `user-service/src/repositories/users.repository.ts`,
+  `user-service/src/routes/auth.routes.ts`,
+  `user-service/src/services/auth.service.ts`, and this log.
+- Verification: user-service tests passed (5/5), backend and frontend typechecks
+  passed, and an HTTP integration check confirmed profile/email updates, same-
+  password rejection, current-password verification, password-policy validation,
+  and successful login with the changed password.
+- Author review: Done.
+
+## 2026-09-30: Separating profile editing
+
+- Tool: ChatGPT (GPT-6). Mode: Implementation and verification.
+- Exact prompt: `separate out the edit page`
+- Key response:
+  - Made `/profile` a read-only account summary with an Edit profile link.
+  - Moved the existing display-name, email, and password form to the
+    authenticated `/profile/edit` page, with links back to the profile.
+  - Corrected route rendering by making the profile summary an index page,
+    so Nuxt resolves the edit page as a sibling rather than a nested page
+    without a parent `<NuxtPage>` outlet.
+- Affected files: `frontend-service/app/pages/profile/index.vue`,
+  `frontend-service/app/pages/profile/edit.vue`, and this log.
+- Verification: frontend Nuxt typecheck and production build passed; browser
+  navigation was checked after rebuilding Compose.
+- Author review: Done.
+
 ## 2026-09-30: Account registration validation and display names
 
 - Tool: ChatGPT (GPT-6). Mode: Implementation, tests, documentation, and verification.

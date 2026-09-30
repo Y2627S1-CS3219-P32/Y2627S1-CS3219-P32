@@ -1,5 +1,5 @@
 <!-- AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-30.
-Scope: Display the authenticated user's profile and end the JWT session. Author review: Done. -->
+Scope: Read-only profile summary and logout. Author review: Done. -->
 <script setup lang="ts">
 import type { User } from "#shared/services/user-service/types";
 
@@ -52,6 +52,13 @@ async function logout() {
           <dd class="font-medium capitalize">{{ user.role }}</dd>
         </div>
       </dl>
+
+      <NuxtLink
+        to="/profile/edit"
+        class="mt-6 inline-flex rounded-lg bg-[#064784] px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-[#053765]"
+      >
+        Edit profile
+      </NuxtLink>
     </section>
   </main>
 </template>

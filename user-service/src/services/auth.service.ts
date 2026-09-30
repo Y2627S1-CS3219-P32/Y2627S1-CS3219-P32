@@ -1,16 +1,18 @@
 /**
     AI Assistance Disclosure:
     Tool: ChatGPT (model: GPT-6), date: 2026-09-29
-    Scope: Async PostgreSQL-backed registration, authentication, and JWT issuance
+    Scope: Async PostgreSQL registration, authentication, and self-service account updates
     Author review: Done
 **/
 import { createAccessToken, hashPassword, verifyPassword } from "../auth";
 import { HttpError, isPostgresUniqueViolation } from "../errors";
 import {
   findPublicUserById,
+  findUserById,
   findUserByDisplayName,
   findUserByEmail,
   insertUser,
+  updateUser as persistUserUpdate,
 } from "../repositories/users.repository";
 import {
   validateDisplayName,
@@ -112,4 +114,91 @@ export async function getAuthenticatedUser(userId: number) {
   const user = await findPublicUserById(userId);
   if (!user) throw new HttpError(401, "Token user no longer exists");
   return user;
+}
+
+export async function updateAuthenticatedUser(userId: number, input: unknown) {
+  if (typeof input !== "object" || input === null || Array.isArray(input)) {
+    throw new HttpError(400, "Request body must be an object");
+  }
+  const body = input as Record<string, unknown>;
+  const allowedKeys = new Set([
+    "displayName",
+    "email",
+    "confirmEmail",
+    "currentPassword",
+    "newPassword",
+  ]);
+  if (Object.keys(body).some((key) => !allowedKeys.has(key))) {
+    throw new HttpError(400, "Request contains unsupported fields");
+  }
+
+  const updates: {
+    displayName?: string;
+    email?: string;
+    passwordHash?: string;
+  } = {};
+  if ("displayName" in body) {
+    updates.displayName = validateDisplayName(body.displayName);
+  }
+  if ("email" in body) {
+    updates.email = validateUniversityEmail(body.email);
+    const confirmEmail = typeof body.confirmEmail === "string"
+      ? body.confirmEmail.trim().toLowerCase()
+      : "";
+    if (confirmEmail !== updates.email) {
+      throw new HttpError(400, "Email addresses do not match");
+    }
+  } else if ("confirmEmail" in body) {
+    throw new HttpError(400, "An email address is required for email confirmation");
+  }
+
+  if ("currentPassword" in body || "newPassword" in body) {
+    if (
+      typeof body.currentPassword !== "string" ||
+      !body.currentPassword ||
+      typeof body.newPassword !== "string"
+    ) {
+      throw new HttpError(400, "Current and new passwords are required");
+    }
+    const currentUser = await findUserById(userId);
+    if (!currentUser || !verifyPassword(body.currentPassword, currentUser.passwordHash)) {
+      throw new HttpError(401, "Current password is incorrect");
+    }
+    const newPassword = validateRegistrationPassword(body.newPassword);
+    if (verifyPassword(newPassword, currentUser.passwordHash)) {
+      throw new HttpError(400, "New password must be different from the current password");
+    }
+    updates.passwordHash = hashPassword(newPassword);
+  }
+
+  if (Object.keys(updates).length === 0) {
+    throw new HttpError(400, "Provide at least one profile field to update");
+  }
+
+  if (updates.displayName) {
+    const existing = await findUserByDisplayName(updates.displayName);
+    if (existing && existing.id !== userId) {
+      throw new HttpError(409, "A user with this display name already exists");
+    }
+  }
+  if (updates.email) {
+    const existing = await findUserByEmail(updates.email);
+    if (existing && existing.id !== userId) {
+      throw new HttpError(409, "A user with this email already exists");
+    }
+  }
+
+  try {
+    const user = await persistUserUpdate(userId, updates);
+    if (!user) throw new HttpError(401, "Token user no longer exists");
+    return user;
+  } catch (error) {
+    if (isPostgresUniqueViolation(error, "users_email_unique")) {
+      throw new HttpError(409, "A user with this email already exists");
+    }
+    if (isPostgresUniqueViolation(error, "users_display_name_unique")) {
+      throw new HttpError(409, "A user with this display name already exists");
+    }
+    throw error;
+  }
 }

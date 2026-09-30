@@ -31,6 +31,7 @@ The service listens on port `3333` by default (override with `PORT`). It serves 
 | `POST` | `/users` | Create a user (name, email, password, optional display name; role defaults to `student`) |
 | `PUT` / `PATCH` | `/users/:id` | Update user fields; password may also be changed |
 | `DELETE` | `/users/:id` | Delete a user |
+| `GET` / `PATCH` | `/me` | View or update the authenticated user's own account |
 
 Passwords must be between 8 and 256 bytes. User responses never include password hashes.
 An admin cannot delete their own account or demote/delete the last administrator.
@@ -51,3 +52,7 @@ matching email confirmation, and password. Display names must be unique (case-in
 2–50 characters, and contain only letters and hyphens with a letter at each end. Registration
 emails must use `u.nus.edu`, `nus.edu.sg`, or `foc.com`. Passwords must contain at least 8
 characters, an uppercase letter, a lowercase letter, and a number, and be no more than 256 bytes.
+Authenticated users can update their display name or email through `PATCH /me`, with the same
+validation and uniqueness rules. Email updates require a matching `confirmEmail`. Password
+updates require the current password, enforce the registration password rules, and reject a new
+password that matches the current password.

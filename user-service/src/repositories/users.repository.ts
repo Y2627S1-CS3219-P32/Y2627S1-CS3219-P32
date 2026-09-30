@@ -1,7 +1,7 @@
 /**
     AI Assistance Disclosure:
     Tool: ChatGPT (model: GPT-6), date: 2026-09-29
-    Scope: Asynchronous PostgreSQL-backed user repository
+    Scope: Async PostgreSQL user repository including self-service account updates
     Author review: Done
 **/
 import { eq, sql } from "drizzle-orm";
@@ -29,6 +29,11 @@ export async function findPublicUserById(id: number): Promise<PublicUser | undef
 
 export async function findUserByEmail(email: string): Promise<User | undefined> {
   const [user] = await db.select().from(usersTable).where(eq(usersTable.email, email)).limit(1);
+  return user;
+}
+
+export async function findUserById(id: number): Promise<User | undefined> {
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, id)).limit(1);
   return user;
 }
 
