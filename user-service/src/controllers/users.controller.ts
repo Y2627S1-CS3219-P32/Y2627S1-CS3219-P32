@@ -1,7 +1,7 @@
 /**
     AI Assistance Disclosure:
     Tool: ChatGPT (model: GPT-6), date: 2026-09-29
-    Scope: HTTP handlers for administrator user CRUD operations
+    Scope: Async HTTP handlers for administrator user CRUD operations
     Author review: Done
 **/
 import type { Request, Response } from "express";
@@ -21,24 +21,23 @@ function getUserIdParam(req: Request): string {
   return id;
 }
 
-export function listUsers(_req: Request, res: Response): void {
-  res.json(users.listUsers());
+export async function listUsers(_req: Request, res: Response): Promise<void> {
+  res.json(await users.listUsers());
 }
 
-export function getUser(req: Request, res: Response): void {
-  res.json(users.getUser(getUserIdParam(req)));
+export async function getUser(req: Request, res: Response): Promise<void> {
+  res.json(await users.getUser(getUserIdParam(req)));
 }
 
-export function createUser(req: Request, res: Response): void {
-  res.status(201).json(users.createUser(req.body));
+export async function createUser(req: Request, res: Response): Promise<void> {
+  res.status(201).json(await users.createUser(req.body));
 }
 
-export function updateUser(req: Request, res: Response): void {
-  getActingUserId(res);
-  res.json(users.updateUser(getUserIdParam(req), req.body));
+export async function updateUser(req: Request, res: Response): Promise<void> {
+  res.json(await users.updateUser(getUserIdParam(req), getActingUserId(res), req.body));
 }
 
-export function deleteUser(req: Request, res: Response): void {
-  users.deleteUser(getUserIdParam(req), getActingUserId(res));
+export async function deleteUser(req: Request, res: Response): Promise<void> {
+  await users.deleteUser(getUserIdParam(req), getActingUserId(res));
   res.status(204).end();
 }

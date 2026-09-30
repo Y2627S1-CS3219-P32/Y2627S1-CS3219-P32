@@ -1,12 +1,13 @@
 /**
     AI Assistance Disclosure:
     Tool: ChatGPT (model: GPT-6), date: 2026-09-29
-    Scope: Express application setup, route mounting, and error handling
+    Scope: Express startup after PostgreSQL initialization and error handling
     Author review: Done
 **/
 import express, { type ErrorRequestHandler } from "express";
 
 import { config } from "./config";
+import { initializeDatabase, pool } from "./db";
 import { HttpError } from "./errors";
 import authRoutes from "./routes/auth.routes";
 import usersRoutes from "./routes/users.routes";
@@ -39,6 +40,14 @@ const errorHandler: ErrorRequestHandler = (error, _req, res, _next) => {
 
 app.use(errorHandler);
 
-app.listen(config.port, () => {
-  console.log(`User service listening on port ${config.port}`);
-});
+initializeDatabase()
+  .then(() => {
+    app.listen(config.port, () => {
+      console.log(`User service listening on port ${config.port}`);
+    });
+  })
+  .catch(async (error: unknown) => {
+    console.error("[user-service] Database initialization failed", error);
+    await pool.end();
+    process.exitCode = 1;
+  });

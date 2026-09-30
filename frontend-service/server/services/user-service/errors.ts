@@ -1,4 +1,4 @@
-const FORWARDED_STATUSES = new Set([400, 401, 403, 404, 409]);
+const FORWARDED_STATUSES = new Set([400, 401, 403, 404, 409, 503]);
 
 export function toUserServiceError(error: unknown) {
   if (typeof error === "object" && error !== null && "statusCode" in error &&

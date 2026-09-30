@@ -1,7 +1,7 @@
 /**AI Assistance Disclosure:
 Tool: ChatGPT(model: GPT6), date: 2026-09-28
 Scope: Express server and GET /suppliers happy-path implementation.
-Author review: Prior boilerplate reviewed; route changes await review.
+Author review: Prior boilerplate and route changes reviewed.
 Tool: Claude Code (model: Opus 5.5), date: 2026-09-29
 Scope: Authentication on GET /suppliers, role-based visibility of inactive suppliers,
 administrator-only PUT (versioned) and DELETE (soft) /suppliers/:id, and error handling.

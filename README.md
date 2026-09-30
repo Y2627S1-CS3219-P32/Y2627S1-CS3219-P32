@@ -47,6 +47,12 @@ microservice (`user-service/`, `supplier-service/`, `order-service/`,
   may be added as needed, but must still **respect the
   one-service-per-folder skeleton** for core implementation.
 
+## Configure the root environment
+
+Before starting the services, copy [`.env.example`](.env.example) to `.env` in
+the repository root and replace `JWT_SECRET` with a long, randomly generated
+secret. `BOOTSTRAP_SECRET` is optional.
+
 ---
 
 ## Run the frontend
