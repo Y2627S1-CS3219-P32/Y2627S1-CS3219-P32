@@ -1,6 +1,6 @@
 <!-- AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-28; Claude Code (Opus 5.5), 2026-09-29.
 Scope: Supplier card using the existing API fields; Tailwind styling after the supplier mockup. Author review: Done.
-Claude Code (Opus 5.5), 2026-09-29. Scope: Administrator actions menu. Author review: Pending. -->
+Claude Code (Opus 5.5), 2026-09-29. Scope: Administrator actions menu. Author review: Done. -->
 <script setup lang="ts">
 import type { Supplier } from "#shared/services/supplier-service/types";
 

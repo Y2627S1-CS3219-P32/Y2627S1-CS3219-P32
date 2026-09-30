@@ -3,7 +3,7 @@ Tool: Claude Code (model: Opus 5.5), date: 2026-09-29
 Scope: Request body validation for PUT /suppliers/:id.
 Author review: Done.
 Tool: Claude Code (model: Opus 5.5), date: 2026-09-30
-Scope: Reused unchanged for POST /suppliers. Author review: Pending. **/
+Scope: Reused unchanged for POST /suppliers. Author review: Done. **/
 
 import { HttpError } from "./errors.js";
 

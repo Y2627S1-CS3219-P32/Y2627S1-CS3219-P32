@@ -29,7 +29,7 @@ export interface SupplierUpdate {
 }
 
 // POST /suppliers takes the same body as PUT, and GET /types and GET /buildings
-// return these references (Claude Code (Opus 5.5), 2026-09-30; author review: Pending).
+// return these references (Claude Code (Opus 5.5), 2026-09-30; author review: Done).
 export type SupplierCreate = SupplierUpdate;
 
 export interface SupplierReference {

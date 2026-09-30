@@ -8,7 +8,7 @@
  * Author review: Done.
  * AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-09-30.
  * Scope: GET /types, GET /buildings, and POST /suppliers checks.
- * Author review: Pending.
+ * Author review: Done.
  */
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";

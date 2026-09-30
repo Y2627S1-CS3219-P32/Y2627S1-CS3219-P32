@@ -1,5 +1,5 @@
 <!-- AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-09-30.
-Scope: Administrator form for POST /suppliers, with type/building dropdowns and browser geolocation. Author review: Pending. -->
+Scope: Administrator form for POST /suppliers, with type/building dropdowns and browser geolocation. Author review: Done. -->
 <script setup lang="ts">
 import type { Supplier, SupplierCreate, SupplierReference } from "#shared/services/supplier-service/types";
 

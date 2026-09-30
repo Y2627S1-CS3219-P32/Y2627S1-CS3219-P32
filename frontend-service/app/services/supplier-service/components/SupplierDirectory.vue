@@ -1,7 +1,7 @@
 <!-- AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-28; Claude Code (Opus 5.5), 2026-09-29.
 Scope: Supplier directory, filtering, and request states; Tailwind styling after the supplier mockup. Author review: Done.
-Claude Code (Opus 5.5), 2026-09-29. Scope: Login redirect on 401 and administrator edit/delete actions. Author review: Pending.
-Claude Code (Opus 5.5), 2026-09-30. Scope: Administrator add-supplier button and dialog. Author review: Pending. -->
+Claude Code (Opus 5.5), 2026-09-29. Scope: Login redirect on 401 and administrator edit/delete actions. Author review: Done.
+Claude Code (Opus 5.5), 2026-09-30. Scope: Administrator add-supplier button and dialog. Author review: Done. -->
 <script setup lang="ts">
 import type { Supplier, SupplierFilters } from "#shared/services/supplier-service/types";
 import type { User } from "#shared/services/user-service/types";

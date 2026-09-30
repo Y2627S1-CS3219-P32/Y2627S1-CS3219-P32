@@ -54,7 +54,7 @@ Author review: Checked for correctness. -->
       description was a textarea.
     - "Use my location" filled the coordinates, and submitting added the card.
   - The test suppliers were deleted afterwards.
-- Author review: Pending.
+- Author review: Done.
 
 ## 2026-09-29: Supplier authentication and administrator PUT/DELETE
 

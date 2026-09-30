@@ -9,7 +9,7 @@ Author review: Done.
 Tool: Claude Code (model: Opus 5.5), date: 2026-09-30
 Scope: GET /types, GET /buildings, administrator-only POST /suppliers, and the shared
 type/building lookup used by POST and PUT.
-Author review: Pending. **/
+Author review: Done. **/
 
 import "dotenv/config";
 import { pathToFileURL } from "node:url";
