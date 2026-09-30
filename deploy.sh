@@ -27,14 +27,24 @@ run() { gcloud --project "$PROJECT_ID" "$@"; }
 
 secret_exists() { run secrets describe "$1" >/dev/null 2>&1; }
 
-# Cloud Run connects to Cloud SQL through a Unix socket under /cloudsql.
+sql_private_ip() {
+  run sql instances describe "$SQL_INSTANCE" \
+    --format 'value(ipAddresses.filter("type:PRIVATE").extract(ipAddress).flatten())'
+}
+
+# `socket` connects through Cloud Run's Cloud SQL connector (/cloudsql Unix socket).
+# `private` connects to the instance's private IP, for callers with VPC egress.
 database_url() {
-  local user="$1" password="$2" database="$3"
-  echo "postgres://${user}:${password}@localhost/${database}?host=/cloudsql/${SQL_CONNECTION}"
+  local mode="$1" user="$2" password="$3" database="$4"
+  if [ "$mode" = private ]; then
+    echo "postgres://${user}:${password}@$(sql_private_ip):5432/${database}"
+  else
+    echo "postgres://${user}:${password}@localhost/${database}?host=/cloudsql/${SQL_CONNECTION}"
+  fi
 }
 
 create_database() {
-  local user="$1" database="$2" secret="$3"
+  local mode="$1" user="$2" database="$3" secret="$4"
   if secret_exists "$secret"; then
     echo "Secret $secret exists; skipping database $database."
     return
@@ -43,18 +53,31 @@ create_database() {
   password="$(openssl rand -hex 24)"
   run sql databases create "$database" --instance "$SQL_INSTANCE"
   run sql users create "$user" --instance "$SQL_INSTANCE" --password "$password"
-  database_url "$user" "$password" "$database" |
+  database_url "$mode" "$user" "$password" "$database" |
     run secrets create "$secret" --replication-policy automatic --data-file -
 }
 
 setup() {
+  # Private Service Access, so Cloud SQL can have a private IP on the VPC.
+  run services enable servicenetworking.googleapis.com
+  if ! run compute addresses describe google-managed-services-default --global >/dev/null 2>&1; then
+    run compute addresses create google-managed-services-default --global \
+      --purpose VPC_PEERING --prefix-length 16 --network "$NETWORK"
+  fi
+  run services vpc-peerings connect --service servicenetworking.googleapis.com \
+    --ranges google-managed-services-default --network "$NETWORK"
+
   if ! run sql instances describe "$SQL_INSTANCE" >/dev/null 2>&1; then
-    run sql instances create "$SQL_INSTANCE" \
+    run sql instances create "$SQL_INSTANCE" --network "$NETWORK" \
       --database-version POSTGRES_17 --edition enterprise --tier "$SQL_TIER" --region "$REGION"
+  elif [ -z "$(sql_private_ip)" ]; then
+    run sql instances patch "$SQL_INSTANCE" --network "$NETWORK" --quiet
   fi
 
-  create_database supplier_service suppliers supplier-database-url
-  create_database user_service users user-database-url
+  # supplier-service uses VPC egress (to reach user-service), which also carries its
+  # database traffic, so it connects over the private IP instead of the connector.
+  create_database private supplier_service suppliers supplier-database-url
+  create_database socket user_service users user-database-url
 
   if ! secret_exists jwt-secret; then
     openssl rand -hex 32 | tr -d '\n' |
@@ -77,10 +100,13 @@ setup() {
   echo "(at least 32 bytes) and re-run ./deploy.sh; delete it after the admin exists."
 }
 
+# Flags for reaching the database: the connector (socket) or the VPC (private IP).
+SOCKET_DB_FLAGS=(--set-cloudsql-instances "$SQL_CONNECTION")
+PRIVATE_DB_FLAGS=(--set-cloudsql-instances "" --network "$NETWORK" --subnet "$SUBNET" --vpc-egress private-ranges-only)
+
 run_job() {
   local name="$1" image="$2" secret="$3"; shift 3
   run run jobs deploy "$name" --region "$REGION" --image "$image" \
-    --set-cloudsql-instances "$SQL_CONNECTION" \
     --set-secrets "DATABASE_URL=${secret}:latest" \
     --max-retries 0 --execute-now --wait "$@"
 }
@@ -91,9 +117,9 @@ service_url() {
 
 deploy() {
   run_job supplier-migrate "${REGISTRY}/supplier-service-tooling:${TAG}" supplier-database-url \
-    --command npm --args run,db:migrate
+    "${PRIVATE_DB_FLAGS[@]}" --command npm --args run,db:migrate
   run_job user-migrate "${REGISTRY}/user-service:${TAG}" user-database-url \
-    --command npm --args run,db:migrate
+    "${SOCKET_DB_FLAGS[@]}" --command npm --args run,db:migrate
 
   local user_secrets="DATABASE_URL=user-database-url:latest,JWT_SECRET=jwt-secret:latest"
   if secret_exists bootstrap-secret; then
@@ -111,7 +137,7 @@ deploy() {
 
   run run deploy supplier-service --region "$REGION" --image "${REGISTRY}/supplier-service:${TAG}" \
     --port 3000 --ingress internal --allow-unauthenticated \
-    --add-cloudsql-instances "$SQL_CONNECTION" \
+    --clear-cloudsql-instances \
     --network "$NETWORK" --subnet "$SUBNET" --vpc-egress all-traffic \
     --set-env-vars "USER_SERVICE_BASE_URL=${user_url}" \
     --set-secrets "DATABASE_URL=supplier-database-url:latest"
@@ -128,7 +154,7 @@ deploy() {
 
 seed() {
   run_job supplier-seed "${REGISTRY}/supplier-service-tooling:${TAG}" supplier-database-url \
-    --command npm --args run,db:seed
+    "${PRIVATE_DB_FLAGS[@]}" --command npm --args run,db:seed
 }
 
 case "${1:-deploy}" in

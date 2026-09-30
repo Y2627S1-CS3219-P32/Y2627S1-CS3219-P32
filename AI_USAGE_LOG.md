@@ -20,6 +20,20 @@ Author review: Checked for correctness. -->
   images; `bash -n deploy.sh` passed. `deploy.sh` has not yet been run against GCP.
 - Author review: Done.
 
+## 2026-09-30: Supplier database over Cloud SQL private IP
+
+- Tool: Claude Code (Opus 5.5). Mode: Debugging and implementation.
+- Exact prompt: `We couldn't load the suppliers. Please try again in a moment.`
+- Key response: Diagnosed from Cloud Run logs that supplier-service's all-traffic VPC egress
+  also routed its Cloud SQL connector traffic, which could not reach the instance's public IP.
+  After the student chose Cloud SQL private IP over Cloud NAT, updated `deploy.sh` to set up
+  Private Service Access, attach the instance to the VPC, and connect supplier-service and its
+  migrate/seed jobs to the private IP; user-service keeps the Cloud SQL connector.
+- Affected files: `deploy.sh` and this log.
+- Verification: redeployed with `./deploy.sh`; `supplier-migrate` connected over the private IP
+  and the student confirmed the supplier directory loads on the deployed frontend.
+- Author review: Pending.
+
 ## 2026-09-30: Redirect to first-administrator setup
 
 - Tool: ChatGPT (GPT-6). Mode: Implementation and verification.
