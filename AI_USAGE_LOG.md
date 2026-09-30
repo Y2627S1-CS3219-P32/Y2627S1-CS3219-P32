@@ -4,6 +4,19 @@ Author review: Checked for correctness. -->
 
 # AI usage log (User Service)
 
+## 2026-09-30: Redirect to first-administrator setup
+
+- Tool: ChatGPT (GPT-6). Mode: Implementation and verification.
+- Exact prompt: `when there is no admin, immediately reroute to the setup page`
+- Key response: Added global route middleware that checks the existing
+  bootstrap-availability endpoint and redirects visitors to `/setup/admin`
+  while first-admin setup is available. It leaves the setup route accessible
+  and propagates service failures other than the expected unavailable 404.
+- Affected files: `frontend-service/app/middleware/bootstrap.global.ts` and
+  this log.
+- Verification: frontend Nuxt typecheck and `git diff --check` passed.
+- Author review: Done.
+
 ## 2026-09-30: Administrator user management
 
 - Tool: ChatGPT (GPT-6). Mode: Implementation and verification.
