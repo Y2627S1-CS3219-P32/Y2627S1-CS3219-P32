@@ -1,37 +1,14 @@
 <!-- AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-29.
 Scope: Student account registration page. Author review: Done. -->
 <script setup lang="ts">
+import { getApiErrorMessage } from "../utils/get-api-error-message";
+
 const name = ref("");
 const email = ref("");
 const confirmEmail = ref("");
 const password = ref("");
 const pending = ref(false);
 const errorMessage = ref("");
-
-function getErrorMessage(error: unknown): string | undefined {
-  if (typeof error !== "object" || error === null) return undefined;
-  const errorRecord = error as Record<string, unknown>;
-
-  if ("data" in errorRecord) {
-    const message = getErrorMessage(errorRecord.data);
-    if (message) return message;
-  }
-  const response = errorRecord.response;
-  if (typeof response === "object" && response !== null) {
-    if ("_data" in response) {
-      const message = getErrorMessage(response._data);
-      if (message) return message;
-    }
-  }
-  for (const key of ["error", "message", "statusMessage"]) {
-    const value = errorRecord[key];
-    if (typeof value === "string" && value.trim()) {
-      return value;
-    }
-  }
-
-  return undefined;
-}
 
 async function register() {
   errorMessage.value = "";
@@ -54,7 +31,7 @@ async function register() {
     clearNuxtData("navigation-user");
     await navigateTo("/profile");
   } catch (error) {
-    errorMessage.value = getErrorMessage(error) ?? "Account creation failed. Please try again.";
+    errorMessage.value = getApiErrorMessage(error) ?? "Account creation failed. Please try again.";
   } finally {
     pending.value = false;
   }
