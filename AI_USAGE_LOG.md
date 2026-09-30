@@ -1,6 +1,41 @@
 <!-- AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-28.
 Scope: Record this session's AI assistance. 
 Author review: Checked for correctness. -->
+
+# AI usage log (User Service)
+
+## 2026-09-30: Account registration validation and display names
+
+- Tool: ChatGPT (GPT-6). Mode: Implementation, tests, documentation, and verification.
+- Exact prompts:
+  - `FR3: allow users to register with a display name, university email address, and password; enforce the specified display-name, email-domain, uniqueness, and password requirements, preferably server-side.`
+  - `change it so that displaynames have no spaces, only -`
+  - `add AI acknowledgements`
+- Key response:
+  - Added a separate display-name field while retaining the existing account name.
+  - Enforced display-name format and case-insensitive uniqueness, the allowed
+    email domains, and password complexity and length in the user service.
+  - Updated the signup and profile interfaces, added a SQLite migration for
+    existing users, and documented the registration rules.
+  - Revised display names to allow letters and hyphens only, with no spaces;
+    the startup migration normalizes legacy values and generates fallbacks when
+    existing values cannot be retained.
+  - Added inline AI assistance disclosures to the changed and new implementation
+    files and updated the user-service documentation disclosure.
+- Affected files: `frontend-service/app/pages/profile.vue`,
+  `frontend-service/app/pages/signup.vue`,
+  `frontend-service/app/services/user-service/components/UserCard.vue`,
+  `frontend-service/shared/services/user-service/types.ts`,
+  `user-service/README.md`, `user-service/src/auth.test.ts`,
+  `user-service/src/db.ts`, `user-service/src/db/schema.ts`,
+  `user-service/src/errors.ts`, `user-service/src/registration-validation.ts`,
+  `user-service/src/repositories/users.repository.ts`,
+  `user-service/src/services/auth.service.ts`,
+  `user-service/src/services/users.service.ts`, and this log.
+- Verification: user-service tests passed (5/5), frontend and user-service
+  typechecks passed, and SQLite migration/registration checks passed.
+- Author review: Done.
+
 # AI usage log (Supplier Service)
 
 ## 2026-09-30: Automatic migrations during Docker Compose startup
@@ -16,7 +51,7 @@ Author review: Checked for correctness. -->
     step for direct npm startup.
 - Affected files: `compose.yaml`, `supplier-service/Dockerfile`,
   `supplier-service/README.md`.
-- Author review: Pending.
+- Author review: Done.
 
 ## 2026-09-30: Administrator POST /suppliers and add-supplier form
 

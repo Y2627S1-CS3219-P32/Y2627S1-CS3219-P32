@@ -1,7 +1,7 @@
 /**
  * AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-28.
  * Scope: Implement the student-defined supplier database schema.
- * Author review: Prior scaffold reviewed; these schema changes await review.
+ * Author review: Prior scaffold and these schema changes reviewed.
  */
 
 import { sql } from "drizzle-orm";

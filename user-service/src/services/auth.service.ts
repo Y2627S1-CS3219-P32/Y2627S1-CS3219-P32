@@ -1,16 +1,22 @@
 /**
     AI Assistance Disclosure:
     Tool: ChatGPT (model: GPT-6), date: 2026-09-29
-    Scope: Credential authentication and JWT issuance service
+    Scope: Registration validation, credential authentication, and JWT issuance
     Author review: Done
 **/
 import { createAccessToken, hashPassword, verifyPassword } from "../auth";
-import { HttpError } from "../errors";
+import { errorHasMessage, HttpError } from "../errors";
 import {
   findPublicUserById,
+  findUserByDisplayName,
   findUserByEmail,
   insertUser,
 } from "../repositories/users.repository";
+import {
+  validateDisplayName,
+  validateRegistrationPassword,
+  validateUniversityEmail,
+} from "../registration-validation";
 
 export interface AuthConfiguration {
   jwtSecret: string;
@@ -23,36 +29,27 @@ export function register(input: unknown, config: AuthConfiguration) {
   }
 
   const body = input as Record<string, unknown>;
-  const allowedKeys = new Set(["name", "email", "confirmEmail", "password"]);
+  const allowedKeys = new Set(["name", "displayName", "email", "confirmEmail", "password"]);
   if (Object.keys(body).some((key) => !allowedKeys.has(key))) {
     throw new HttpError(400, "Request contains unsupported fields");
   }
 
   const name = typeof body.name === "string" ? body.name.trim() : "";
-  const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
+  const displayName = validateDisplayName(body.displayName);
+  const email = validateUniversityEmail(body.email);
   const confirmEmail = typeof body.confirmEmail === "string"
     ? body.confirmEmail.trim().toLowerCase()
     : "";
-  const password = body.password;
+  const password = validateRegistrationPassword(body.password);
 
   if (!name || name.length > 100) {
     throw new HttpError(400, "Name must be between 1 and 100 characters");
   }
-  if (
-    email.length > 254 ||
-    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
-  ) {
-    throw new HttpError(400, "A valid email address is required");
-  }
   if (confirmEmail !== email) {
     throw new HttpError(400, "Email addresses do not match");
   }
-  if (
-    typeof password !== "string" ||
-    Buffer.byteLength(password) < 8 ||
-    Buffer.byteLength(password) > 256
-  ) {
-    throw new HttpError(400, "Password must be between 8 and 256 bytes");
+  if (findUserByDisplayName(displayName)) {
+    throw new HttpError(409, "A user with this display name already exists");
   }
   if (findUserByEmail(email)) {
     throw new HttpError(409, "A user with this email already exists");
@@ -62,13 +59,17 @@ export function register(input: unknown, config: AuthConfiguration) {
   try {
     user = insertUser({
       name,
+      displayName,
       email,
       role: "student",
       passwordHash: hashPassword(password),
     });
   } catch (error) {
-    if (error instanceof Error && error.message.includes("UNIQUE constraint failed: users.email")) {
+    if (errorHasMessage(error, "UNIQUE constraint failed: users.email")) {
       throw new HttpError(409, "A user with this email already exists");
+    }
+    if (errorHasMessage(error, "users_display_name_unique")) {
+      throw new HttpError(409, "A user with this display name already exists");
     }
     throw error;
   }
@@ -97,7 +98,13 @@ export function login(email: unknown, password: unknown, config: AuthConfigurati
 
   return {
     token: createAccessToken(user.id, config.jwtSecret, config.accessTokenTtl),
-    user: { id: user.id, name: user.name, email: user.email, role: user.role },
+    user: {
+      id: user.id,
+      name: user.name,
+      displayName: user.displayName,
+      email: user.email,
+      role: user.role,
+    },
   };
 }
 

@@ -1,4 +1,4 @@
-<!-- AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-29.
+<!-- AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-30.
 Scope: Display the authenticated user's profile and end the JWT session. Author review: Done. -->
 <script setup lang="ts">
 import type { User } from "#shared/services/user-service/types";
@@ -35,6 +35,10 @@ async function logout() {
       </div>
 
       <dl v-if="user" class="mt-8 divide-y divide-[#e1e6eb] rounded-lg border border-[#e1e6eb]">
+        <div class="grid gap-1 px-4 py-3 sm:grid-cols-[8rem_1fr]">
+          <dt class="text-sm text-[#5b6570]">Display name</dt>
+          <dd class="font-medium">{{ user.displayName }}</dd>
+        </div>
         <div class="grid gap-1 px-4 py-3 sm:grid-cols-[8rem_1fr]">
           <dt class="text-sm text-[#5b6570]">Name</dt>
           <dd class="font-medium">{{ user.name }}</dd>

@@ -1,14 +1,21 @@
-<!-- AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-29.
-Scope: Student account registration page. Author review: Done. -->
+<!-- AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-30.
+Scope: Student registration fields and validation feedback. Author review: Done. -->
 <script setup lang="ts">
 import { getApiErrorMessage } from "../utils/get-api-error-message";
 
 const name = ref("");
+const displayName = ref("");
 const email = ref("");
 const confirmEmail = ref("");
 const password = ref("");
 const pending = ref(false);
 const errorMessage = ref("");
+const passwordMeetsCriteria = computed(() =>
+  [...password.value].length >= 8 &&
+  /[A-Z]/.test(password.value) &&
+  /[a-z]/.test(password.value) &&
+  /[0-9]/.test(password.value),
+);
 
 async function register() {
   errorMessage.value = "";
@@ -23,6 +30,7 @@ async function register() {
       method: "POST",
       body: {
         name: name.value,
+        displayName: displayName.value,
         email: email.value,
         confirmEmail: confirmEmail.value,
         password: password.value,
@@ -59,6 +67,21 @@ async function register() {
           >
         </div>
         <div>
+          <label for="display-name" class="mb-1.5 block text-sm font-medium">Display name</label>
+          <input
+            id="display-name"
+            v-model="displayName"
+            type="text"
+            autocomplete="nickname"
+            minlength="2"
+            maxlength="50"
+            pattern="[A-Za-z][A-Za-z-]*[A-Za-z]"
+            required
+            class="w-full rounded-lg border border-[#cfd5da] px-3 py-2.5 text-[#25313c] focus:border-[#064784] focus:outline-none focus:ring-2 focus:ring-[#064784]/20"
+          >
+          <p class="mt-1 text-xs text-[#5b6570]">2–50 letters and hyphens; must begin and end with a letter.</p>
+        </div>
+        <div>
           <label for="email" class="mb-1.5 block text-sm font-medium">Email</label>
           <input
             id="email"
@@ -69,6 +92,7 @@ async function register() {
             required
             class="w-full rounded-lg border border-[#cfd5da] px-3 py-2.5 text-[#25313c] focus:border-[#064784] focus:outline-none focus:ring-2 focus:ring-[#064784]/20"
           >
+          <p class="mt-1 text-xs text-[#5b6570]">Use an address ending in @u.nus.edu, @nus.edu.sg, or @foc.com.</p>
         </div>
         <div>
           <label for="confirm-email" class="mb-1.5 block text-sm font-medium">Confirm email</label>
@@ -93,7 +117,15 @@ async function register() {
             required
             class="w-full rounded-lg border border-[#cfd5da] px-3 py-2.5 text-[#25313c] focus:border-[#064784] focus:outline-none focus:ring-2 focus:ring-[#064784]/20"
           >
-          <p class="mt-1 text-xs text-[#5b6570]">Use at least 8 characters.</p>
+          <p
+            class="mt-1 text-xs"
+            :class="passwordMeetsCriteria ? 'text-green-700' : 'text-[#5b6570]'"
+            aria-live="polite"
+          >
+            {{ passwordMeetsCriteria
+              ? "Password meets the requirements."
+              : "Password must include 8 characters, an uppercase letter, a lowercase letter, and a number." }}
+          </p>
         </div>
 
         <p v-if="errorMessage" class="text-sm text-red-700" role="alert">{{ errorMessage }}</p>

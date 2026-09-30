@@ -1,23 +1,25 @@
 /**
     AI Assistance Disclosure:
     Tool: ChatGPT (model: GPT-6), date: 2026-09-29
-    Scope: Validated administrator user CRUD operations
+    Scope: Validated administrator user CRUD including display names
     Author review: Done
 **/
 import { hashPassword } from "../auth";
 import type { PublicUser, User } from "../db/schema";
-import { HttpError } from "../errors";
+import { errorHasMessage, HttpError } from "../errors";
 import {
   countAdministrators,
   deleteUser as removeUser,
   findAllUsers,
   findPublicUserById,
+  findUserByDisplayName,
   findUserByEmail,
   insertUser,
   updateUser as persistUserUpdate,
 } from "../repositories/users.repository";
+import { validateDisplayName } from "../registration-validation";
 
-type UserFields = Pick<User, "name" | "email" | "role">;
+type UserFields = Pick<User, "name" | "email" | "role"> & Partial<Pick<User, "displayName">>;
 
 function parseUserId(value: string): number {
   if (!/^[1-9]\d*$/.test(value)) throw new HttpError(400, "User id must be a positive integer");
@@ -52,6 +54,10 @@ function normalizeFields(input: unknown, creating: boolean): Partial<UserFields>
     fields.email = body.email.trim().toLowerCase();
   }
 
+  if ("displayName" in body) {
+    fields.displayName = validateDisplayName(body.displayName);
+  }
+
   if ("role" in body) {
     if (body.role !== "student" && body.role !== "admin") {
       throw new HttpError(400, "Role must be either student or admin");
@@ -61,7 +67,7 @@ function normalizeFields(input: unknown, creating: boolean): Partial<UserFields>
     fields.role = "student";
   }
 
-  const allowedKeys = new Set(["name", "email", "role", "password"]);
+  const allowedKeys = new Set(["name", "displayName", "email", "role", "password"]);
   if (Object.keys(body).some((key) => !allowedKeys.has(key))) {
     throw new HttpError(400, "Request contains unsupported fields");
   }
@@ -93,6 +99,13 @@ function ensureUniqueEmail(email: string, excludedId?: number): void {
   }
 }
 
+function ensureUniqueDisplayName(displayName: string, excludedId?: number): void {
+  const existing = findUserByDisplayName(displayName);
+  if (existing && existing.id !== excludedId) {
+    throw new HttpError(409, "A user with this display name already exists");
+  }
+}
+
 export function listUsers(): PublicUser[] {
   return findAllUsers();
 }
@@ -110,15 +123,20 @@ export function createUser(input: unknown): PublicUser {
     throw new Error("Validated create-user fields are missing");
   }
   ensureUniqueEmail(fields.email);
+  if (fields.displayName) ensureUniqueDisplayName(fields.displayName);
   try {
     return insertUser({
       name: fields.name,
+      ...(fields.displayName ? { displayName: fields.displayName } : {}),
       email: fields.email,
       role: fields.role,
       passwordHash: hashPassword(password),
     });
   } catch (error) {
     if (isEmailConflict(error)) throw new HttpError(409, "A user with this email already exists");
+    if (isDisplayNameConflict(error)) {
+      throw new HttpError(409, "A user with this display name already exists");
+    }
     throw error;
   }
 }
@@ -141,8 +159,9 @@ export function updateUser(idParam: string, input: unknown): PublicUser {
     throw new HttpError(409, "The last administrator cannot be demoted");
   }
   if (fields.email) ensureUniqueEmail(fields.email, id);
+  if (fields.displayName) ensureUniqueDisplayName(fields.displayName, id);
 
-  const updates: Partial<Pick<User, "name" | "email" | "role" | "passwordHash">> = { ...fields };
+  const updates: Partial<Pick<User, "name" | "displayName" | "email" | "role" | "passwordHash">> = { ...fields };
   if (password !== undefined) updates.passwordHash = hashPassword(password);
   try {
     const user = persistUserUpdate(id, updates);
@@ -150,6 +169,9 @@ export function updateUser(idParam: string, input: unknown): PublicUser {
     return user;
   } catch (error) {
     if (isEmailConflict(error)) throw new HttpError(409, "A user with this email already exists");
+    if (isDisplayNameConflict(error)) {
+      throw new HttpError(409, "A user with this display name already exists");
+    }
     throw error;
   }
 }
@@ -166,5 +188,9 @@ export function deleteUser(idParam: string, actingUserId: number): void {
 }
 
 function isEmailConflict(error: unknown): boolean {
-  return error instanceof Error && error.message.includes("UNIQUE constraint failed: users.email");
+  return errorHasMessage(error, "UNIQUE constraint failed: users.email");
+}
+
+function isDisplayNameConflict(error: unknown): boolean {
+  return errorHasMessage(error, "users_display_name_unique");
 }
