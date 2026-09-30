@@ -1,11 +1,16 @@
 /**
     AI Assistance Disclosure:
     Tool: ChatGPT (model: GPT-6), date: 2026-09-29
-    Scope: Async PostgreSQL registration, authentication, and self-service account updates
+    Scope: PostgreSQL auth and profile updates, plus protected first-admin bootstrap
     Author review: Done
 **/
+import { createHash, timingSafeEqual } from "node:crypto";
+import { eq, sql } from "drizzle-orm";
+
 import { createAccessToken, hashPassword, verifyPassword } from "../auth";
 import { HttpError, isPostgresUniqueViolation } from "../errors";
+import { db } from "../db";
+import { usersTable } from "../db/schema";
 import {
   findPublicUserById,
   findUserById,
@@ -23,6 +28,7 @@ import {
 export interface AuthConfiguration {
   jwtSecret: string;
   accessTokenTtl: number;
+  bootstrapSecret?: string;
 }
 
 export async function register(input: unknown, config: AuthConfiguration) {
@@ -120,6 +126,7 @@ export async function updateAuthenticatedUser(userId: number, input: unknown) {
   if (typeof input !== "object" || input === null || Array.isArray(input)) {
     throw new HttpError(400, "Request body must be an object");
   }
+
   const body = input as Record<string, unknown>;
   const allowedKeys = new Set([
     "displayName",
@@ -181,6 +188,7 @@ export async function updateAuthenticatedUser(userId: number, input: unknown) {
       throw new HttpError(409, "A user with this display name already exists");
     }
   }
+
   if (updates.email) {
     const existing = await findUserByEmail(updates.email);
     if (existing && existing.id !== userId) {
@@ -201,4 +209,90 @@ export async function updateAuthenticatedUser(userId: number, input: unknown) {
     }
     throw error;
   }
+}
+
+export async function bootstrapAdministrator(
+  suppliedSecret: unknown,
+  input: unknown,
+  configuredSecret: string | undefined,
+): Promise<void> {
+  if (!configuredSecret) {
+    throw new HttpError(404, "Page not found");
+  }
+
+  if (
+    typeof suppliedSecret !== "string" ||
+    !timingSafeEqual(
+      createHash("sha256").update(suppliedSecret).digest(),
+      createHash("sha256").update(configuredSecret).digest(),
+    )
+  ) {
+    throw new HttpError(403, "Invalid administrator setup secret");
+  }
+  if (typeof input !== "object" || input === null || Array.isArray(input)) {
+    throw new HttpError(400, "Request body must be an object");
+  }
+
+  const body = input as Record<string, unknown>;
+  const allowedKeys = new Set(["name", "displayName", "email", "confirmEmail", "password"]);
+  if (Object.keys(body).some((key) => !allowedKeys.has(key))) {
+    throw new HttpError(400, "Request contains unsupported fields");
+  }
+  const name = typeof body.name === "string" ? body.name.trim() : "";
+  const displayName = validateDisplayName(body.displayName);
+  const email = validateUniversityEmail(body.email);
+  const confirmEmail = typeof body.confirmEmail === "string"
+    ? body.confirmEmail.trim().toLowerCase()
+    : "";
+  const password = validateRegistrationPassword(body.password);
+  if (!name || name.length > 100) {
+    throw new HttpError(400, "Name must be between 1 and 100 characters");
+  }
+  if (confirmEmail !== email) {
+    throw new HttpError(400, "Email addresses do not match");
+  }
+
+  try {
+    await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(3219, 1)`);
+      const [admin] = await tx.select({ id: usersTable.id }).from(usersTable)
+        .where(eq(usersTable.role, "admin")).limit(1);
+      if (admin) {
+        throw new HttpError(404, "Page not found");
+      }
+      const [existingEmail] = await tx.select({ id: usersTable.id }).from(usersTable)
+        .where(eq(usersTable.email, email)).limit(1);
+      if (existingEmail) throw new HttpError(409, "A user with this email already exists");
+      const [existingDisplayName] = await tx.select({ id: usersTable.id }).from(usersTable)
+        .where(sql`lower(${usersTable.displayName}) = ${displayName.toLowerCase()}`).limit(1);
+      if (existingDisplayName) {
+        throw new HttpError(409, "A user with this display name already exists");
+      }
+      await tx.insert(usersTable).values({
+        name,
+        displayName,
+        email,
+        role: "admin",
+        passwordHash: hashPassword(password),
+      });
+    });
+  } catch (error) {
+    if (error instanceof HttpError) throw error;
+    if (isPostgresUniqueViolation(error, "users_email_unique")) {
+      throw new HttpError(409, "A user with this email already exists");
+    }
+    if (isPostgresUniqueViolation(error, "users_display_name_unique")) {
+      throw new HttpError(409, "A user with this display name already exists");
+    }
+    throw error;
+  }
+}
+
+export async function ensureBootstrapAvailable(configuredSecret: string | undefined): Promise<void> {
+  if (!configuredSecret) {
+    throw new HttpError(404, "Page not found");
+  }
+  const [admin] = await db.select({ id: usersTable.id }).from(usersTable)
+    .where(eq(usersTable.role, "admin")).limit(1);
+  if (admin) throw new HttpError(404, "Page not found");
 }

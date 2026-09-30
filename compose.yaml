@@ -1,5 +1,5 @@
 # AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-30.
-# Scope: User-service PostgreSQL database, migration job, and service dependencies. Author review: Done.
+# Scope: User PostgreSQL wiring and optional bootstrap secret. Author review: Done.
 services:
   user-service:
     build:
@@ -8,6 +8,7 @@ services:
       PORT: "3333"
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
       JWT_ACCESS_TOKEN_TTL: ${JWT_ACCESS_TOKEN_TTL:-900}
+      BOOTSTRAP_SECRET: ${BOOTSTRAP_SECRET:-}
       DATABASE_URL: postgres://user:user@user-db:5432/users
     ports:
       - "3333:3333"

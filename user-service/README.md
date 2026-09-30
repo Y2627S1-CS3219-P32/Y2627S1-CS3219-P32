@@ -15,11 +15,20 @@ or starting the service. For the local Compose database, use
 `postgres://user:user@localhost:5434/users`. Compose provisions PostgreSQL and applies
 the schema automatically with `user-db-migrate`. The credentials in Compose are for local
 development only. Existing SQLite data is not imported; the PostgreSQL database starts fresh.
+No user accounts are created automatically.
 
 Set `JWT_SECRET` to a random value of at least 32 bytes before starting the service. For example:
 ```bash
 node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
 ```
+
+To create the first administrator, set `BOOTSTRAP_SECRET` to a different random value of at
+least 32 bytes in the environment used by Compose. Visit `/setup/admin`, provide this secret,
+and enter the administrator's account details. The server creates the administrator only if
+there is no administrator already, and serializes concurrent setup attempts. An unset secret
+disables setup and `/setup/admin` returns 404. After the first administrator is created,
+`/setup/admin` returns 404; remove `BOOTSTRAP_SECRET` from the runtime environment and restart
+the user service to disable the bootstrap endpoint as well.
 
 The service listens on port `3333` by default (override with `PORT`). It serves `GET /health`,
 `POST /login`, and the JWT-protected `GET /me`. All `/users` routes require an administrator JWT:
@@ -36,13 +45,6 @@ The service listens on port `3333` by default (override with `PORT`). It serves 
 Passwords must be between 8 and 256 bytes. User responses never include password hashes.
 An admin cannot delete their own account or demote/delete the last administrator.
 Set `JWT_ACCESS_TOKEN_TTL` to the desired access-token lifetime in seconds (defaults to `900`).
-
-The development seed users both use `Password123!`:
-
-| Email | Role |
-| --- | --- |
-| `admin@foc.com` | admin |
-| `john@foc.com` | student |
 
 Passwords are stored as salted scrypt hashes. The `/login` endpoint returns a short-lived
 HS256 bearer token, which the login page can verify against `/me`.

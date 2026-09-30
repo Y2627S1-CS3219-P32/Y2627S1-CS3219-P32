@@ -4,6 +4,15 @@ Author review: Checked for correctness. -->
 
 # AI usage log (User Service)
 
+## 2026-09-30: Root environment example
+
+- Tool: ChatGPT (GPT-6). Mode: Implementation and documentation.
+- Exact prompt: `add an env example to the root`
+- Key response: Added a root `.env.example` for the Compose JWT configuration
+  and documented copying it to `.env` and replacing the JWT secret.
+- Affected files: `.env.example`, `README.md`.
+- Author review: Pending.
+
 ## 2026-09-30: Migrating user-service storage to PostgreSQL
 
 - Tool: ChatGPT (GPT-6). Mode: Implementation, tests, documentation, and verification.
@@ -71,6 +80,40 @@ Author review: Checked for correctness. -->
   `frontend-service/app/pages/profile/edit.vue`, and this log.
 - Verification: frontend Nuxt typecheck and production build passed; browser
   navigation was checked after rebuilding Compose.
+- Author review: Done.
+
+## 2026-09-30: Bootstrapping the first administrator
+
+- Tool: ChatGPT (GPT-6). Mode: Implementation, tests, documentation, and verification.
+- Exact prompt: `Find a way to improve the creation of the first admin. Remove seeding of user data directly, and bootstrap it instead`
+- Design choice selected: one-time setup page protected by a configured bootstrap secret.
+- Key response:
+  - Removed all automatic user seeding from user-service startup and removed
+    demo credentials from the login form.
+  - Added a first-admin setup page and secret-protected bootstrap endpoint.
+    The endpoint serializes concurrent attempts and refuses setup after an
+    administrator already exists; regular account/email/password validation
+    applies to the created account.
+  - Follow-up: removed the setup link from sign-in and made the setup route
+    return 404 when bootstrap is disabled or an administrator already exists.
+  - Documented configuration and recommended removing the bootstrap secret
+    from the runtime environment after setup.
+- Affected files: `compose.yaml`, `frontend-service/app/pages/login.vue`,
+  `frontend-service/app/pages/setup/admin.vue`,
+  `frontend-service/server/api/user-service/bootstrap.post.ts`,
+  `frontend-service/server/api/user-service/bootstrap.get.ts`,
+  `frontend-service/server/services/user-service/errors.ts`,
+  `user-service/README.md`, `user-service/src/config.ts`, `user-service/src/db.ts`,
+  `user-service/src/controllers/auth.controller.ts`, `user-service/src/routes/auth.routes.ts`,
+  `user-service/src/services/auth.service.ts`, and this log.
+- Verification: user-service tests (5/5), backend and frontend typechecks,
+  frontend production build, and Compose config validation passed. A disposable
+  fresh PostgreSQL integration test confirmed missing/wrong secret rejection,
+  registration validation, successful first-admin creation, rejection of a
+  second bootstrap, and successful administrator login. Follow-up route
+  verification confirmed setup availability changes from HTTP 200 to HTTP 404
+  after the first admin, repeated bootstrap POST returns 404, and the sign-in
+  page no longer displays a setup link.
 - Author review: Done.
 
 ## 2026-09-30: Account registration validation and display names

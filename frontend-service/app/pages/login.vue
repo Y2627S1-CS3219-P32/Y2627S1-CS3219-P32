@@ -1,12 +1,12 @@
-<!-- AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-29.
-Scope: JWT login test page. Author review: Done. -->
+<!-- AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-30.
+Scope: JWT login page and first-administrator setup navigation. Author review: Done. -->
 <script setup lang="ts">
 import { getApiErrorMessage } from "../utils/get-api-error-message";
 
 const route = useRoute();
 
-const email = ref("admin@foc.com");
-const password = ref("Password123!");
+const email = ref("");
+const password = ref("");
 const pending = ref(false);
 const errorMessage = ref("");
 
@@ -79,7 +79,6 @@ async function login() {
         <NuxtLink to="/signup" class="font-medium text-[#064784] hover:underline">Create an account</NuxtLink>
       </p>
 
-      <p class="mt-6 text-xs text-[#5b6570]">Demo password: <code>Password123!</code></p>
     </section>
   </main>
 </template>
