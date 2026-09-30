@@ -90,7 +90,7 @@ async function saveProfile() {
           <p class="mt-1 text-xs text-[#5b6570]">2–50 letters and hyphens; must begin and end with a letter.</p>
         </div>
         <div>
-          <label for="email" class="mb-1.5 block text-sm font-medium">University email</label>
+          <label for="email" class="mb-1.5 block text-sm font-medium">Email</label>
           <input
             id="email"
             v-model="email"

@@ -29,7 +29,7 @@ async function changeRole(user: User) {
       body: { role: nextRole },
     });
     await refresh();
-    actionMessage.value = `${user.displayName || user.name} is now ${nextRole === "admin" ? "an admin" : "a user"}.`;
+    actionMessage.value = `${user.displayName || user.name} is now ${nextRole === "admin" ? "an admin" : "a student"}.`;
   } catch (error) {
     actionError.value = getApiErrorMessage(error) ?? `Unable to ${action} this account.`;
   } finally {
@@ -104,7 +104,7 @@ async function removeUser(user: User) {
             >
               {{ pendingUserId === user.id
                 ? "Updating..."
-                : user.role === "admin" ? "Demote to user" : "Promote to admin" }}
+                : user.role === "admin" ? "Demote to student" : "Promote to admin" }}
             </button>
             <span
               v-else-if="currentUser && user.id === currentUser.id"
