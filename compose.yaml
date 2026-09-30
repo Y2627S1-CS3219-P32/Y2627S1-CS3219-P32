@@ -1,5 +1,5 @@
-# AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-29.
-# Scope: User-service JWT environment configuration. Author review: Done.
+# AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-30.
+# Scope: User PostgreSQL wiring and optional bootstrap secret. Author review: Done.
 services:
   user-service:
     build:
@@ -8,6 +8,8 @@ services:
       PORT: "3333"
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
       JWT_ACCESS_TOKEN_TTL: ${JWT_ACCESS_TOKEN_TTL:-900}
+      BOOTSTRAP_SECRET: ${BOOTSTRAP_SECRET:-}
+      DATABASE_URL: postgres://user:user@user-db:5432/users
     ports:
       - "3333:3333"
     healthcheck:
@@ -20,6 +22,9 @@ services:
       timeout: 3s
       retries: 5
       start_period: 10s
+    depends_on:
+      user-db-migrate:
+        condition: service_completed_successfully
 
   frontend-service:
     build:
@@ -48,6 +53,16 @@ services:
       DATABASE_URL: "postgres://supplier:supplier@supplier-db:5432/suppliers"
     depends_on:
       supplier-db:
+        condition: service_healthy
+
+  user-db-migrate:
+    build:
+      context: ./user-service
+    command: ["npm", "run", "db:migrate"]
+    environment:
+      DATABASE_URL: postgres://user:user@user-db:5432/users
+    depends_on:
+      user-db:
         condition: service_healthy
 
   supplier-service:
@@ -93,5 +108,22 @@ services:
       interval: 5s
       retries: 5
 
+  user-db:
+    image: postgres:17
+    ports:
+      - "127.0.0.1:5434:5432"
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: user
+      POSTGRES_DB: users
+    volumes:
+      - user-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d users"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
 volumes:
   supplier-db-data:
+  user-db-data:

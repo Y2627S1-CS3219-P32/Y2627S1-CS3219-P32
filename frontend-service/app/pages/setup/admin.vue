@@ -1,33 +1,39 @@
 <!-- AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-30.
-Scope: Student registration fields and validation feedback. Author review: Done. -->
+Scope: First-administrator bootstrap setup page. Author review: Done. -->
 <script setup lang="ts">
-import { getApiErrorMessage } from "../utils/get-api-error-message";
+import { getApiErrorMessage } from "../../utils/get-api-error-message";
+
+try {
+  await useRequestFetch()("/api/user-service/bootstrap");
+} catch (error) {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    (("statusCode" in error && error.statusCode === 404) ||
+      ("status" in error && error.status === 404))
+  ) {
+    throw createError({ statusCode: 404, statusMessage: "Page not found" });
+  }
+  throw error;
+}
 
 const name = ref("");
 const displayName = ref("");
 const email = ref("");
 const confirmEmail = ref("");
 const password = ref("");
+const bootstrapSecret = ref("");
 const pending = ref(false);
 const errorMessage = ref("");
-const passwordMeetsCriteria = computed(() =>
-  [...password.value].length >= 8 &&
-  /[A-Z]/.test(password.value) &&
-  /[a-z]/.test(password.value) &&
-  /[0-9]/.test(password.value),
-);
+const complete = ref(false);
 
-async function register() {
+async function createAdministrator() {
   errorMessage.value = "";
-  if (email.value.trim().toLowerCase() !== confirmEmail.value.trim().toLowerCase()) {
-    errorMessage.value = "Email addresses do not match.";
-    return;
-  }
-
   pending.value = true;
   try {
-    await $fetch("/api/user-service/register", {
+    await $fetch("/api/user-service/bootstrap", {
       method: "POST",
+      headers: { "x-bootstrap-secret": bootstrapSecret.value },
       body: {
         name: name.value,
         displayName: displayName.value,
@@ -36,10 +42,11 @@ async function register() {
         password: password.value,
       },
     });
-    await refreshNuxtData("navigation-user");
-    await navigateTo("/profile");
+    complete.value = true;
+    bootstrapSecret.value = "";
+    password.value = "";
   } catch (error) {
-    errorMessage.value = getApiErrorMessage(error) ?? "Account creation failed. Please try again.";
+    errorMessage.value = getApiErrorMessage(error) ?? "Administrator setup failed. Please try again.";
   } finally {
     pending.value = false;
   }
@@ -49,17 +56,34 @@ async function register() {
 <template>
   <main class="flex min-h-screen items-center justify-center bg-[#f7f9fc] px-6 py-12 text-[#06427e]">
     <section class="w-full max-w-md rounded-xl border border-[#e1e6eb] bg-white p-8 shadow-sm">
-      <NuxtLink to="/" class="text-sm font-medium text-[#064784] hover:underline">Return to home page</NuxtLink>
-      <div class="mt-5 text-3xl font-bold">Create your account</div>
-      <p class="mt-2 text-sm text-[#5b6570]">Join Friends of Campus today!</p>
+      <NuxtLink to="/login" class="text-sm font-medium text-[#064784] hover:underline">Return to sign in</NuxtLink>
+      <h1 class="mt-5 text-3xl font-bold">First administrator setup</h1>
+      <p class="mt-2 text-sm text-[#5b6570]">
+        Enter the one-time setup secret supplied by the system administrator.
+      </p>
 
-      <form class="mt-7 space-y-5" @submit.prevent="register">
+      <p v-if="complete" class="mt-6 text-sm text-green-700" role="status">
+        Administrator account created. The one-time setup is now disabled.
+        <NuxtLink to="/login" class="font-medium underline">Sign in</NuxtLink>
+      </p>
+
+      <form v-else class="mt-7 space-y-5" @submit.prevent="createAdministrator">
+        <div>
+          <label for="bootstrap-secret" class="mb-1.5 block text-sm font-medium">Setup secret</label>
+          <input
+            id="bootstrap-secret"
+            v-model="bootstrapSecret"
+            type="password"
+            autocomplete="off"
+            required
+            class="w-full rounded-lg border border-[#cfd5da] px-3 py-2.5 text-[#25313c] focus:border-[#064784] focus:outline-none focus:ring-2 focus:ring-[#064784]/20"
+          >
+        </div>
         <div>
           <label for="name" class="mb-1.5 block text-sm font-medium">Name</label>
           <input
             id="name"
             v-model="name"
-            type="text"
             autocomplete="name"
             maxlength="100"
             required
@@ -71,7 +95,6 @@ async function register() {
           <input
             id="display-name"
             v-model="displayName"
-            type="text"
             autocomplete="nickname"
             minlength="2"
             maxlength="50"
@@ -82,7 +105,7 @@ async function register() {
           <p class="mt-1 text-xs text-[#5b6570]">2–50 letters and hyphens; must begin and end with a letter.</p>
         </div>
         <div>
-          <label for="email" class="mb-1.5 block text-sm font-medium">Email</label>
+          <label for="email" class="mb-1.5 block text-sm font-medium">University email</label>
           <input
             id="email"
             v-model="email"
@@ -92,7 +115,6 @@ async function register() {
             required
             class="w-full rounded-lg border border-[#cfd5da] px-3 py-2.5 text-[#25313c] focus:border-[#064784] focus:outline-none focus:ring-2 focus:ring-[#064784]/20"
           >
-          <p class="mt-1 text-xs text-[#5b6570]">Use an address ending in @u.nus.edu, @nus.edu.sg, or @foc.com.</p>
         </div>
         <div>
           <label for="confirm-email" class="mb-1.5 block text-sm font-medium">Confirm email</label>
@@ -117,15 +139,7 @@ async function register() {
             required
             class="w-full rounded-lg border border-[#cfd5da] px-3 py-2.5 text-[#25313c] focus:border-[#064784] focus:outline-none focus:ring-2 focus:ring-[#064784]/20"
           >
-          <p
-            class="mt-1 text-xs"
-            :class="passwordMeetsCriteria ? 'text-green-700' : 'text-[#5b6570]'"
-            aria-live="polite"
-          >
-            {{ passwordMeetsCriteria
-              ? "Password meets the requirements."
-              : "Password must include 8 characters, an uppercase letter, a lowercase letter, and a number." }}
-          </p>
+          <p class="mt-1 text-xs text-[#5b6570]">At least 8 characters, with uppercase, lowercase, and a number.</p>
         </div>
 
         <p v-if="errorMessage" class="text-sm text-red-700" role="alert">{{ errorMessage }}</p>
@@ -134,14 +148,9 @@ async function register() {
           :disabled="pending"
           class="w-full rounded-lg bg-[#064784] px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-[#053765] disabled:cursor-wait disabled:opacity-60"
         >
-          {{ pending ? "Creating account..." : "Create account" }}
+          {{ pending ? "Creating administrator..." : "Create first administrator" }}
         </button>
       </form>
-
-      <p class="mt-6 text-center text-sm text-[#5b6570]">
-        Already have an account?
-        <NuxtLink to="/login" class="font-medium text-[#064784] hover:underline">Sign in</NuxtLink>
-      </p>
     </section>
   </main>
 </template>

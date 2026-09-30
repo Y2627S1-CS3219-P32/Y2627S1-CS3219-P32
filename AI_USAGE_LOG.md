@@ -1,6 +1,190 @@
 <!-- AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-28.
 Scope: Record this session's AI assistance. 
 Author review: Checked for correctness. -->
+
+# AI usage log (User Service)
+
+## 2026-09-30: Redirect to first-administrator setup
+
+- Tool: ChatGPT (GPT-6). Mode: Implementation and verification.
+- Exact prompt: `when there is no admin, immediately reroute to the setup page`
+- Key response: Added global route middleware that checks the existing
+  bootstrap-availability endpoint and redirects visitors to `/setup/admin`
+  while first-admin setup is available. It leaves the setup route accessible
+  and propagates service failures other than the expected unavailable 404.
+- Affected files: `frontend-service/app/middleware/bootstrap.global.ts` and
+  this log.
+- Verification: frontend Nuxt typecheck and `git diff --check` passed.
+- Author review: Done.
+
+## 2026-09-30: Administrator user management
+
+- Tool: ChatGPT (GPT-6). Mode: Implementation and verification.
+- Exact prompt: `under /admin/users, insert UI to remove a user, promote a user to admin, and demote an admin to user; prevent the current admin from demoting or deleting themselves.`
+- Key response:
+  - Added administrator-only Nuxt proxy routes for updating a user's role and
+    deleting a user, forwarding authentication and service errors.
+  - Added role promotion/demotion and deletion controls to `/admin/users`,
+    including confirmations, pending states, success/error feedback, and
+    hiding self-demotion and self-deletion actions.
+  - Enforced self-demotion prevention in the user service, alongside its
+    existing self-deletion and last-administrator protections.
+- Affected files: `AI_USAGE_LOG.md`,
+  `frontend-service/app/pages/admin/users.vue`,
+  `frontend-service/server/api/user-service/users/[id].put.ts`,
+  `frontend-service/server/api/user-service/users/[id].delete.ts`,
+  `user-service/src/administrator-constraints.ts`,
+  `user-service/src/auth.test.ts`,
+  `user-service/src/controllers/users.controller.ts`,
+  `user-service/src/services/users.service.ts`.
+- Verification: user-service tests (6/6), frontend Nuxt typecheck, backend
+  TypeScript compilation, and `git diff --check` passed.
+- Author review: Done.
+
+## 2026-09-30: Root environment example
+
+- Tool: ChatGPT (GPT-6). Mode: Implementation and documentation.
+- Exact prompt: `add an env example to the root`
+- Key response: Added a root `.env.example` for the Compose JWT configuration
+  and documented copying it to `.env` and replacing the JWT secret.
+- Affected files: `.env.example`, `README.md`.
+- Author review: Pending.
+
+## 2026-09-30: Migrating user-service storage to PostgreSQL
+
+- Tool: ChatGPT (GPT-6). Mode: Implementation, tests, documentation, and verification.
+- Exact prompt: `Migrate user service sqlite to postgresql. Dont worry about the existing db. Treat it as a fresh start.`
+- Key response:
+  - Replaced the SQLite schema and synchronous database calls with PostgreSQL,
+    Drizzle's node-postgres driver, and asynchronous repository/service/controller
+    flows.
+  - Added PostgreSQL startup seeding, case-insensitive unique display-name
+    indexing, and explicit PostgreSQL unique-constraint handling.
+  - Added a Compose PostgreSQL database and schema migration job; the user
+    service waits for the migration to complete before starting.
+  - Updated Docker, package dependencies, setup documentation, and the demo
+    seed email address.
+- Affected files: `compose.yaml`, `user-service/Dockerfile`,
+  `user-service/README.md`, `user-service/drizzle.config.ts`,
+  `user-service/package.json`, `user-service/package-lock.json`,
+  `user-service/src/controllers/auth.controller.ts`,
+  `user-service/src/controllers/users.controller.ts`, `user-service/src/db.ts`,
+  `user-service/src/db/schema.ts`, `user-service/src/errors.ts`,
+  `user-service/src/index.ts`, `user-service/src/middleware/authorization.ts`,
+  `user-service/src/repositories/users.repository.ts`,
+  `user-service/src/services/auth.service.ts`,
+  `user-service/src/services/users.service.ts`, and this log.
+- Verification: user-service tests and TypeScript checks passed; Compose
+  configuration validation passed.
+- Author review: Done.
+
+## 2026-09-30: Self-service account updates
+
+- Tool: ChatGPT (GPT-6). Mode: Implementation, validation, and documentation.
+- Exact prompt: `FR6.2 allow users to change display name according to FR; FR6.3 change email according to FR; FR6.4 change password according to FR; FR6.5 reject new passwords equal to old password.`
+- Key response:
+  - Added authenticated `PATCH /me` and a frontend proxy for self-service
+    updates to display name, university email, and password.
+  - Reused the registration validators and uniqueness constraints for profile
+    changes; email changes require a matching confirmation.
+  - Password changes require the current password, enforce password policy,
+    and reject reuse of the existing password.
+  - Added profile edit fields and success/error feedback.
+- Affected files: `frontend-service/app/pages/profile.vue`,
+  `frontend-service/server/api/user-service/me.patch.ts`,
+  `user-service/README.md`, `user-service/src/controllers/auth.controller.ts`,
+  `user-service/src/repositories/users.repository.ts`,
+  `user-service/src/routes/auth.routes.ts`,
+  `user-service/src/services/auth.service.ts`, and this log.
+- Verification: user-service tests passed (5/5), backend and frontend typechecks
+  passed, and an HTTP integration check confirmed profile/email updates, same-
+  password rejection, current-password verification, password-policy validation,
+  and successful login with the changed password.
+- Author review: Done.
+
+## 2026-09-30: Separating profile editing
+
+- Tool: ChatGPT (GPT-6). Mode: Implementation and verification.
+- Exact prompt: `separate out the edit page`
+- Key response:
+  - Made `/profile` a read-only account summary with an Edit profile link.
+  - Moved the existing display-name, email, and password form to the
+    authenticated `/profile/edit` page, with links back to the profile.
+  - Corrected route rendering by making the profile summary an index page,
+    so Nuxt resolves the edit page as a sibling rather than a nested page
+    without a parent `<NuxtPage>` outlet.
+- Affected files: `frontend-service/app/pages/profile/index.vue`,
+  `frontend-service/app/pages/profile/edit.vue`, and this log.
+- Verification: frontend Nuxt typecheck and production build passed; browser
+  navigation was checked after rebuilding Compose.
+- Author review: Done.
+
+## 2026-09-30: Bootstrapping the first administrator
+
+- Tool: ChatGPT (GPT-6). Mode: Implementation, tests, documentation, and verification.
+- Exact prompt: `Find a way to improve the creation of the first admin. Remove seeding of user data directly, and bootstrap it instead`
+- Design choice selected: one-time setup page protected by a configured bootstrap secret.
+- Key response:
+  - Removed all automatic user seeding from user-service startup and removed
+    demo credentials from the login form.
+  - Added a first-admin setup page and secret-protected bootstrap endpoint.
+    The endpoint serializes concurrent attempts and refuses setup after an
+    administrator already exists; regular account/email/password validation
+    applies to the created account.
+  - Follow-up: removed the setup link from sign-in and made the setup route
+    return 404 when bootstrap is disabled or an administrator already exists.
+  - Documented configuration and recommended removing the bootstrap secret
+    from the runtime environment after setup.
+- Affected files: `compose.yaml`, `frontend-service/app/pages/login.vue`,
+  `frontend-service/app/pages/setup/admin.vue`,
+  `frontend-service/server/api/user-service/bootstrap.post.ts`,
+  `frontend-service/server/api/user-service/bootstrap.get.ts`,
+  `frontend-service/server/services/user-service/errors.ts`,
+  `user-service/README.md`, `user-service/src/config.ts`, `user-service/src/db.ts`,
+  `user-service/src/controllers/auth.controller.ts`, `user-service/src/routes/auth.routes.ts`,
+  `user-service/src/services/auth.service.ts`, and this log.
+- Verification: user-service tests (5/5), backend and frontend typechecks,
+  frontend production build, and Compose config validation passed. A disposable
+  fresh PostgreSQL integration test confirmed missing/wrong secret rejection,
+  registration validation, successful first-admin creation, rejection of a
+  second bootstrap, and successful administrator login. Follow-up route
+  verification confirmed setup availability changes from HTTP 200 to HTTP 404
+  after the first admin, repeated bootstrap POST returns 404, and the sign-in
+  page no longer displays a setup link.
+- Author review: Done.
+
+## 2026-09-30: Account registration validation and display names
+
+- Tool: ChatGPT (GPT-6). Mode: Implementation, tests, documentation, and verification.
+- Exact prompts:
+  - `FR3: allow users to register with a display name, university email address, and password; enforce the specified display-name, email-domain, uniqueness, and password requirements, preferably server-side.`
+  - `change it so that displaynames have no spaces, only -`
+  - `add AI acknowledgements`
+- Key response:
+  - Added a separate display-name field while retaining the existing account name.
+  - Enforced display-name format and case-insensitive uniqueness, the allowed
+    email domains, and password complexity and length in the user service.
+  - Updated the signup and profile interfaces, added a SQLite migration for
+    existing users, and documented the registration rules.
+  - Revised display names to allow letters and hyphens only, with no spaces;
+    the startup migration normalizes legacy values and generates fallbacks when
+    existing values cannot be retained.
+  - Added inline AI assistance disclosures to the changed and new implementation
+    files and updated the user-service documentation disclosure.
+- Affected files: `frontend-service/app/pages/profile.vue`,
+  `frontend-service/app/pages/signup.vue`,
+  `frontend-service/app/services/user-service/components/UserCard.vue`,
+  `frontend-service/shared/services/user-service/types.ts`,
+  `user-service/README.md`, `user-service/src/auth.test.ts`,
+  `user-service/src/db.ts`, `user-service/src/db/schema.ts`,
+  `user-service/src/errors.ts`, `user-service/src/registration-validation.ts`,
+  `user-service/src/repositories/users.repository.ts`,
+  `user-service/src/services/auth.service.ts`,
+  `user-service/src/services/users.service.ts`, and this log.
+- Verification: user-service tests passed (5/5), frontend and user-service
+  typechecks passed, and SQLite migration/registration checks passed.
+- Author review: Done.
+
 # AI usage log (Supplier Service)
 
 ## 2026-09-30: Supplier PUT and DELETE changed to plain CRUD
@@ -47,7 +231,7 @@ Author review: Checked for correctness. -->
     step for direct npm startup.
 - Affected files: `compose.yaml`, `supplier-service/Dockerfile`,
   `supplier-service/README.md`.
-- Author review: Pending.
+- Author review: Done.
 
 ## 2026-09-30: Administrator POST /suppliers and add-supplier form
 
