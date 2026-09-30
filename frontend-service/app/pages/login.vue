@@ -1,6 +1,8 @@
 <!-- AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-29.
 Scope: JWT login test page. Author review: Done. -->
 <script setup lang="ts">
+import { getApiErrorMessage } from "../utils/get-api-error-message";
+
 const route = useRoute();
 
 const email = ref("admin@foc.com");
@@ -24,8 +26,8 @@ async function login() {
       : "/profile";
     clearNuxtData("navigation-user");
     await navigateTo(redirect);
-  } catch {
-    errorMessage.value = "Login failed. Check the email and password, then try again.";
+  } catch (error) {
+    errorMessage.value = getApiErrorMessage(error) ?? "Login failed. Check the email and password, then try again.";
   } finally {
     pending.value = false;
   }
