@@ -4,6 +4,22 @@ Author review: Checked for correctness. -->
 
 # AI usage log (User Service)
 
+## 2026-09-30: Cloud Build and Cloud Run deployment scripts
+
+- Tool: Claude Code (Opus 5.5). Mode: Boilerplate generation (deployment config) and verification.
+- Exact prompt: `yes go ahead, sg sounds good, pull from main and go on a branch first`
+  (following a discussion about the database size, Secret Manager usage, ingress/egress, and
+  internal vs public services).
+- Key response: Added a Cloud Build config that builds and pushes the frontend, user,
+  supplier, and supplier tooling images to Artifact Registry (`asia-southeast1`, repository
+  `foc`); a `.gcloudignore`; and `deploy.sh` with one-time setup (Cloud SQL PostgreSQL,
+  databases, Secret Manager secrets, IAM, Private Google Access), migration jobs, service
+  deployment, and a supplier seed job.
+- Affected files: `cloudbuild.yaml`, `.gcloudignore`, `deploy.sh`, `README.md`, and this log.
+- Verification: `gcloud builds submit --config cloudbuild.yaml` succeeded and pushed all four
+  images; `bash -n deploy.sh` passed. `deploy.sh` has not yet been run against GCP.
+- Author review: Done.
+
 ## 2026-09-30: Redirect to first-administrator setup
 
 - Tool: ChatGPT (GPT-6). Mode: Implementation and verification.

@@ -79,6 +79,25 @@ containers, which restart (backends) or hot-swap modules (frontend) on change.
 Editing a `package.json` rebuilds that service's image. Outside Docker, run
 `npm run dev` in any of these service folders.
 
+## Deploy to Google Cloud (Cloud Run)
+
+<!-- AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-09-30.
+Scope: Manual Cloud Build and Cloud Run deployment instructions. Author review: Done. -->
+
+Images are built by [`cloudbuild.yaml`](cloudbuild.yaml) and deployed by
+[`deploy.sh`](deploy.sh). Run from the repository root with the target project selected
+(`gcloud config set project <id>`):
+
+```sh
+gcloud builds submit --config cloudbuild.yaml --region asia-southeast1  # build and push images
+./deploy.sh setup   # one-time: Cloud SQL, databases, secrets, IAM, networking
+./deploy.sh         # run migrations, then deploy all services
+./deploy.sh seed    # load supplier seed data (safe to repeat)
+```
+
+To create the first administrator, add a `bootstrap-secret` in Secret Manager (at least 32
+bytes), re-run `./deploy.sh`, complete `/setup/admin`, then delete the secret and re-run.
+
 ## AI Assistance Disclosure
 
 Tools: ChatGPT / Codex (GPT-6) and Claude Code (Opus 5.5). Modes: boilerplate generation, implementation, debugging,
