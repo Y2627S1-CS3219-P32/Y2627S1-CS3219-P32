@@ -15,6 +15,9 @@
  * AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-09-30.
  * Scope: POST /suppliers operating hours checks.
  * Author review: Pending.
+ * AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-10-01.
+ * Scope: Operating hours in GET responses and PUT replacement checks.
+ * Author review: Pending.
  */
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
@@ -536,4 +539,50 @@ test("POST rejects invalid or overlapping operating hours without creating the s
   }
   const rows = await db.select().from(schema.suppliers).where(eq(schema.suppliers.name, "Bad Hours Cafe"));
   assert.equal(rows.length, 0);
+});
+
+test("GET returns each supplier's operating hours as HH:MM, sorted by day and time", async () => {
+  const [multi] = await getSuppliers({ name: "C Multi-period" });
+  assert.equal(multi.operatingHours.length, 14);
+  assert.deepEqual(multi.operatingHours.slice(0, 2), [
+    { day: 0, openingHrs: "00:00", closingHrs: "24:00" },
+    { day: 0, openingHrs: "00:01", closingHrs: "24:00" },
+  ]);
+  const [closed] = await getSuppliers({ name: "A Closed Cafe" });
+  assert.deepEqual(closed.operatingHours, []);
+});
+
+test("PUT replaces operating hours when sent, and an empty list clears them", async () => {
+  const supplier = await insertSupplier("Rehoured Cafe");
+  await db.insert(schema.operatingHours).values({ supplierId: supplier.id, day: 1, openingHrs: "08:00", closingHrs: "12:00" });
+  const body = { ...validUpdate, name: "Rehoured Cafe" };
+  const hoursOf = async () => (await db.select().from(schema.operatingHours).where(eq(schema.operatingHours.supplierId, supplier.id)))
+    .map(row => `${row.day} ${row.openingHrs}-${row.closingHrs}`).sort();
+
+  const always = Array.from({ length: 7 }, (_, day) => ({ day, openingHrs: "00:00", closingHrs: "24:00" }));
+  const replaced = await request(`/suppliers/${supplier.id}`, { method: "PUT", token: "admin-token", body: { ...body, operatingHours: always } });
+  assert.equal(replaced.status, 200);
+  const updated = await replaced.json();
+  assert.equal(updated.isOpen, true);
+  assert.deepEqual(updated.operatingHours, always);
+  assert.equal((await hoursOf()).length, 7);
+
+  // Invalid hours reject the whole update, including the other fields.
+  const rejected = await request(`/suppliers/${supplier.id}`, {
+    method: "PUT",
+    token: "admin-token",
+    body: { ...body, floor: "9", operatingHours: [{ day: 1, openingHrs: "09:00", closingHrs: "17:00" }, { day: 1, openingHrs: "10:00", closingHrs: "11:00" }] },
+  });
+  assert.equal(rejected.status, 400);
+  assert.equal((await hoursOf()).length, 7);
+  const [row] = await db.select().from(schema.suppliers).where(eq(schema.suppliers.id, supplier.id));
+  assert.equal(row.floor, "3");
+
+  const cleared = await request(`/suppliers/${supplier.id}`, { method: "PUT", token: "admin-token", body: { ...body, operatingHours: [] } });
+  assert.equal(cleared.status, 200);
+  assert.equal((await cleared.json()).isOpen, false);
+  assert.deepEqual(await hoursOf(), []);
+
+  const unknown = await request("/suppliers/00000000-0000-4000-8000-000000000000", { method: "PUT", token: "admin-token", body: { ...body, operatingHours: always } });
+  assert.equal(unknown.status, 404);
 });

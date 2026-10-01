@@ -16,6 +16,10 @@ DELETE removes the supplier and its operating hours.
 Author review: Pending.
 Tool: Claude Code (model: Opus 5.5), date: 2026-09-30
 Scope: POST /suppliers inserts the supplier's operating hours in the same transaction.
+Author review: Pending.
+Tool: Claude Code (model: Opus 5.5), date: 2026-10-01
+Scope: GET /suppliers returns each supplier's operating hours, and PUT replaces them
+when the body includes operatingHours.
 Author review: Pending. **/
 
 import "dotenv/config";
@@ -27,7 +31,7 @@ import { db } from "./db/index.js";
 import { openingHoursMatch } from "./db/opening-hours.js";
 import { buildings, operatingHours, suppliers, types } from "./db/schema.js";
 import { HttpError } from "./errors.js";
-import { parseOperatingHours } from "./operating-hours-input.js";
+import { parseOperatingHours, type OperatingPeriodInput } from "./operating-hours-input.js";
 import { parseSupplierInput, type SupplierInput } from "./supplier-input.js";
 
 export const app = express();
@@ -42,9 +46,19 @@ app.get("/", (_req, res) => {
 function selectSuppliers(where: SQL | undefined) {
   const isOpen = sql<boolean>`${suppliers.isActive} and ${openingHoursMatch(new Date(), "Asia/Singapore")}`;
   const { supplierTypeId, buildingId, ...supplierColumns } = getTableColumns(suppliers);
+  // Times are returned as "HH:MM" (closing may be "24:00"), matching the request format.
+  const hours = sql<OperatingPeriodInput[]>`(
+    select coalesce(json_agg(json_build_object(
+      'day', ${operatingHours.day},
+      'openingHrs', to_char(${operatingHours.openingHrs}, 'HH24:MI'),
+      'closingHrs', to_char(${operatingHours.closingHrs}, 'HH24:MI')
+    ) order by ${operatingHours.day}, ${operatingHours.openingHrs}), '[]'::json)
+    from ${operatingHours}
+    where ${operatingHours.supplierId} = ${suppliers.id}
+  )`;
 
   return db
-    .select({ ...supplierColumns, type: types.name, buildingName: buildings.name, isOpen })
+    .select({ ...supplierColumns, type: types.name, buildingName: buildings.name, isOpen, operatingHours: hours })
     .from(suppliers)
     .innerJoin(types, eq(supplierTypeId, types.id))
     .leftJoin(buildings, eq(buildingId, buildings.id))
@@ -115,7 +129,7 @@ app.get("/suppliers", requireAuthentication, async (req, res) => {
 // New suppliers start active. Without operating hours they show as closed.
 app.post("/suppliers", requireAuthentication, requireAdministrator, async (req, res) => {
   const input = parseSupplierInput(req.body);
-  const hours = parseOperatingHours(req.body);
+  const hours = parseOperatingHours(req.body) ?? [];
 
   const newId = await db.transaction(async (tx) => {
     const row = await toSupplierRow(tx, input);
@@ -131,14 +145,21 @@ app.post("/suppliers", requireAuthentication, requireAdministrator, async (req, 
   res.status(201).json(supplier);
 });
 
-// Omitting isActive keeps its current value.
+// Omitting isActive or operatingHours keeps its current value. Sent hours replace
+// all of the supplier's existing hours.
 app.put("/suppliers/:id", requireAuthentication, requireAdministrator, async (req, res) => {
   const id = getSupplierIdParam(req);
   const input = parseSupplierInput(req.body);
+  const hours = parseOperatingHours(req.body);
 
   const found = await db.transaction(async (tx) => {
     const updated = await tx.update(suppliers).set(await toSupplierRow(tx, input)).where(eq(suppliers.id, id)).returning({ id: suppliers.id });
-    return updated.length > 0;
+    if (updated.length === 0) return false;
+    if (hours) {
+      await tx.delete(operatingHours).where(eq(operatingHours.supplierId, id));
+      if (hours.length > 0) await tx.insert(operatingHours).values(hours.map(period => ({ supplierId: id, ...period })));
+    }
+    return true;
   });
   if (!found) throw new HttpError(404, "Supplier not found");
 

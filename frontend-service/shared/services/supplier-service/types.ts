@@ -14,6 +14,8 @@ export interface Supplier {
   createdAt: string;
   updatedAt: string;
   isOpen: boolean;
+  // Claude Code (Opus 5.5), 2026-10-01; author review: Pending.
+  operatingHours: OperatingPeriod[];
 }
 
 // Body of PUT /suppliers/:id (Claude Code (Opus 5.5), 2026-09-29; author review: Done).
@@ -28,6 +30,9 @@ export interface SupplierUpdate {
   imageUrl: string | null;
   // Omitted keeps the current value (Claude Code (Opus 5.5), 2026-09-30; author review: Pending).
   isActive?: boolean;
+  // Omitted keeps the current hours; sent hours replace them all
+  // (Claude Code (Opus 5.5), 2026-10-01; author review: Pending).
+  operatingHours?: OperatingPeriod[];
 }
 
 // One operating period. day is 0 (Sunday) to 6 (Saturday); times are "HH:MM", and

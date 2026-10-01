@@ -4,6 +4,30 @@ Author review: Checked for correctness. -->
 
 # AI usage log (User Service)
 
+## 2026-10-01: Editing operating hours
+
+- Tool: Claude Code (Opus 5.5). Mode: Implementation, tests, documentation, and verification.
+- Exact prompt: `editing of operating hours should also be possible from the edit screen.`
+- Key response:
+  - `GET /suppliers` returns each supplier's `operatingHours` (as `HH:MM`,
+    sorted by day and opening time). `PUT /suppliers/:id` accepts an optional
+    `operatingHours` array, validated as for POST; when sent, it replaces all of
+    the supplier's hours in the same transaction as the row update, and when
+    omitted the hours are kept.
+  - The edit dialog reuses the operating hours picker, preselecting the matching
+    preset or opening the custom editor with the supplier's current hours.
+- Affected files: `supplier-service/src/operating-hours-input.ts`,
+  `supplier-service/src/index.ts`, `supplier-service/test/suppliers.test.mjs`,
+  `supplier-service/README.md`,
+  `frontend-service/shared/services/supplier-service/types.ts`,
+  `frontend-service/app/services/supplier-service/components/OperatingHoursPicker.vue`,
+  `frontend-service/app/services/supplier-service/components/SupplierCreateDialog.vue`,
+  `frontend-service/app/services/supplier-service/components/SupplierEditDialog.vue`,
+  and this log.
+- Verification: supplier-service typecheck and route tests (27/27) and the
+  frontend Nuxt typecheck passed.
+- Author review: Pending.
+
 ## 2026-09-30: Operating hours on supplier creation
 
 - Tool: Claude Code (Opus 5.5). Mode: Implementation, tests, documentation, and verification.

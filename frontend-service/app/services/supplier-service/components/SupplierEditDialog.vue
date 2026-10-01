@@ -1,19 +1,25 @@
 <!-- AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-09-29.
 Scope: Administrator edit form for PUT /suppliers/:id. Author review: Done.
-Claude Code (Opus 5.5), 2026-09-30. Scope: Active toggle; edits save in place. Author review: Pending. -->
+Claude Code (Opus 5.5), 2026-09-30. Scope: Active toggle; edits save in place. Author review: Pending.
+Claude Code (Opus 5.5), 2026-10-01. Scope: Operating hours field. Author review: Pending. -->
 <script setup lang="ts">
 import type { Supplier, SupplierUpdate } from "#shared/services/supplier-service/types";
+import OperatingHoursPicker from "./OperatingHoursPicker.vue";
 
 const props = defineProps<{ supplier: Supplier | null; types: string[]; buildings: string[] }>();
 const emit = defineEmits<{ close: []; saved: [supplier: Supplier]; unauthorized: [] }>();
 
 const dialog = ref<HTMLDialogElement | null>(null);
-const form = ref<SupplierUpdate>(emptyForm());
+// The form always sends hours, so saving replaces them with what is shown.
+type SupplierEditForm = SupplierUpdate & Required<Pick<SupplierUpdate, "operatingHours">>;
+const form = ref<SupplierEditForm>(emptyForm());
 const saving = ref(false);
 const errorMessage = ref("");
+// Remounts the hours picker so each opening starts from that supplier's hours.
+const openCount = ref(0);
 
-function emptyForm(): SupplierUpdate {
-  return { name: "", type: "", buildingName: "", floor: "", locationDescription: "", latitude: "", longitude: "", imageUrl: "", isActive: true };
+function emptyForm(): SupplierEditForm {
+  return { name: "", type: "", buildingName: "", floor: "", locationDescription: "", latitude: "", longitude: "", imageUrl: "", isActive: true, operatingHours: [] };
 }
 
 watch(() => props.supplier, (supplier) => {
@@ -32,7 +38,9 @@ watch(() => props.supplier, (supplier) => {
     longitude: supplier.longitude,
     imageUrl: supplier.imageUrl ?? "",
     isActive: supplier.isActive,
+    operatingHours: supplier.operatingHours.map(period => ({ ...period })),
   };
+  openCount.value++;
   nextTick(() => dialog.value?.showModal());
 });
 
@@ -76,7 +84,7 @@ const input = "w-full rounded-lg border border-[#cfd5da] bg-white px-3 py-2 text
   <dialog
     ref="dialog"
     aria-labelledby="edit-supplier-title"
-    class="m-auto w-[min(32rem,calc(100%-2rem))] rounded-lg bg-white p-0 text-[#25313c] shadow-xl backdrop:bg-black/40"
+    class="m-auto max-h-[calc(100%-2rem)] w-[min(36rem,calc(100%-2rem))] overflow-y-auto rounded-lg bg-white p-0 text-[#25313c] shadow-xl backdrop:bg-black/40"
     @close="emit('close')"
   >
     <form class="p-5" @submit.prevent="save">
@@ -127,6 +135,7 @@ const input = "w-full rounded-lg border border-[#cfd5da] bg-white px-3 py-2 text
             Active <span class="text-xs text-[#5b6570]">(inactive suppliers are hidden from students)</span>
           </label>
         </div>
+        <OperatingHoursPicker :key="openCount" v-model="form.operatingHours" id-prefix="edit" preselect class="sm:col-span-2" />
       </div>
 
       <p v-if="errorMessage" class="mt-4 text-sm text-red-700" role="alert">{{ errorMessage }}</p>

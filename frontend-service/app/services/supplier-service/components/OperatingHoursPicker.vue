@@ -1,6 +1,8 @@
 <!-- AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-09-30.
 Scope: Operating hours input for the add-supplier form, with preset schedules and a
-day-by-day custom editor. Author review: Pending. -->
+day-by-day custom editor. Author review: Pending.
+Claude Code (Opus 5.5), 2026-10-01. Scope: Starting from existing hours in the edit form.
+Author review: Pending. -->
 <script setup lang="ts">
 import type { OperatingPeriod } from "#shared/services/supplier-service/types";
 
@@ -10,6 +12,9 @@ interface DayRow {
   periods: { openingHrs: string; closingHrs: string }[];
 }
 
+// idPrefix keeps ids unique between forms. preselect starts from the model's current
+// hours (the matching preset, or custom) instead of an empty selection.
+const props = defineProps<{ idPrefix: string; preselect?: boolean }>();
 const model = defineModel<OperatingPeriod[]>({ required: true });
 
 const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -30,8 +35,13 @@ const presets = [
   { id: "none", label: "No hours yet (shows as closed)", periods: [] },
 ];
 
-const selected = ref("");
-const days = ref<DayRow[]>(toRows([]));
+function key(periods: OperatingPeriod[]): string {
+  return periods.map(period => `${period.day} ${period.openingHrs}-${period.closingHrs}`).sort().join();
+}
+
+const initial = props.preselect ? model.value : [];
+const selected = ref(props.preselect ? presets.find(preset => key(preset.periods) === key(initial))?.id ?? "custom" : "");
+const days = ref<DayRow[]>(toRows(initial));
 
 function toRows(periods: OperatingPeriod[]): DayRow[] {
   return EVERY_DAY.map((day) => {
@@ -42,7 +52,8 @@ function toRows(periods: OperatingPeriod[]): DayRow[] {
       allDay,
       periods: allDay || own.length === 0
         ? [{ openingHrs: "09:00", closingHrs: "17:00" }]
-        : own.map(({ openingHrs, closingHrs }) => ({ openingHrs, closingHrs })),
+        // A time input cannot show 24:00; closing at 00:00 also ends the day at midnight.
+        : own.map(({ openingHrs, closingHrs }) => ({ openingHrs, closingHrs: closingHrs === "24:00" ? "00:00" : closingHrs })),
     };
   });
 }
@@ -57,7 +68,8 @@ function fromRows(rows: DayRow[]): OperatingPeriod[] {
 
 // Custom starts from the previously chosen preset, so it can be tweaked.
 watch(selected, (id, previous) => {
-  if (id === "custom") days.value = toRows(presets.find(preset => preset.id === previous)?.periods ?? []);
+  const preset = presets.find(preset => preset.id === previous);
+  if (id === "custom" && preset) days.value = toRows(preset.periods);
 });
 
 watchEffect(() => {
@@ -82,8 +94,8 @@ const link = "text-xs font-medium text-[#064784] hover:underline";
 
 <template>
   <div>
-    <label for="create-hours" class="mb-1 block text-xs font-medium text-[#5b6570]">Operating hours</label>
-    <select id="create-hours" v-model="selected" required :class="input">
+    <label :for="`${idPrefix}-hours`" class="mb-1 block text-xs font-medium text-[#5b6570]">Operating hours</label>
+    <select :id="`${idPrefix}-hours`" v-model="selected" required :class="input">
       <option value="" disabled>Select operating hours</option>
       <option v-for="preset in presets" :key="preset.id" :value="preset.id">{{ preset.label }}</option>
       <option value="custom">Custom (set each day)</option>
@@ -109,11 +121,11 @@ const link = "text-xs font-medium text-[#064784] hover:underline";
 
         <div v-if="days[day]!.open && !days[day]!.allDay" class="mt-2 space-y-2 sm:pl-8">
           <div v-for="(period, index) in days[day]!.periods" :key="index" class="flex flex-wrap items-center gap-2">
-            <label :for="`hours-${day}-${index}-open`" class="sr-only">{{ DAY_NAMES[day] }} opening time {{ index + 1 }}</label>
-            <input :id="`hours-${day}-${index}-open`" v-model="period.openingHrs" type="time" required :class="time">
+            <label :for="`${idPrefix}-hours-${day}-${index}-open`" class="sr-only">{{ DAY_NAMES[day] }} opening time {{ index + 1 }}</label>
+            <input :id="`${idPrefix}-hours-${day}-${index}-open`" v-model="period.openingHrs" type="time" required :class="time">
             <span class="text-xs text-[#5b6570]">to</span>
-            <label :for="`hours-${day}-${index}-close`" class="sr-only">{{ DAY_NAMES[day] }} closing time {{ index + 1 }}</label>
-            <input :id="`hours-${day}-${index}-close`" v-model="period.closingHrs" type="time" required :class="time">
+            <label :for="`${idPrefix}-hours-${day}-${index}-close`" class="sr-only">{{ DAY_NAMES[day] }} closing time {{ index + 1 }}</label>
+            <input :id="`${idPrefix}-hours-${day}-${index}-close`" v-model="period.closingHrs" type="time" required :class="time">
             <span v-if="period.closingHrs && period.closingHrs <= period.openingHrs" class="text-xs text-[#5b6570]">(next day)</span>
             <button
               v-if="days[day]!.periods.length > 1"

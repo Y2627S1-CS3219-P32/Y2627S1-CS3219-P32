@@ -2,6 +2,9 @@
 Tool: Claude Code (model: Opus 5.5), date: 2026-09-30
 Scope: Validation of the operating hours sent with POST /suppliers, including the
 service-layer non-overlap check described in docs/database_schemas.md.
+Author review: Pending.
+Tool: Claude Code (model: Opus 5.5), date: 2026-10-01
+Scope: Omitted hours are reported as undefined so PUT can keep the current hours.
 Author review: Pending. **/
 
 import { HttpError } from "./errors.js";
@@ -38,10 +41,10 @@ function overlaps([aStart, aEnd]: [number, number], [bStart, bEnd]: [number, num
   return [-WEEK_MINUTES, 0, WEEK_MINUTES].some(shift => aStart < bEnd + shift && bStart + shift < aEnd);
 }
 
-// Omitted means no hours, so the supplier shows as closed.
-export function parseOperatingHours(body: unknown): OperatingPeriodInput[] {
+// undefined when omitted: POST then creates no hours, and PUT keeps the current ones.
+export function parseOperatingHours(body: unknown): OperatingPeriodInput[] | undefined {
   const value = typeof body === "object" && body !== null ? (body as Record<string, unknown>).operatingHours : undefined;
-  if (value === undefined) return [];
+  if (value === undefined) return undefined;
   if (!Array.isArray(value)) throw new HttpError(400, "operatingHours must be an array");
   if (value.length > MAX_PERIODS) throw new HttpError(400, `operatingHours must have at most ${MAX_PERIODS} periods`);
 

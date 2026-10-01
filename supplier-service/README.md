@@ -4,6 +4,7 @@ access, and route documentation reviewed.
 Claude Code (Opus 5.5), 2026-09-29: authentication, PUT, and DELETE documentation. Author review: Done.
 Claude Code (Opus 5.5), 2026-09-30: POST, GET /types, and GET /buildings documentation. Author review: Done.
 Claude Code (Opus 5.5), 2026-09-30: POST operatingHours documentation. Author review: Pending.
+Claude Code (Opus 5.5), 2026-10-01: operatingHours in GET and PUT documentation. Author review: Pending.
 Claude Code (Opus 5.5), 2026-09-30: In-place PUT and hard DELETE documentation. Author review: Pending.
 ChatGPT (GPT-6), 2026-09-30: Docker Compose migration startup documentation. Author review: Done. -->
 
@@ -76,12 +77,16 @@ the opening instant, and excludes the closing instant. It checks multiple daily
 periods and overnight periods that started on the previous day. A supplier with
 no matching period is closed. Multiple matching periods return the supplier once.
 
+Each supplier also has an `operatingHours` array in the format accepted by POST
+and PUT (see POST below), sorted by day and opening time; it is `[]` when the
+supplier has no hours.
+
 ## PUT /suppliers/:id (administrators)
 
-Updates the supplier row in place; its `id` and operating hours are unchanged.
-Returns 200 with the updated supplier, in the same shape as a `GET /suppliers` item.
+Updates the supplier row in place; its `id` is unchanged. Returns 200 with the
+updated supplier, in the same shape as a `GET /suppliers` item.
 
-The JSON body must contain all of these fields (except `isActive`):
+The JSON body must contain all of these fields (except `isActive` and `operatingHours`):
 
 | Field | Rules |
 | --- | --- |
@@ -92,9 +97,10 @@ The JSON body must contain all of these fields (except `isActive`):
 | `latitude`, `longitude` | Number or numeric string, within ±90 and ±180 |
 | `imageUrl` | `null` or an `http`/`https` URL |
 | `isActive` | Optional boolean. Omitted keeps the current value. `false` hides the supplier from students |
+| `operatingHours` | Optional array, validated as for POST. Omitted keeps the current hours; otherwise it replaces all of them (`[]` removes them) |
 
 Strings are trimmed; blank optional strings are stored as `null`. Invalid bodies
-return 400. Unknown or malformed ids return 404. Inactive suppliers can be edited
+return 400 and change nothing, as the row and its hours are updated in one transaction. Unknown or malformed ids return 404. Inactive suppliers can be edited
 and reactivated.
 
 ## DELETE /suppliers/:id (administrators)
@@ -108,7 +114,7 @@ deleting it, set `isActive: false` with PUT.
 
 Creates a supplier (active unless the body sets `isActive: false`) and returns 201 with it, in the same shape as a
 `GET /suppliers` item. The body and its validation are the same as for PUT (see the
-table above), plus an optional `operatingHours` array. The supplier and its hours
+table above), except that `operatingHours` sets the new supplier's hours. The supplier and its hours
 are inserted in one transaction; any invalid period rejects the whole request with 400.
 
 ```json

@@ -171,7 +171,7 @@ const input = "w-full rounded-lg border border-[#cfd5da] bg-white px-3 py-2 text
           <label for="create-image" :class="label">Image URL</label>
           <input id="create-image" v-model="form.imageUrl" type="url" :class="input">
         </div>
-        <OperatingHoursPicker :key="openCount" v-model="form.operatingHours" class="sm:col-span-2" />
+        <OperatingHoursPicker :key="openCount" v-model="form.operatingHours" id-prefix="create" class="sm:col-span-2" />
       </div>
 
       <p v-if="errorMessage" class="mt-4 text-sm text-red-700" role="alert">{{ errorMessage }}</p>
