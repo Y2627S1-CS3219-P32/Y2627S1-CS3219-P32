@@ -1,0 +1,64 @@
+# AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-09-30.
+# Scope: Cloud Build config that builds and pushes service images to Artifact Registry.
+# Author review: Done.
+#
+# Usage (from the repository root):
+#   gcloud builds submit --config cloudbuild.yaml
+#
+# Images are tagged with the build ID and `latest`. Deploying is handled by deploy.sh.
+substitutions:
+  _REGION: asia-southeast1
+  _REPOSITORY: foc
+
+options:
+  dynamicSubstitutions: true
+  logging: CLOUD_LOGGING_ONLY
+
+steps:
+  - id: frontend-service
+    name: gcr.io/cloud-builders/docker
+    waitFor: ["-"]
+    args:
+      - build
+      - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/frontend-service:${BUILD_ID}
+      - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/frontend-service:latest
+      - frontend-service
+
+  - id: user-service
+    name: gcr.io/cloud-builders/docker
+    waitFor: ["-"]
+    args:
+      - build
+      - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/user-service:${BUILD_ID}
+      - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/user-service:latest
+      - user-service
+
+  - id: supplier-service
+    name: gcr.io/cloud-builders/docker
+    waitFor: ["-"]
+    args:
+      - build
+      - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/supplier-service:${BUILD_ID}
+      - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/supplier-service:latest
+      - supplier-service
+
+  # Drizzle tooling image, used by the supplier migrate and seed jobs.
+  - id: supplier-service-tooling
+    name: gcr.io/cloud-builders/docker
+    waitFor: ["-"]
+    args:
+      - build
+      - --target=tooling
+      - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/supplier-service-tooling:${BUILD_ID}
+      - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/supplier-service-tooling:latest
+      - supplier-service
+
+images:
+  - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/frontend-service:${BUILD_ID}
+  - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/frontend-service:latest
+  - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/user-service:${BUILD_ID}
+  - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/user-service:latest
+  - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/supplier-service:${BUILD_ID}
+  - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/supplier-service:latest
+  - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/supplier-service-tooling:${BUILD_ID}
+  - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/supplier-service-tooling:latest
