@@ -14,6 +14,8 @@ export interface Supplier {
   createdAt: string;
   updatedAt: string;
   isOpen: boolean;
+  // Claude Code (Opus 5.5), 2026-10-01; author review: Pending.
+  operatingHours: OperatingPeriod[];
 }
 
 // Body of PUT /suppliers/:id (Claude Code (Opus 5.5), 2026-09-29; author review: Done).
@@ -28,11 +30,26 @@ export interface SupplierUpdate {
   imageUrl: string | null;
   // Omitted keeps the current value (Claude Code (Opus 5.5), 2026-09-30; author review: Pending).
   isActive?: boolean;
+  // Omitted keeps the current hours; sent hours replace them all
+  // (Claude Code (Opus 5.5), 2026-10-01; author review: Pending).
+  operatingHours?: OperatingPeriod[];
 }
 
-// POST /suppliers takes the same body as PUT, and GET /types and GET /buildings
-// return these references (Claude Code (Opus 5.5), 2026-09-30; author review: Done).
-export type SupplierCreate = SupplierUpdate;
+// One operating period. day is 0 (Sunday) to 6 (Saturday); times are "HH:MM", and
+// closingHrs may be "24:00". A closing time at or before the opening time runs past
+// midnight (Claude Code (Opus 5.5), 2026-09-30; author review: Pending).
+export interface OperatingPeriod {
+  day: number;
+  openingHrs: string;
+  closingHrs: string;
+}
+
+// POST /suppliers takes the same body as PUT plus its operating hours, and GET /types
+// and GET /buildings return these references (Claude Code (Opus 5.5), 2026-09-30;
+// author review: Done; operatingHours: Pending).
+export interface SupplierCreate extends SupplierUpdate {
+  operatingHours: OperatingPeriod[];
+}
 
 export interface SupplierReference {
   id: string;

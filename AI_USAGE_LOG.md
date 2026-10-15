@@ -36,6 +36,55 @@ Author review: Checked for correctness. -->
 
 # AI usage log (User Service)
 
+## 2026-10-01: Editing operating hours
+
+- Tool: Claude Code (Opus 5.5). Mode: Implementation, tests, documentation, and verification.
+- Exact prompt: `editing of operating hours should also be possible from the edit screen.`
+- Key response:
+  - `GET /suppliers` returns each supplier's `operatingHours` (as `HH:MM`,
+    sorted by day and opening time). `PUT /suppliers/:id` accepts an optional
+    `operatingHours` array, validated as for POST; when sent, it replaces all of
+    the supplier's hours in the same transaction as the row update, and when
+    omitted the hours are kept.
+  - The edit dialog reuses the operating hours picker, preselecting the matching
+    preset or opening the custom editor with the supplier's current hours.
+- Affected files: `supplier-service/src/operating-hours-input.ts`,
+  `supplier-service/src/index.ts`, `supplier-service/test/suppliers.test.mjs`,
+  `supplier-service/README.md`,
+  `frontend-service/shared/services/supplier-service/types.ts`,
+  `frontend-service/app/services/supplier-service/components/OperatingHoursPicker.vue`,
+  `frontend-service/app/services/supplier-service/components/SupplierCreateDialog.vue`,
+  `frontend-service/app/services/supplier-service/components/SupplierEditDialog.vue`,
+  and this log.
+- Verification: supplier-service typecheck and route tests (27/27) and the
+  frontend Nuxt typecheck passed.
+- Author review: Pending.
+
+## 2026-09-30: Operating hours on supplier creation
+
+- Tool: Claude Code (Opus 5.5). Mode: Implementation, tests, documentation, and verification.
+- Exact prompt: `can you implement operating hours upon supplier creation? provide a set of pre-defined selections (open 24/7, 9-5pm etc and allow for a custom field that allows the user to add day by day and hour by hour). refer to the schema.`
+- Key response:
+  - `POST /suppliers` accepts an optional `operatingHours` array of
+    `{ day, openingHrs, closingHrs }`, following the existing `operating_hours`
+    schema (0 is Sunday, overnight periods allowed, missing day means closed).
+    Periods are validated in the service layer, including the documented
+    non-overlap check, and inserted in the same transaction as the supplier.
+  - The add-supplier dialog has an operating hours picker with presets (open
+    24/7, every day 9am–5pm, weekdays 9am–5pm, every day 8am–10pm, no hours) and
+    a custom editor with per-day open/closed and 24-hour toggles, multiple
+    periods per day, and copying one day's hours to every day.
+- Affected files: `supplier-service/src/operating-hours-input.ts`,
+  `supplier-service/src/index.ts`, `supplier-service/test/suppliers.test.mjs`,
+  `supplier-service/README.md`,
+  `frontend-service/shared/services/supplier-service/types.ts`,
+  `frontend-service/app/services/supplier-service/components/OperatingHoursPicker.vue`,
+  `frontend-service/app/services/supplier-service/components/SupplierCreateDialog.vue`,
+  and this log.
+- Verification: supplier-service typecheck and route tests (25/25) and the
+  frontend Nuxt typecheck passed.
+- Author review: Pending.
+
 ## 2026-09-30: Redirect to first-administrator setup
 
 - Tool: ChatGPT (GPT-6). Mode: Implementation and verification.
