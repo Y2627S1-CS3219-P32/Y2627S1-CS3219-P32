@@ -26,6 +26,16 @@ services:
         - action: rebuild
           path: ./user-service/package.json
 
+  user-event-worker:
+    command: ["npx", "tsx", "watch", "src/worker.ts"]
+    develop:
+      watch:
+        - action: sync
+          path: ./user-service/src
+          target: /app/src
+        - action: rebuild
+          path: ./user-service/package.json
+
   frontend-service:
     build:
       target: build

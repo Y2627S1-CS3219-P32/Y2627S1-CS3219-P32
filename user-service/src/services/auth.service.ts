@@ -8,16 +8,20 @@ import { createHash, timingSafeEqual } from "node:crypto";
 import { eq, sql } from "drizzle-orm";
 
 import { createAccessToken, hashPassword, verifyPassword } from "../auth";
-import { HttpError, isPostgresUniqueViolation } from "../errors";
+import { HttpError } from "../errors";
 import { db } from "../db";
-import { usersTable } from "../db/schema";
+import {
+  userBootstrapReservationsTable,
+  usersTable,
+  type User,
+} from "../db/schema";
+import { publishUserEvent, userSnapshot } from "../events/user-events";
 import {
   findPublicUserById,
   findUserById,
   findUserByDisplayName,
   findUserByEmail,
-  insertUser,
-  updateUser as persistUserUpdate,
+  reserveUserId,
 } from "../repositories/users.repository";
 import {
   validateDisplayName,
@@ -29,6 +33,11 @@ export interface AuthConfiguration {
   jwtSecret: string;
   accessTokenTtl: number;
   bootstrapSecret?: string;
+}
+
+function toPublicUser(user: User) {
+  const { id, name, displayName, email, role } = user;
+  return { id, name, displayName, email, role };
 }
 
 export async function register(input: unknown, config: AuthConfiguration) {
@@ -63,28 +72,19 @@ export async function register(input: unknown, config: AuthConfiguration) {
     throw new HttpError(409, "A user with this email already exists");
   }
 
-  let user;
-  try {
-    user = await insertUser({
-      name,
-      displayName,
-      email,
-      role: "student",
-      passwordHash: hashPassword(password),
-    });
-  } catch (error) {
-    if (isPostgresUniqueViolation(error, "users_email_unique")) {
-      throw new HttpError(409, "A user with this email already exists");
-    }
-    if (isPostgresUniqueViolation(error, "users_display_name_unique")) {
-      throw new HttpError(409, "A user with this display name already exists");
-    }
-    throw error;
-  }
+  const user: User = {
+    id: await reserveUserId(),
+    name,
+    displayName,
+    email,
+    role: "student",
+    passwordHash: hashPassword(password),
+  };
+  await publishUserEvent({ type: "user.created", user: userSnapshot(user) }, user.id);
 
   return {
     token: createAccessToken(user.id, config.jwtSecret, config.accessTokenTtl),
-    user,
+    user: toPublicUser(user),
   };
 }
 
@@ -144,6 +144,7 @@ export async function updateAuthenticatedUser(userId: number, input: unknown) {
     email?: string;
     passwordHash?: string;
   } = {};
+  let currentUser: User | undefined;
   if ("displayName" in body) {
     updates.displayName = validateDisplayName(body.displayName);
   }
@@ -167,7 +168,7 @@ export async function updateAuthenticatedUser(userId: number, input: unknown) {
     ) {
       throw new HttpError(400, "Current and new passwords are required");
     }
-    const currentUser = await findUserById(userId);
+    currentUser = await findUserById(userId);
     if (!currentUser || !verifyPassword(body.currentPassword, currentUser.passwordHash)) {
       throw new HttpError(401, "Current password is incorrect");
     }
@@ -196,19 +197,11 @@ export async function updateAuthenticatedUser(userId: number, input: unknown) {
     }
   }
 
-  try {
-    const user = await persistUserUpdate(userId, updates);
-    if (!user) throw new HttpError(401, "Token user no longer exists");
-    return user;
-  } catch (error) {
-    if (isPostgresUniqueViolation(error, "users_email_unique")) {
-      throw new HttpError(409, "A user with this email already exists");
-    }
-    if (isPostgresUniqueViolation(error, "users_display_name_unique")) {
-      throw new HttpError(409, "A user with this display name already exists");
-    }
-    throw error;
-  }
+  currentUser ??= await findUserById(userId);
+  if (!currentUser) throw new HttpError(401, "Token user no longer exists");
+  const user: User = { ...currentUser, ...updates };
+  await publishUserEvent({ type: "user.updated", user: userSnapshot(user) }, userId);
+  return toPublicUser(user);
 }
 
 export async function bootstrapAdministrator(
@@ -252,40 +245,37 @@ export async function bootstrapAdministrator(
     throw new HttpError(400, "Email addresses do not match");
   }
 
-  try {
-    await db.transaction(async (tx) => {
-      await tx.execute(sql`SELECT pg_advisory_xact_lock(3219, 1)`);
-      const [admin] = await tx.select({ id: usersTable.id }).from(usersTable)
-        .where(eq(usersTable.role, "admin")).limit(1);
-      if (admin) {
-        throw new HttpError(404, "Page not found");
-      }
-      const [existingEmail] = await tx.select({ id: usersTable.id }).from(usersTable)
-        .where(eq(usersTable.email, email)).limit(1);
-      if (existingEmail) throw new HttpError(409, "A user with this email already exists");
-      const [existingDisplayName] = await tx.select({ id: usersTable.id }).from(usersTable)
-        .where(sql`lower(${usersTable.displayName}) = ${displayName.toLowerCase()}`).limit(1);
-      if (existingDisplayName) {
-        throw new HttpError(409, "A user with this display name already exists");
-      }
-      await tx.insert(usersTable).values({
-        name,
-        displayName,
-        email,
-        role: "admin",
-        passwordHash: hashPassword(password),
-      });
-    });
-  } catch (error) {
-    if (error instanceof HttpError) throw error;
-    if (isPostgresUniqueViolation(error, "users_email_unique")) {
-      throw new HttpError(409, "A user with this email already exists");
+  await db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(3219, 1)`);
+    const [admin] = await tx.select({ id: usersTable.id }).from(usersTable)
+      .where(eq(usersTable.role, "admin")).limit(1);
+    if (admin) {
+      throw new HttpError(404, "Page not found");
     }
-    if (isPostgresUniqueViolation(error, "users_display_name_unique")) {
+    const [reservation] = await tx.select({ id: userBootstrapReservationsTable.id })
+      .from(userBootstrapReservationsTable)
+      .where(eq(userBootstrapReservationsTable.id, 1))
+      .limit(1);
+    if (reservation) throw new HttpError(404, "Page not found");
+    const [existingEmail] = await tx.select({ id: usersTable.id }).from(usersTable)
+      .where(eq(usersTable.email, email)).limit(1);
+    if (existingEmail) throw new HttpError(409, "A user with this email already exists");
+    const [existingDisplayName] = await tx.select({ id: usersTable.id }).from(usersTable)
+      .where(sql`lower(${usersTable.displayName}) = ${displayName.toLowerCase()}`).limit(1);
+    if (existingDisplayName) {
       throw new HttpError(409, "A user with this display name already exists");
     }
-    throw error;
-  }
+    const user: User = {
+      id: await reserveUserId(),
+      name,
+      displayName,
+      email,
+      role: "admin",
+      passwordHash: hashPassword(password),
+    };
+    await publishUserEvent({ type: "user.created", user: userSnapshot(user) }, user.id);
+    await tx.insert(userBootstrapReservationsTable).values({ id: 1, userId: user.id });
+  });
 }
 
 export async function ensureBootstrapAvailable(configuredSecret: string | undefined): Promise<void> {
@@ -295,4 +285,9 @@ export async function ensureBootstrapAvailable(configuredSecret: string | undefi
   const [admin] = await db.select({ id: usersTable.id }).from(usersTable)
     .where(eq(usersTable.role, "admin")).limit(1);
   if (admin) throw new HttpError(404, "Page not found");
+  const [reservation] = await db.select({ id: userBootstrapReservationsTable.id })
+    .from(userBootstrapReservationsTable)
+    .where(eq(userBootstrapReservationsTable.id, 1))
+    .limit(1);
+  if (reservation) throw new HttpError(404, "Page not found");
 }

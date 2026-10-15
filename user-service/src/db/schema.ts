@@ -5,7 +5,16 @@
     Author review: Done
 **/
 import { sql } from "drizzle-orm";
-import { pgTable, serial, text, uniqueIndex } from "drizzle-orm/pg-core";
+import {
+  bigint,
+  boolean,
+  integer,
+  pgSequence,
+  pgTable,
+  serial,
+  text,
+  uniqueIndex,
+} from "drizzle-orm/pg-core";
 
 export const usersTable = pgTable("users", {
   id: serial().primaryKey(),
@@ -19,6 +28,18 @@ export const usersTable = pgTable("users", {
   uniqueIndex("users_display_name_unique").on(sql`lower(${table.displayName})`)
     .where(sql`${table.displayName} <> ''`),
 ]);
+
+export const userBootstrapReservationsTable = pgTable("user_bootstrap_reservations", {
+  id: integer().primaryKey(),
+  userId: integer("user_id").notNull(),
+});
+
+export const userEventSequence = pgSequence("user_event_sequence");
+export const userEventStatesTable = pgTable("user_event_states", {
+  userId: integer("user_id").primaryKey(),
+  version: bigint({ mode: "number" }).notNull(),
+  deleted: boolean().notNull(),
+});
 
 export type User = typeof usersTable.$inferSelect;
 export type PublicUser = Pick<User, "id" | "name" | "displayName" | "email" | "role">;

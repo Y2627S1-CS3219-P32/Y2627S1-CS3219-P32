@@ -36,6 +36,38 @@ Author review: Checked for correctness. -->
 
 # AI usage log (User Service)
 
+## 2026-10-15: User-service Pub/Sub event architecture
+
+- Tool: Copilot SDK in VS Code. Mode: Implementation, tests, documentation, and verification.
+- Exact prompt: `I have decided on this architecture for the user service: I want to use event-driven architecture to store user information, creations, deletions, so that coupling is minimised. This project uses GCP and I want to use pubsub as my event stream. Do the following: Add a pubsub emulator in this docker environment for local dev. Modify the cloud script to handle pubsub. Make my user service emit events for state changes. Create a worker to ingest events and update the local PostgreSQL database of the user service.`
+- Key response:
+  - Added the Pub/Sub emulator and event worker to local Docker Compose, and
+    updated the Cloud deployment script to provision the topic and an
+    authenticated push subscription.
+  - Changed registration, administrator bootstrap and CRUD, and self-service
+    profile/password updates to publish versioned user-created, user-updated,
+    and user-deleted events. Events contain password hashes, not plaintext
+    passwords.
+  - Added a worker that applies events transactionally to the PostgreSQL
+    projection and ignores stale or duplicate deliveries.
+  - Documented the asynchronous projection behavior and local/cloud setup.
+- Affected files: `README.md`, `AI_USAGE_LOG.md`, `compose.yaml`,
+  `compose.dev.yaml`, `deploy.sh`, `user-service/README.md`,
+  `user-service/package.json`, `user-service/package-lock.json`,
+  `user-service/src/db/schema.ts`,
+  `user-service/src/repositories/users.repository.ts`,
+  `user-service/src/services/auth.service.ts`,
+  `user-service/src/services/users.service.ts`,
+  `user-service/src/events/user-events.ts`,
+  `user-service/src/events/parse-user-event.ts`,
+  `user-service/src/events/parse-user-event.test.ts`, and
+  `user-service/src/worker.ts`.
+- Verification: user-service tests passed (9/9), strict TypeScript checking,
+  Compose configuration validation, `bash -n deploy.sh`, and Drizzle schema
+  migration-plan generation passed. A live Compose end-to-end test was not run
+  because the Docker daemon was unavailable.
+- Author review: Pending.
+
 ## 2026-09-30: Redirect to first-administrator setup
 
 - Tool: ChatGPT (GPT-6). Mode: Implementation and verification.

@@ -17,6 +17,15 @@ the schema automatically with `user-db-migrate`. The credentials in Compose are 
 development only. Existing SQLite data is not imported; the PostgreSQL database starts fresh.
 No user accounts are created automatically.
 
+The root Compose configuration also starts a Pub/Sub emulator and the
+`user-event-worker`. Registration, administrator bootstrap, admin CRUD, and
+self-service profile/password changes publish `user.created`, `user.updated`,
+or `user.deleted` events. The worker applies these events to PostgreSQL; a
+successful mutation response means Pub/Sub accepted the event, and the database
+read model may briefly lag. Events contain password hashes only, never plaintext
+passwords. Start the local stack with `docker compose up --build` from the
+repository root.
+
 Set `JWT_SECRET` to a random value of at least 32 bytes before starting the service. For example:
 ```bash
 node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
@@ -58,3 +67,9 @@ Authenticated users can update their display name or email through `PATCH /me`, 
 validation and uniqueness rules. Email updates require a matching `confirmEmail`. Password
 updates require the current password, enforce the registration password rules, and reject a new
 password that matches the current password.
+
+The service publishes to `PUBSUB_TOPIC` (default `user-events`) in
+`PUBSUB_PROJECT_ID` (default `foc-local`). Set `PUBSUB_EMULATOR_HOST` for local
+development. The worker exposes `POST /pubsub/user-events` for Pub/Sub push
+delivery and `GET /health` for readiness checks; GCP push requests use Cloud Run
+IAM authentication.
