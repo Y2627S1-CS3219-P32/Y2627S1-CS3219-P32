@@ -2,7 +2,7 @@
 Scope: Record this session's AI assistance. 
 Author review: Checked for correctness. -->
 
-# AI usage log (User Service)
+# AI usage log (General)
 
 ## 2026-09-30: Cloud Build and Cloud Run deployment scripts
 
@@ -33,6 +33,8 @@ Author review: Checked for correctness. -->
 - Verification: redeployed with `./deploy.sh`; `supplier-migrate` connected over the private IP
   and the student confirmed the supplier directory loads on the deployed frontend.
 - Author review: Pending.
+
+# AI usage log (User Service)
 
 ## 2026-09-30: Redirect to first-administrator setup
 
