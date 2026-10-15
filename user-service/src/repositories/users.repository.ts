@@ -72,3 +72,14 @@ export async function reserveUserEventVersion(): Promise<number> {
   }
   return version;
 }
+
+export async function findProjectedUserEventVersion(): Promise<number> {
+  const { rows } = await pool.query<{ version: string }>(
+    "SELECT COALESCE(MAX(version), 0)::text AS version FROM user_event_states",
+  );
+  const version = Number(rows[0]?.version);
+  if (!Number.isSafeInteger(version) || version < 0) {
+    throw new Error("Could not read the projected user event version");
+  }
+  return version;
+}

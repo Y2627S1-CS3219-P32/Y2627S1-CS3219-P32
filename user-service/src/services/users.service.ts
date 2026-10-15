@@ -12,6 +12,7 @@ import { publishUserEvent, userSnapshot } from "../events/user-events";
 import {
   countAdministrators,
   findAllUsers,
+  findProjectedUserEventVersion,
   findPublicUserById,
   findUserById,
   findUserByDisplayName,
@@ -114,6 +115,10 @@ function toPublicUser(user: User): PublicUser {
 
 export async function listUsers(): Promise<PublicUser[]> {
   return findAllUsers();
+}
+
+export async function getProjectedEventVersion(): Promise<number> {
+  return findProjectedUserEventVersion();
 }
 
 export async function getUser(idParam: string): Promise<PublicUser> {
