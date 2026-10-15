@@ -1,9 +1,11 @@
 <!-- AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-28; Claude Code (Opus 5.5), 2026-09-29.
 Scope: Supplier card using the existing API fields; Tailwind styling after the supplier mockup. Author review: Done.
 Claude Code (Opus 5.5), 2026-09-29. Scope: Administrator actions menu. Author review: Done.
-Claude Code (Opus 5.5), 2026-09-30. Scope: Actions menu on inactive cards too. Author review: Pending. -->
+Claude Code (Opus 5.5), 2026-09-30. Scope: Actions menu on inactive cards too. Author review: Pending.
+Claude Code (Opus 5.5), 2026-10-15. Scope: Next opening time on closed cards. Author review: Pending. -->
 <script setup lang="ts">
 import type { Supplier } from "#shared/services/supplier-service/types";
+import { nextOpeningLabel } from "../next-opening";
 
 const props = defineProps<{ supplier: Supplier; canManage?: boolean }>();
 const emit = defineEmits<{ edit: [supplier: Supplier]; delete: [supplier: Supplier] }>();
@@ -52,6 +54,9 @@ const status = computed(() => {
     ? { label: "Open now", class: "bg-[#3aa76d] text-white" }
     : { label: "Closed now", class: "bg-[#8a9099] text-white" };
 });
+const nextOpening = computed(() => props.supplier.isActive && !props.supplier.isOpen
+  ? nextOpeningLabel(props.supplier.operatingHours)
+  : null);
 const mapUrl = computed(() => `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${props.supplier.latitude},${props.supplier.longitude}`)}`);
 </script>
 
@@ -80,6 +85,7 @@ const mapUrl = computed(() => `https://www.google.com/maps/search/?api=1&query=$
       <div class="mt-1.5 flex flex-wrap gap-1">
         <span class="rounded-full px-2 py-0.5 text-[11px] font-semibold" :class="status.class">{{ status.label }}</span>
         <span class="rounded-full bg-[#d3d7db] px-2 py-0.5 text-[11px] font-semibold text-[#33383d]">{{ supplier.type }}</span>
+        <span v-if="nextOpening" class="self-center text-[11px] font-medium text-[#5b6570]">{{ nextOpening }}</span>
       </div>
       <a
         :href="mapUrl"
