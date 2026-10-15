@@ -13,6 +13,9 @@ Author review: Done.
 Tool: Claude Code (model: Opus 5.5), date: 2026-09-30
 Scope: PUT updates the supplier in place (including the isActive toggle), and
 DELETE removes the supplier and its operating hours.
+Author review: Pending.
+Tool: Claude Code (model: Opus 5.5), date: 2026-10-15
+Scope: /types and /buildings routes moved to reference-routes.ts; UUID check moved to params.ts.
 Author review: Pending. **/
 
 import "dotenv/config";
@@ -24,6 +27,8 @@ import { db } from "./db/index.js";
 import { openingHoursMatch } from "./db/opening-hours.js";
 import { buildings, operatingHours, suppliers, types } from "./db/schema.js";
 import { HttpError } from "./errors.js";
+import { getUuidParam } from "./params.js";
+import { referenceRouter } from "./reference-routes.js";
 import { parseSupplierInput, type SupplierInput } from "./supplier-input.js";
 
 export const app = express();
@@ -48,13 +53,8 @@ function selectSuppliers(where: SQL | undefined) {
     .orderBy(desc(isOpen), asc(suppliers.name), asc(suppliers.id));
 }
 
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
 function getSupplierIdParam(req: Request): string {
-  const id = req.params.id;
-  // A malformed id cannot match a row, and would otherwise fail the uuid cast.
-  if (typeof id !== "string" || !UUID_PATTERN.test(id)) throw new HttpError(404, "Supplier not found");
-  return id;
+  return getUuidParam(req, "Supplier not found");
 }
 
 type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
@@ -84,13 +84,8 @@ async function toSupplierRow(tx: Transaction, input: SupplierInput) {
   };
 }
 
-app.get("/types", requireAuthentication, async (_req, res) => {
-  res.status(200).json(await db.select({ id: types.id, name: types.name }).from(types).orderBy(asc(types.name)));
-});
-
-app.get("/buildings", requireAuthentication, async (_req, res) => {
-  res.status(200).json(await db.select({ id: buildings.id, name: buildings.name }).from(buildings).orderBy(asc(buildings.name)));
-});
+app.use("/types", referenceRouter(types, "Supplier type"));
+app.use("/buildings", referenceRouter(buildings, "Building"));
 
 app.get("/suppliers", requireAuthentication, async (req, res) => {
   const name = typeof req.query.name === "string" ? req.query.name.trim() : undefined;

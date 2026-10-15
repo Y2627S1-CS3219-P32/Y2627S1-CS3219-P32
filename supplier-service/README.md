@@ -4,7 +4,8 @@ access, and route documentation reviewed.
 Claude Code (Opus 5.5), 2026-09-29: authentication, PUT, and DELETE documentation. Author review: Done.
 Claude Code (Opus 5.5), 2026-09-30: POST, GET /types, and GET /buildings documentation. Author review: Done.
 Claude Code (Opus 5.5), 2026-09-30: In-place PUT and hard DELETE documentation. Author review: Pending.
-ChatGPT (GPT-6), 2026-09-30: Docker Compose migration startup documentation. Author review: Done. -->
+ChatGPT (GPT-6), 2026-09-30: Docker Compose migration startup documentation. Author review: Done.
+Claude Code (Opus 5.5), 2026-10-15: POST, PUT, and DELETE /types and /buildings documentation. Author review: Pending. -->
 
 # Supplier Service
 
@@ -115,6 +116,22 @@ until hours are added.
 Return 200 with every supplier type or building as `[{ "id", "name" }]`, sorted by
 name (in database collation order). Any logged-in user can call them. The frontend
 uses them for the add-supplier dropdowns.
+
+## POST, PUT, and DELETE /types and /buildings (administrators)
+
+Both tables share the same routes; `/types` is shown.
+
+| Route | Body | Success |
+| --- | --- | --- |
+| `POST /types` | `{ "name" }` | 201 with `{ "id", "name" }` |
+| `PUT /types/:id` | `{ "name" }` | 200 with `{ "id", "name" }` |
+| `DELETE /types/:id` | none | 204 |
+
+`name` is required, trimmed, and at most 256 characters; otherwise 400. A name
+already in use returns 409. Suppliers reference the row by id, so a rename applies
+to every supplier using it. Deleting a type or building still used by a supplier
+returns 409; reassign or delete those suppliers first. Unknown or malformed ids
+return 404.
 
 ### Route tests
 

@@ -39,6 +39,10 @@ export interface SupplierReference {
   name: string;
 }
 
+// Supplier types and buildings share one create/rename/delete API, with a { name } body
+// (Claude Code (Opus 5.5), 2026-10-15; author review: Pending).
+export type SupplierReferenceKind = "types" | "buildings";
+
 export interface SupplierFilters {
   name?: string;
   type?: string;
