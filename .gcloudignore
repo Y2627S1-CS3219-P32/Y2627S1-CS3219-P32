@@ -1,0 +1,14 @@
+# AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-09-30.
+# Scope: Keep local dependencies, build output, and secrets out of Cloud Build uploads.
+# Author review: Done.
+.git/
+.gitignore
+.gcloudignore
+**/node_modules/
+**/.nuxt/
+**/.output/
+**/dist/
+**/.env
+**/.env.*
+!**/.env.example
+**/*.sqlite
