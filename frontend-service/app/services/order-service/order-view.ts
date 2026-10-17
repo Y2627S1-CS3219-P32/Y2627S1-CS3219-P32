@@ -3,13 +3,16 @@
 // and labels, the action each viewer can take, history wording, and Singapore-time
 // formatting. order-service enforces the rules; these only decide what to show.
 // Author review: Pending.
+// Claude Code (Opus 5.5), 2026-10-17: Mine tab (the viewer's own requests). Author review: Pending.
 import type { Order, OrderAction, OrderEvent, OrderState } from "#shared/services/order-service/types";
 
+// Mine lists the viewer's own requests (GET /orders/me) in every state.
 export const ORDER_TABS = [
-  { key: "all", label: "All", states: "" },
-  { key: "open", label: "Open", states: "OPEN" },
-  { key: "in-progress", label: "In Progress", states: "ACCEPTED,PICKED_UP,DELIVERED" },
-  { key: "done", label: "Done", states: "COMPLETE,SETTLED,CANCELLED,EXPIRED,REJECTED,ABORTED" },
+  { key: "all", label: "All", states: "", mine: false },
+  { key: "open", label: "Open", states: "OPEN", mine: false },
+  { key: "in-progress", label: "In Progress", states: "ACCEPTED,PICKED_UP,DELIVERED", mine: false },
+  { key: "done", label: "Done", states: "COMPLETE,SETTLED,CANCELLED,EXPIRED,REJECTED,ABORTED", mine: false },
+  { key: "mine", label: "Mine", states: "", mine: true },
 ] as const;
 
 const STATES: Record<OrderState, { label: string; accent: string }> = {

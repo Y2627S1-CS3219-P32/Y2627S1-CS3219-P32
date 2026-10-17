@@ -1,7 +1,8 @@
 <!-- AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-10-17.
 Scope: Orders page after the student's mockups: state tabs, supplier filter and reward/time
 sorting (FR11.1.2), cursor-paged "Load more", accepting from the list, and the new-order
-button. Author review: Pending. -->
+button. Author review: Pending.
+Claude Code (Opus 5.5), 2026-10-17. Scope: Mine tab. Author review: Pending. -->
 <script setup lang="ts">
 import type { Order, OrderPage, OrderSort } from "#shared/services/order-service/types";
 import type { Supplier } from "#shared/services/supplier-service/types";
@@ -30,7 +31,8 @@ const query = computed(() => ({
   limit: 24,
 }));
 
-const { data: firstPage, pending, error, refresh } = await useFetch<OrderPage>("/api/order-service/orders", { query });
+const endpoint = computed(() => tab.value.mine ? "/api/order-service/orders/me" : "/api/order-service/orders");
+const { data: firstPage, pending, error, refresh } = await useFetch<OrderPage>(endpoint, { query });
 const { data: suppliers } = await useFetch<Supplier[]>("/api/supplier-service/suppliers", { default: () => [] });
 
 // Later pages are appended; changing a filter starts again from the first page.
@@ -47,7 +49,7 @@ const { busy, error: actionError, run, perform } = useOrderActions();
 async function loadMore() {
   if (!nextCursor.value) return;
   const page = await run(
-    () => $fetch<OrderPage>("/api/order-service/orders", { query: { ...query.value, cursor: nextCursor.value } }),
+    () => $fetch<OrderPage>(endpoint.value, { query: { ...query.value, cursor: nextCursor.value } }),
     "More orders could not be loaded.",
   );
   if (!page) return;
@@ -110,7 +112,7 @@ const select = "rounded-full border border-[#d3d7db] bg-white px-3 py-1.5 text-s
         {{ getApiErrorMessage(error) ?? "Orders could not be loaded." }}
         <button type="button" class="ml-1 font-medium text-[#173a73] underline" @click="refresh()">Try again</button>
       </p>
-      <p v-else-if="!pending && orders.length === 0" class="mt-10 text-center text-[#5b6570]">No orders here yet.</p>
+      <p v-else-if="!pending && orders.length === 0" class="mt-10 text-center text-[#5b6570]">{{ tab.mine ? "You haven't made any orders yet." : "No orders here yet." }}</p>
 
       <ul class="mt-6 grid gap-6 md:mt-8 md:grid-cols-2 md:gap-10 lg:grid-cols-3" aria-live="polite">
         <li v-for="order in orders" :key="order.id" class="flex">
