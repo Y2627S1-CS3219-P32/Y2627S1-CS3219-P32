@@ -1,5 +1,6 @@
 // AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-28.
 // Scope: Nuxt runtime and frontend configuration. Author review: Done.
+// Claude Code (Opus 5.5), 2026-10-17: order-service base URL. Author review: Pending.
 import tailwindcss from "@tailwindcss/vite";
 
 export default defineNuxtConfig({
@@ -9,6 +10,7 @@ export default defineNuxtConfig({
   runtimeConfig: {
     supplierServiceBaseUrl: "http://127.0.0.1:3000",
     userServiceBaseUrl: "http://127.0.0.1:3333",
+    orderServiceBaseUrl: "http://127.0.0.1:3002",
   },
   nitro: { preset: "node-server" },
   typescript: { strict: true },

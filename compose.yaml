@@ -91,6 +91,8 @@ services:
       NITRO_PORT: "3000"
       NUXT_USER_SERVICE_BASE_URL: http://user-service:3333
       NUXT_SUPPLIER_SERVICE_BASE_URL: http://supplier-service:3000
+      # Claude Code (Opus 5.5), 2026-10-17. Author review: Pending.
+      NUXT_ORDER_SERVICE_BASE_URL: http://order-service:3000
     ports:
       - "3001:3000"
     depends_on:
