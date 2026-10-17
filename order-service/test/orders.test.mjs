@@ -6,6 +6,7 @@
  * Author review: Pending.
  * Claude Code (Opus 5.5), 2026-10-17: titles, display names, order details, history,
  * editing, and multi-state filters. Author review: Pending.
+ * Claude Code (Opus 5.5), 2026-10-17: message attributes. Author review: Pending.
  */
 import assert from "node:assert/strict";
 import { createHmac, randomBytes, randomUUID } from "node:crypto";
@@ -138,8 +139,8 @@ before(async () => {
   await migrate(db, { migrationsFolder: "./drizzle" });
 
   const pubsub = await import("../dist/events/pubsub.js");
-  pubsub.setPublisher(async (topic, data, orderingKey) => {
-    published.push({ topic, data, orderingKey });
+  pubsub.setPublisher(async (topic, data, orderingKey, attributes) => {
+    published.push({ topic, data, orderingKey, attributes });
   });
   outbox = await import("../dist/events/outbox.js");
 
@@ -272,6 +273,7 @@ test("POST /orders creates a PENDING order, records order.created, and publishes
   assert.equal(message.topic, "order-events");
   assert.equal(message.orderingKey, order.id);
   assert.equal(message.data.type, "order.created");
+  assert.deepEqual(message.attributes, { type: "order.created", orderId: order.id });
   assert.equal(message.data.order.creditReward, 5);
   const { rows } = await pool.query("select published_at from order_events where order_id = $1", [order.id]);
   assert.ok(rows[0].published_at);

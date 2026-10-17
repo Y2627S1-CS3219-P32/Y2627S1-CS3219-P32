@@ -2,6 +2,8 @@
  * AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-10-17.
  * Scope: Transactional outbox relay that publishes unpublished order_events rows
  * to the order-events topic in per-order sequence. Author review: Pending.
+ * Claude Code (Opus 5.5), 2026-10-17: type and orderId attributes for subscription
+ * filters. Author review: Pending.
  */
 import { asc, inArray, isNull, sql } from "drizzle-orm";
 import { config } from "../config.js";
@@ -47,7 +49,7 @@ export async function publishPendingEvents(): Promise<number> {
           commandId: event.commandId,
           occurredAt: event.createdAt.toISOString(),
           order: event.payload,
-        }, event.orderId);
+        }, event.orderId, { type: event.type, orderId: event.orderId });
         published.push(event.id);
       } catch (error) {
         console.error(`[order-service] Failed to publish event ${event.id}`, error);
