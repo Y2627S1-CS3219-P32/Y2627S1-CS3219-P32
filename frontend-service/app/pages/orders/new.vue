@@ -21,8 +21,10 @@ async function create(values: OrderCreate) {
 </script>
 
 <template>
-  <main class="mx-auto max-w-2xl px-4 pt-6 pb-24 md:pt-10">
-    <h1 class="mb-4 text-center text-4xl font-semibold tracking-tight text-[#111] md:text-5xl">New Order</h1>
-    <OrderForm :suppliers="suppliers" :submitting="busy" :error="error" @submit="create" />
+  <main class="min-h-screen bg-[#f7f9fc]">
+    <div class="mx-auto max-w-2xl px-4 pt-6 pb-24 md:pt-10">
+      <h1 class="mb-4 text-center text-4xl font-semibold tracking-tight text-[#111] md:text-5xl">New Order</h1>
+      <OrderForm :suppliers="suppliers" :submitting="busy" :error="error" @submit="create" />
+    </div>
   </main>
 </template>

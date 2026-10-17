@@ -40,23 +40,25 @@ watch(error, (value) => {
 </script>
 
 <template>
-  <main class="mx-auto max-w-6xl px-4 pt-6 pb-24 md:px-8 md:pt-10">
-    <h1 class="mb-4 text-center text-4xl font-semibold tracking-tight text-[#111] md:text-5xl">Order Details</h1>
+  <main class="min-h-screen bg-[#f7f9fc]">
+    <div class="mx-auto max-w-6xl px-4 pt-6 pb-24 md:px-8 md:pt-10">
+      <h1 class="mb-4 text-center text-4xl font-semibold tracking-tight text-[#111] md:text-5xl">Order Details</h1>
 
-    <p v-if="error && statusOf(error) !== 401" class="text-center text-[#5b6570]">
-      {{ statusOf(error) === 404 ? "This order does not exist." : getApiErrorMessage(error) ?? "The order could not be loaded." }}
-      <NuxtLink to="/orders" class="font-medium text-[#173a73] underline">Back to orders</NuxtLink>
-    </p>
+      <p v-if="error && statusOf(error) !== 401" class="text-center text-[#5b6570]">
+        {{ statusOf(error) === 404 ? "This order does not exist." : getApiErrorMessage(error) ?? "The order could not be loaded." }}
+        <NuxtLink to="/orders" class="font-medium text-[#173a73] underline">Back to orders</NuxtLink>
+      </p>
 
-    <div v-else-if="order" class="grid gap-10 md:grid-cols-[20rem_1fr] md:gap-16">
-      <div>
-        <OrderCard :order="order" :viewer-id="viewerId" detailed :busy="busy" @action="onAction" />
-        <p v-if="actionError" role="alert" class="mt-3 rounded-md bg-[#fdf2f2] px-3 py-2 text-sm text-[#c62828]">{{ actionError }}</p>
+      <div v-else-if="order" class="grid gap-10 md:grid-cols-[20rem_1fr] md:gap-16">
+        <div>
+          <OrderCard :order="order" :viewer-id="viewerId" detailed :busy="busy" @action="onAction" />
+          <p v-if="actionError" role="alert" class="mt-3 rounded-md bg-[#fdf2f2] px-3 py-2 text-sm text-[#c62828]">{{ actionError }}</p>
+        </div>
+        <section aria-labelledby="history-heading" class="md:max-w-2xl">
+          <h2 id="history-heading" class="mb-3 text-center text-3xl font-semibold text-[#111] md:sr-only">History</h2>
+          <OrderHistory :events="events" />
+        </section>
       </div>
-      <section aria-labelledby="history-heading" class="md:max-w-2xl">
-        <h2 id="history-heading" class="mb-3 text-center text-3xl font-semibold text-[#111] md:sr-only">History</h2>
-        <OrderHistory :events="events" />
-      </section>
     </div>
   </main>
 </template>

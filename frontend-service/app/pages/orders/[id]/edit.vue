@@ -28,15 +28,17 @@ async function save(values: OrderCreate) {
 </script>
 
 <template>
-  <main class="mx-auto max-w-2xl px-4 pt-6 pb-24 md:pt-10">
-    <h1 class="mb-4 text-center text-4xl font-semibold tracking-tight text-[#111] md:text-5xl">Edit Order</h1>
-    <p v-if="loadError" class="text-center text-[#5b6570]">{{ getApiErrorMessage(loadError) ?? "The order could not be loaded." }}</p>
-    <template v-else-if="order">
-      <OrderForm v-if="canEdit(order, viewerId)" :order="order" :submitting="busy" :error="error" @submit="save" />
-      <p v-else class="text-center text-[#5b6570]">
-        Only the requester can edit an order, and only while it is open.
-        <NuxtLink :to="`/orders/${id}`" class="font-medium text-[#173a73] underline">Back to the order</NuxtLink>
-      </p>
-    </template>
+  <main class="min-h-screen bg-[#f7f9fc]">
+    <div class="mx-auto max-w-2xl px-4 pt-6 pb-24 md:pt-10">
+      <h1 class="mb-4 text-center text-4xl font-semibold tracking-tight text-[#111] md:text-5xl">Edit Order</h1>
+      <p v-if="loadError" class="text-center text-[#5b6570]">{{ getApiErrorMessage(loadError) ?? "The order could not be loaded." }}</p>
+      <template v-else-if="order">
+        <OrderForm v-if="canEdit(order, viewerId)" :order="order" :submitting="busy" :error="error" @submit="save" />
+        <p v-else class="text-center text-[#5b6570]">
+          Only the requester can edit an order, and only while it is open.
+          <NuxtLink :to="`/orders/${id}`" class="font-medium text-[#173a73] underline">Back to the order</NuxtLink>
+        </p>
+      </template>
+    </div>
   </main>
 </template>
