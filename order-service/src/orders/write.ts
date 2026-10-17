@@ -4,6 +4,8 @@
  * cached state in one transaction), order creation, the student-defined state
  * transitions for user actions and saga commands, and the expiry sweep.
  * Author review: Pending.
+ * Claude Code (Opus 5.5), 2026-10-17: title, and editing an OPEN order (order.edited).
+ * Author review: Pending.
  */
 import { and, asc, desc, eq, lte } from "drizzle-orm";
 import { config } from "../config.js";
@@ -11,10 +13,10 @@ import { db, type Transaction } from "../db/index.js";
 import { orderEvents, orders, supplierVersions, type OrderState } from "../db/schema.js";
 import { HttpError } from "../errors.js";
 import { requestOutboxPublish } from "../events/outbox.js";
-import type { OrderInput } from "./input.js";
+import type { OrderEdit, OrderInput } from "./input.js";
 
 type Order = typeof orders.$inferSelect;
-type OrderUpdates = Partial<Pick<Order, "courierId" | "acceptedAt" | "expiresAt">>;
+type OrderUpdates = Partial<Pick<Order, "courierId" | "acceptedAt" | "expiresAt" | "title" | "description" | "deliveryLocation">>;
 
 interface Transition {
   from: OrderState;
@@ -30,6 +32,7 @@ function snapshot(order: Order) {
     courierId: order.courierId,
     supplierId: order.supplierId,
     supplierVersion: order.supplierVersion,
+    title: order.title,
     description: order.description,
     deliveryLocation: order.deliveryLocation,
     creditReward: order.creditReward,
@@ -88,6 +91,7 @@ export async function createOrder(requesterId: number, input: OrderInput): Promi
       requesterId,
       supplierId: supplier.supplierId,
       supplierVersion: supplier.version,
+      title: input.title,
       description: input.description,
       deliveryLocation: input.deliveryLocation,
       creditReward: input.creditReward,
@@ -158,6 +162,21 @@ export async function performUserAction(action: UserAction, orderId: string, use
 
     const updates: OrderUpdates = action === "accept" ? { courierId: userId, acceptedAt: new Date() } : {};
     await appendEvent(tx, order, transition, { actorId: userId, updates });
+  });
+  requestOutboxPublish();
+}
+
+const EDIT = { from: "OPEN", to: "OPEN", type: "order.edited" } as const satisfies Transition;
+
+// The requester may change the text fields while the order is OPEN. The reward is
+// fixed because the credit saga has already reserved it.
+export async function editOrder(orderId: string, userId: number, edit: OrderEdit): Promise<void> {
+  await db.transaction(async (tx) => {
+    const order = await lockOrder(tx, orderId);
+    if (!order) throw new HttpError(404, "Order not found");
+    if (order.requesterId !== userId) throw new HttpError(403, "Only the requester can do this");
+    if (order.currentState !== EDIT.from) throw new HttpError(409, `Order cannot be edited while ${order.currentState}`);
+    await appendEvent(tx, order, EDIT, { actorId: userId, updates: edit });
   });
   requestOutboxPublish();
 }
