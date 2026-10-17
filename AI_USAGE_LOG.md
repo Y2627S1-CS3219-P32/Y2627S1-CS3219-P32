@@ -789,3 +789,27 @@ for context, frontend-service is being set up. The frontend’s supplier screen 
   checking, `drizzle-kit migrate`, and a local startup smoke test passed. The Compose stack
   was not run because Docker was unavailable. Cloud deployment is not yet wired.
 - Author review: Pending.
+
+## 2026-10-17: Order pages in the frontend
+
+- Tool: Claude Code (Opus 5.5). Mode: Implementation, verification.
+- Exact prompt: ten mockup images of the Orders, New Order, Edit Order and order details pages
+  (desktop and mobile), with `N1 N2 are navigation bars btw, if the frontend already has them,
+  use it, if not ignore it`. The student then chose: a required title column, a supplier
+  dropdown plus free-text delivery location, editing of title/description/location while
+  `OPEN` (reward fixed), and no order number (heading "Order Details").
+- Key response:
+  - order-service: `title` column, requester/courier display names in responses,
+    `GET /orders/:orderId`, `GET /orders/:orderId/events`, `PATCH /orders/:orderId`
+    (`order.edited`), and comma-separated `state` filters; description limit 500.
+  - frontend: Orders link in the existing navigation; Orders page with All/Open/In
+    Progress/Done tabs, supplier filter, sorting and "Load more"; New Order and Edit Order
+    forms; Order Details page with the viewer's action and the history grouped by day.
+    Available credits are not shown because credit-service does not exist yet.
+- Affected files: `order-service/src/`, `order-service/drizzle/`, `order-service/test/`,
+  `order-service/README.md`, `frontend-service/` (order-service pages, components, server
+  routes, shared types, `app.vue`, `nuxt.config.ts`), `compose.yaml`, and this log.
+- Verification: order-service tests (17/17) and the Nuxt typecheck passed. Checked in Chrome
+  against the Pub/Sub emulator with the real user, supplier and order services: listing,
+  filters, creating, editing, completing (settled by a stand-in orchestrator), and mobile layouts.
+- Author review: Pending.
