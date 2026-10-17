@@ -3,6 +3,7 @@
  * Scope: HTTP routes (health, ticket issuing) and the /ws WebSocket endpoint that
  * redeems a ticket, registers the socket for its user, and closes it when the user's
  * session would expire. Author review: Pending.
+ * Claude Code (Opus 5.5), 2026-10-17: stored notification routes. Author review: Pending.
  */
 import { createServer, type IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
@@ -11,8 +12,10 @@ import { WebSocketServer } from "ws";
 import { issueTicket, redeemTicket, verifyAccessToken } from "./auth.js";
 import { config } from "./config.js";
 import { addSocket, allSockets } from "./connections.js";
+import { isHttpError, notificationsRouter } from "./notifications-api.js";
 
 export const app = express();
+app.use(express.json({ limit: "10kb" }));
 
 app.get("/health", (_req, res) => {
   res.json({ status: "ok" });
@@ -29,7 +32,17 @@ app.post("/tickets", (req, res) => {
   res.status(201).json({ ticket: issueTicket(token), expiresIn: config.ticketTtlSeconds });
 });
 
+app.use(notificationsRouter);
+
 const errorHandler: ErrorRequestHandler = (error, _req, res, _next) => {
+  if (isHttpError(error)) {
+    res.status(error.statusCode).json({ error: error.message });
+    return;
+  }
+  if (error instanceof SyntaxError && "status" in error && error.status === 400) {
+    res.status(400).json({ error: "Request body contains invalid JSON" });
+    return;
+  }
   console.error("[notification-service] Request failed", error);
   res.status(500).json({ error: "Internal server error" });
 };
