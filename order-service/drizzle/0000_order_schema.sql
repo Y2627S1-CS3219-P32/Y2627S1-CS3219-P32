@@ -23,6 +23,7 @@ CREATE TABLE "orders" (
 	"courier_id" integer,
 	"supplier_id" uuid NOT NULL,
 	"supplier_version" bigint NOT NULL,
+	"title" varchar(100) NOT NULL,
 	"description" text NOT NULL,
 	"delivery_location" text NOT NULL,
 	"credit_reward" integer NOT NULL,

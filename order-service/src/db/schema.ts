@@ -3,6 +3,7 @@
  * Scope: Implement the student-defined order-service schema: local user and
  * append-only supplier copies, orders, and the order event log / outbox.
  * Author review: Pending.
+ * Claude Code (Opus 5.5), 2026-10-17: student-requested title column. Author review: Pending.
  */
 import { sql } from "drizzle-orm";
 import {
@@ -102,6 +103,7 @@ export const orders = pgTable(
     courierId: integer("courier_id").references(() => users.id),
     supplierId: uuid("supplier_id").notNull(),
     supplierVersion: bigint("supplier_version", { mode: "number" }).notNull(),
+    title: varchar("title", { length: 100 }).notNull(),
     description: text("description").notNull(),
     deliveryLocation: text("delivery_location").notNull(),
     creditReward: integer("credit_reward").notNull(),

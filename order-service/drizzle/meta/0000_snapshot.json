@@ -1,5 +1,5 @@
 {
-  "id": "e88a63be-a60b-495a-9c37-2980ba5f26a1",
+  "id": "5d4d8034-84a1-479a-a541-942cb6804eee",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -176,6 +176,12 @@
         "supplier_version": {
           "name": "supplier_version",
           "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "title": {
+          "name": "title",
+          "type": "varchar(100)",
           "primaryKey": false,
           "notNull": true
         },
