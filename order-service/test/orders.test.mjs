@@ -4,6 +4,8 @@
  * checks, user/supplier event copies, order creation, state actions, saga
  * commands, expiry, the outbox, and listing with cursor pagination.
  * Author review: Pending.
+ * Claude Code (Opus 5.5), 2026-10-17: titles, display names, order details, history,
+ * editing, and multi-state filters. Author review: Pending.
  */
 import assert from "node:assert/strict";
 import { createHmac, randomBytes, randomUUID } from "node:crypto";
@@ -103,7 +105,7 @@ async function createOrder(overrides = {}, user = REQUESTER) {
   const response = await request("/orders", {
     user,
     method: "POST",
-    body: { supplierId, description: "One iced latte", deliveryLocation: "COM1 level 2 lobby", creditReward: 5, ...overrides },
+    body: { supplierId, title: "Order me coffee", description: "One iced latte", deliveryLocation: "COM1 level 2 lobby", creditReward: 5, ...overrides },
   });
   assert.equal(response.status, 201, await response.clone().text());
   return response.json();
@@ -224,6 +226,9 @@ test("POST /orders validates the body and the supplier (FR10.1)", async () => {
     [{ creditReward: 0 }, "creditReward must be a positive whole number"],
     [{ creditReward: 1.5 }, "creditReward must be a positive whole number"],
     [{ creditReward: "5" }, "creditReward must be a positive whole number"],
+    [{ title: undefined }, "title is required"],
+    [{ title: "x".repeat(101) }, "title must be at most 100 characters"],
+    [{ description: "x".repeat(501) }, "description must be at most 500 characters"],
     [{ description: "  " }, "description is required"],
     [{ deliveryLocation: undefined }, "deliveryLocation is required"],
     [{ supplierId: "nope" }, "supplierId must be a supplier id"],
@@ -233,7 +238,7 @@ test("POST /orders validates the body and the supplier (FR10.1)", async () => {
     const response = await request("/orders", {
       user: REQUESTER,
       method: "POST",
-      body: { supplierId, description: "x", deliveryLocation: "y", creditReward: 5, ...overrides },
+      body: { supplierId, title: "t", description: "x", deliveryLocation: "y", creditReward: 5, ...overrides },
     });
     assert.equal(response.status, 400, JSON.stringify(overrides));
     assert.equal((await response.json()).error, error);
@@ -241,21 +246,22 @@ test("POST /orders validates the body and the supplier (FR10.1)", async () => {
 
   const inactive = randomUUID();
   await push("supplier-events", supplierEvent(inactive, { supplier: { isActive: false } }));
-  let response = await request("/orders", { user: REQUESTER, method: "POST", body: { supplierId: inactive, description: "x", deliveryLocation: "y", creditReward: 1 } });
+  let response = await request("/orders", { user: REQUESTER, method: "POST", body: { supplierId: inactive, title: "t", description: "x", deliveryLocation: "y", creditReward: 1 } });
   assert.equal((await response.json()).error, "Supplier is not active");
 
   const deleted = randomUUID();
   await push("supplier-events", supplierEvent(deleted));
   await push("supplier-events", { type: "supplier.deleted", eventId: randomUUID(), version: nextVersion(), supplierId: deleted });
-  response = await request("/orders", { user: REQUESTER, method: "POST", body: { supplierId: deleted, description: "x", deliveryLocation: "y", creditReward: 1 } });
+  response = await request("/orders", { user: REQUESTER, method: "POST", body: { supplierId: deleted, title: "t", description: "x", deliveryLocation: "y", creditReward: 1 } });
   assert.equal((await response.json()).error, "Supplier not found");
 });
 
 test("POST /orders creates a PENDING order, records order.created, and publishes it", async () => {
   const order = await createOrder();
   assert.equal(order.state, "PENDING");
-  assert.equal(order.requesterId, REQUESTER);
-  assert.equal(order.courierId, null);
+  assert.deepEqual(order.requester, { id: REQUESTER, displayName: `user-${REQUESTER}` });
+  assert.equal(order.courier, null);
+  assert.equal(order.title, "Order me coffee");
   assert.equal(order.supplier.id, supplierId);
   assert.equal(order.supplier.name, "Cool Spot");
   assert.equal(order.supplier.imageUrl, undefined);
@@ -319,7 +325,7 @@ test("the full errand flow runs from OPEN to SETTLED with the right people", asy
   assert.equal(accepted.status, 200);
   const body = await accepted.json();
   assert.equal(body.state, "ACCEPTED");
-  assert.equal(body.courierId, COURIER);
+  assert.deepEqual(body.courier, { id: COURIER, displayName: `user-${COURIER}` });
   assert.ok(body.acceptedAt);
 
   assert.equal((await act("accept", OTHER)).status, 409);
@@ -417,7 +423,10 @@ test("GET /orders filters by state and supplier, sorts by reward, and pages with
   const first = await (await request(`/orders?supplierId=${listSupplier}&sort=reward&limit=1`, { user: COURIER })).json();
   const mismatch = await request(`/orders?sort=-reward&cursor=${first.nextCursor}`, { user: COURIER });
   assert.equal(mismatch.status, 400);
-  for (const query of ["state=NOPE", "sort=price", "limit=0", "limit=101", "supplierId=x", "cursor=garbage"]) {
+  const twoStates = await (await request(`/orders?supplierId=${listSupplier}&state=OPEN,PENDING&limit=100`, { user: COURIER })).json();
+  assert.equal(twoStates.items.length, rewards.length + 1);
+
+  for (const query of ["state=NOPE", "state=OPEN,NOPE", "sort=price", "limit=0", "limit=101", "supplierId=x", "cursor=garbage"]) {
     assert.equal((await request(`/orders?${query}`, { user: COURIER })).status, 400, query);
   }
 });
@@ -425,7 +434,52 @@ test("GET /orders filters by state and supplier, sorts by reward, and pages with
 test("GET /orders/me lists only the caller's own requests with their state (FR10.2)", async () => {
   const mine = await createOrder({}, OTHER);
   const page = await (await request("/orders/me?limit=100", { user: OTHER })).json();
-  assert.ok(page.items.every((item) => item.requesterId === OTHER));
+  assert.ok(page.items.every((item) => item.requester.id === OTHER));
   assert.equal(page.items[0].id, mine.id);
   assert.equal(page.items[0].state, "PENDING");
+});
+
+test("GET /orders/:orderId returns one order and its history with actor names", async () => {
+  const order = await openOrder();
+  await request(`/orders/${order.id}/accept`, { method: "POST", user: COURIER });
+
+  const fetched = await (await request(`/orders/${order.id}`, { user: OTHER })).json();
+  assert.equal(fetched.id, order.id);
+  assert.equal(fetched.state, "ACCEPTED");
+  assert.equal(fetched.courier.displayName, `user-${COURIER}`);
+
+  const history = await (await request(`/orders/${order.id}/events`, { user: OTHER })).json();
+  assert.deepEqual(history.map((event) => [event.type, event.actor?.displayName ?? null]), [
+    ["order.created", `user-${REQUESTER}`],
+    ["order.opened", null],
+    ["order.accepted", `user-${COURIER}`],
+  ]);
+  assert.ok(history.every((event) => event.createdAt && event.id));
+
+  assert.equal((await request(`/orders/${randomUUID()}`, { user: OTHER })).status, 404);
+  assert.equal((await request(`/orders/${randomUUID()}/events`, { user: OTHER })).status, 404);
+});
+
+test("PATCH /orders/:orderId lets the requester edit text fields while OPEN", async () => {
+  const pending = await createOrder();
+  const edit = (id, body, user = REQUESTER) => request(`/orders/${id}`, { method: "PATCH", user, body });
+  assert.equal((await edit(pending.id, { title: "New" })).status, 409);
+
+  const order = await openOrder();
+  assert.equal((await edit(order.id, { title: "New" }, COURIER)).status, 403);
+  assert.equal((await edit(order.id, { creditReward: 50 })).status, 400);
+  assert.equal((await edit(order.id, {})).status, 400);
+  assert.equal((await edit(order.id, { title: " " })).status, 400);
+
+  const edited = await edit(order.id, { title: "Two lattes", deliveryLocation: "LT11" });
+  assert.equal(edited.status, 200);
+  const body = await edited.json();
+  assert.equal(body.title, "Two lattes");
+  assert.equal(body.deliveryLocation, "LT11");
+  assert.equal(body.description, "One iced latte");
+  assert.equal(body.state, "OPEN");
+  assert.deepEqual((await events(order.id)).at(-1), { sequence: 3, type: "order.edited", state: "OPEN", actor_id: REQUESTER, command_id: null });
+
+  await request(`/orders/${order.id}/accept`, { method: "POST", user: COURIER });
+  assert.equal((await edit(order.id, { title: "Too late" })).status, 409);
 });
