@@ -66,6 +66,8 @@ Author review: Checked for correctness. -->
   Compose configuration validation, `bash -n deploy.sh`, and Drizzle schema
   migration-plan generation passed. A live Compose end-to-end test was not run
   because the Docker daemon was unavailable.
+- Author review: Pending.
+
 ## 2026-10-01: Editing operating hours
 
 - Tool: Claude Code (Opus 5.5). Mode: Implementation, tests, documentation, and verification.
