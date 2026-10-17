@@ -2,6 +2,8 @@
 // Scope: One shared WebSocket to notification-service per browser tab: fetches a ticket,
 // reconnects with backoff (including when the session expires), and passes order events
 // to the pages listening. Author review: Pending.
+// Claude Code (Opus 5.5), 2026-10-17: notification messages for toasts. Author review: Pending.
+import type { AppNotification } from "#shared/services/notification-service/types";
 import type { OrderState } from "#shared/services/order-service/types";
 
 export interface OrderNotification {
@@ -13,7 +15,9 @@ export interface OrderNotification {
 }
 
 interface Listener {
-  onEvent: (event: OrderNotification) => void;
+  onEvent?: (event: OrderNotification) => void;
+  // A notification meant for this user (fewer than events; for toasts and the bell).
+  onNotification?: (notification: AppNotification) => void;
   // Called after every (re)connect, since events may have been missed while offline.
   onConnect?: () => void;
 }
@@ -42,12 +46,15 @@ async function connect() {
     const ws = new WebSocket(`${base}/ws?ticket=${encodeURIComponent(ticket)}`);
     socket = ws;
     ws.onmessage = (message) => {
-      const data = JSON.parse(String(message.data)) as { type: string; event?: OrderNotification };
+      const data = JSON.parse(String(message.data)) as { type: string; event?: OrderNotification; notification?: AppNotification };
       if (data.type === "ready") {
         retryDelay = 1000;
         for (const listener of listeners) listener.onConnect?.();
       } else if (data.type === "order.event" && data.event) {
-        for (const listener of listeners) listener.onEvent(data.event);
+        for (const listener of listeners) listener.onEvent?.(data.event);
+      } else if (data.type === "notification" && data.notification) {
+        const notification = { ...data.notification, read: false };
+        for (const listener of listeners) listener.onNotification?.(notification);
       }
     };
     ws.onclose = () => {
