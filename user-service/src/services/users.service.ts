@@ -7,16 +7,17 @@
 import { hashPassword } from "../auth";
 import { assertAdministratorCanBeDemoted } from "../administrator-constraints";
 import type { PublicUser, User } from "../db/schema";
-import { HttpError, isPostgresUniqueViolation } from "../errors";
+import { HttpError } from "../errors";
+import { publishUserEvent, userSnapshot } from "../events/user-events";
 import {
   countAdministrators,
-  deleteUser as removeUser,
   findAllUsers,
+  findProjectedUserEventVersion,
   findPublicUserById,
+  findUserById,
   findUserByDisplayName,
   findUserByEmail,
-  insertUser,
-  updateUser as persistUserUpdate,
+  reserveUserId,
 } from "../repositories/users.repository";
 import { validateDisplayName } from "../registration-validation";
 
@@ -107,8 +108,17 @@ async function ensureUniqueDisplayName(displayName: string, excludedId?: number)
   }
 }
 
+function toPublicUser(user: User): PublicUser {
+  const { id, name, displayName, email, role } = user;
+  return { id, name, displayName, email, role };
+}
+
 export async function listUsers(): Promise<PublicUser[]> {
   return findAllUsers();
+}
+
+export async function getProjectedEventVersion(): Promise<number> {
+  return findProjectedUserEventVersion();
 }
 
 export async function getUser(idParam: string): Promise<PublicUser> {
@@ -125,23 +135,16 @@ export async function createUser(input: unknown): Promise<PublicUser> {
   }
   await ensureUniqueEmail(fields.email);
   if (fields.displayName) await ensureUniqueDisplayName(fields.displayName);
-  try {
-    return await insertUser({
-      name: fields.name,
-      ...(fields.displayName ? { displayName: fields.displayName } : {}),
-      email: fields.email,
-      role: fields.role,
-      passwordHash: hashPassword(password),
-    });
-  } catch (error) {
-    if (isPostgresUniqueViolation(error, "users_email_unique")) {
-      throw new HttpError(409, "A user with this email already exists");
-    }
-    if (isPostgresUniqueViolation(error, "users_display_name_unique")) {
-      throw new HttpError(409, "A user with this display name already exists");
-    }
-    throw error;
-  }
+  const user: User = {
+    id: await reserveUserId(),
+    name: fields.name,
+    displayName: fields.displayName ?? "",
+    email: fields.email,
+    role: fields.role,
+    passwordHash: hashPassword(password),
+  };
+  await publishUserEvent({ type: "user.created", user: userSnapshot(user) }, user.id);
+  return toPublicUser(user);
 }
 
 export async function updateUser(
@@ -150,7 +153,7 @@ export async function updateUser(
   input: unknown,
 ): Promise<PublicUser> {
   const id = parseUserId(idParam);
-  const current = await findPublicUserById(id);
+  const current = await findUserById(id);
   if (!current) throw new HttpError(404, "User not found");
 
   const fields = normalizeFields(input, false);
@@ -166,28 +169,18 @@ export async function updateUser(
 
   const updates: Partial<Pick<User, "name" | "displayName" | "email" | "role" | "passwordHash">> = { ...fields };
   if (password !== undefined) updates.passwordHash = hashPassword(password);
-  try {
-    const user = await persistUserUpdate(id, updates);
-    if (!user) throw new HttpError(404, "User not found");
-    return user;
-  } catch (error) {
-    if (isPostgresUniqueViolation(error, "users_email_unique")) {
-      throw new HttpError(409, "A user with this email already exists");
-    }
-    if (isPostgresUniqueViolation(error, "users_display_name_unique")) {
-      throw new HttpError(409, "A user with this display name already exists");
-    }
-    throw error;
-  }
+  const user: User = { ...current, ...updates };
+  await publishUserEvent({ type: "user.updated", user: userSnapshot(user) }, id);
+  return toPublicUser(user);
 }
 
 export async function deleteUser(idParam: string, actingUserId: number): Promise<void> {
   const id = parseUserId(idParam);
-  const user = await findPublicUserById(id);
+  const user = await findUserById(id);
   if (!user) throw new HttpError(404, "User not found");
   if (id === actingUserId) throw new HttpError(409, "You cannot delete your own account");
   if (user.role === "admin" && await countAdministrators() === 1) {
     throw new HttpError(409, "The last administrator cannot be deleted");
   }
-  if (!await removeUser(id)) throw new HttpError(404, "User not found");
+  await publishUserEvent({ type: "user.deleted", userId: id }, id);
 }

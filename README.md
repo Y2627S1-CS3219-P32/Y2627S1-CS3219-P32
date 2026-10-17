@@ -74,8 +74,12 @@ docker compose -f compose.yaml -f compose.dev.yaml up --build --watch
 ```
 
 [`compose.dev.yaml`](compose.dev.yaml) runs the supplier and user services with
-`tsx watch` and the frontend with `nuxt dev`. Compose syncs source edits into the
-containers, which restart (backends) or hot-swap modules (frontend) on change.
+`tsx watch`, the user event worker with `tsx watch`, and the frontend with `nuxt dev`.
+Compose also starts a local Pub/Sub emulator and PostgreSQL projection worker.
+User-service mutations are acknowledged when Pub/Sub accepts them; PostgreSQL
+updates asynchronously, so immediate reads or logins can briefly lag. Compose
+syncs source edits into the containers, which restart (backends) or hot-swap
+modules (frontend) on change.
 Editing a `package.json` rebuilds that service's image. Outside Docker, run
 `npm run dev` in any of these service folders.
 
@@ -90,10 +94,15 @@ Images are built by [`cloudbuild.yaml`](cloudbuild.yaml) and deployed by
 
 ```sh
 gcloud builds submit --config cloudbuild.yaml --region asia-southeast1  # build and push images
-./deploy.sh setup   # one-time: Cloud SQL, databases, secrets, IAM, networking
-./deploy.sh         # run migrations, then deploy all services
+./deploy.sh setup   # one-time: Cloud SQL, Pub/Sub, databases, secrets, IAM, networking
+./deploy.sh         # run migrations, deploy services and authenticated Pub/Sub worker
 ./deploy.sh seed    # load supplier seed data (safe to repeat)
 ```
+
+The user service publishes state-change events to the `user-events` topic. The
+authenticated `user-event-worker` Cloud Run service consumes its push
+subscription and updates the PostgreSQL read model. Events contain password
+hashes only; GCP IAM restricts publishing and push invocation.
 
 To create the first administrator, add a `bootstrap-secret` in Secret Manager (at least 32
 bytes), re-run `./deploy.sh`, complete `/setup/admin`, then delete the secret and re-run.

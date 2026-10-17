@@ -10,6 +10,10 @@ services:
       JWT_ACCESS_TOKEN_TTL: ${JWT_ACCESS_TOKEN_TTL:-900}
       BOOTSTRAP_SECRET: ${BOOTSTRAP_SECRET:-}
       DATABASE_URL: postgres://user:user@user-db:5432/users
+      PUBSUB_EMULATOR_HOST: pubsub-emulator:8085
+      PUBSUB_PROJECT_ID: foc-local
+      PUBSUB_TOPIC: user-events
+      PUBSUB_SUBSCRIPTION: user-events-worker
     ports:
       - "3333:3333"
     healthcheck:
@@ -25,6 +29,55 @@ services:
     depends_on:
       user-db-migrate:
         condition: service_completed_successfully
+      user-event-worker:
+        condition: service_healthy
+
+  user-event-worker:
+    build:
+      context: ./user-service
+    command: ["npm", "run", "worker"]
+    environment:
+      PORT: "3334"
+      DATABASE_URL: "postgres://user:user@user-db:5432/users"
+      PUBSUB_EMULATOR_HOST: pubsub-emulator:8085
+      PUBSUB_PROJECT_ID: foc-local
+      PUBSUB_TOPIC: user-events
+      PUBSUB_SUBSCRIPTION: user-events-worker
+      PUBSUB_PUSH_ENDPOINT: http://user-event-worker:3334/pubsub/user-events
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3334/health').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    depends_on:
+      user-db-migrate:
+        condition: service_completed_successfully
+      pubsub-emulator:
+        condition: service_healthy
+
+  pubsub-emulator:
+    image: gcr.io/google.com/cloudsdktool/google-cloud-cli:emulators
+    command:
+      - gcloud
+      - beta
+      - emulators
+      - pubsub
+      - start
+      - --project=foc-local
+      - --host-port=0.0.0.0:8085
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - "curl -fsS http://127.0.0.1:8085/v1/projects/foc-local/topics >/dev/null || exit 1"
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
 
   frontend-service:
     build:
