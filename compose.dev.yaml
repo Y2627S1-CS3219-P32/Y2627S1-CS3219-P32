@@ -67,3 +67,16 @@ services:
           target: /app/src
         - action: rebuild
           path: ./order-service/package.json
+
+  # Claude Code (Opus 5.5), 2026-10-17: notification-service hot reloading. Author review: Pending.
+  notification-service:
+    build:
+      target: tooling
+    command: ["npx", "tsx", "watch", "src/index.ts"]
+    develop:
+      watch:
+        - action: sync
+          path: ./notification-service/src
+          target: /app/src
+        - action: rebuild
+          path: ./notification-service/package.json
