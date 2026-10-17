@@ -1,0 +1,29 @@
+{
+  "//": "AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-10-17. Scope: Notification-service dependencies and scripts, mirroring order-service; package-lock.json is npm-generated. Author review: Pending.",
+  "name": "notification-service",
+  "version": "1.0.0",
+  "description": "Notification Service",
+  "main": "dist/index.js",
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit",
+    "test": "npm run build && node --test test/*.test.mjs"
+  },
+  "license": "ISC",
+  "dependencies": {
+    "@google-cloud/pubsub": "^6.3.0",
+    "dotenv": "^18.0.8",
+    "express": "^5.3.0",
+    "ws": "^8.22.0"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.6.5",
+    "@types/ws": "^8.18.2",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  }
+}
