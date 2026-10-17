@@ -300,6 +300,41 @@ Author review: Checked for correctness. -->
 
 # AI usage log (Supplier Service)
 
+## 2026-10-15: CRUD for supplier types and buildings
+
+- Tool: Claude Code (Opus 5.5). Mode: Implementation, tests, documentation, and verification.
+- Exact prompt: `add CRUD for supplier buildings and types. this building and types should be two buttons somewhere on the add supplier modal (bottom left). clicking on those buttons will display a modal that has a textbox for the user to add their buildings/types.`
+- Design decisions made by the student: CRUD for types and buildings; two buttons at the
+  bottom left of the add-supplier modal, each opening a modal with a textbox to add entries.
+- Choices made by Claude Code, awaiting student review: administrator-only
+  `POST /types`, `PUT /types/:id`, `DELETE /types/:id` (and the same for `/buildings`)
+  with a `{ "name" }` body; duplicate names and deleting an entry still used by a
+  supplier return 409; a rename applies to every supplier using the entry.
+- Key response:
+  - supplier-service: one router serves both tables (`GET` moved there unchanged).
+    The UUID parameter check moved to `params.ts` for reuse.
+  - Frontend: Nuxt proxy routes and client calls; a management dialog listing entries
+    with add, rename, and delete. Closing it reloads the add-supplier dropdowns, and
+    changes reload the supplier list.
+- Affected files: `supplier-service/src/index.ts`, `supplier-service/src/params.ts`,
+  `supplier-service/src/reference-routes.ts`, `supplier-service/src/supplier-input.ts`,
+  `supplier-service/test/suppliers.test.mjs`, `supplier-service/README.md`,
+  `frontend-service/shared/services/supplier-service/types.ts`,
+  `frontend-service/server/services/supplier-service/client.ts`,
+  `frontend-service/server/api/supplier-service/types.post.ts`,
+  `frontend-service/server/api/supplier-service/types/[id].put.ts`,
+  `frontend-service/server/api/supplier-service/types/[id].delete.ts`,
+  `frontend-service/server/api/supplier-service/buildings.post.ts`,
+  `frontend-service/server/api/supplier-service/buildings/[id].put.ts`,
+  `frontend-service/server/api/supplier-service/buildings/[id].delete.ts`,
+  `frontend-service/app/services/supplier-service/components/SupplierReferenceDialog.vue`,
+  `frontend-service/app/services/supplier-service/components/SupplierCreateDialog.vue`,
+  `frontend-service/app/services/supplier-service/components/SupplierDirectory.vue`,
+  and this log.
+- Verification: supplier-service `npm run typecheck` passed, and `npm test` passed
+  30/30. Frontend `npm run typecheck` passed. The UI was not exercised in a browser.
+- Author review: Pending.
+
 ## 2026-09-30: Supplier PUT and DELETE changed to plain CRUD
 
 - Tool: Claude Code (Opus 5.5). Mode: Implementation, tests, documentation, and verification.

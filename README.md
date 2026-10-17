@@ -70,7 +70,7 @@ which Nuxt fetches over the Compose network. The supplier API remains on host po
 ## Develop with hot reloading
 
 ```sh
-docker compose -f compose.yaml -f compose.dev.yaml up --build --watch
+docker compose -f compose.yaml -f compose.dev.yaml up --watch
 ```
 
 [`compose.dev.yaml`](compose.dev.yaml) runs the supplier and user services with

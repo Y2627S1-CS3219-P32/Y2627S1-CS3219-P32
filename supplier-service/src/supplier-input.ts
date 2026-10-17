@@ -5,7 +5,9 @@ Author review: Done.
 Tool: Claude Code (model: Opus 5.5), date: 2026-09-30
 Scope: Reused unchanged for POST /suppliers. Author review: Done.
 Tool: Claude Code (model: Opus 5.5), date: 2026-09-30
-Scope: Optional isActive toggle. Author review: Pending. **/
+Scope: Optional isActive toggle. Author review: Pending.
+Tool: Claude Code (model: Opus 5.5), date: 2026-10-15
+Scope: requiredText exported for type and building names. Author review: Pending. **/
 
 import { HttpError } from "./errors.js";
 
@@ -24,7 +26,7 @@ export interface SupplierInput {
 
 const MAX_LENGTH = 256;
 
-function requiredText(body: Record<string, unknown>, field: string): string {
+export function requiredText(body: Record<string, unknown>, field: string): string {
   const value = body[field];
   if (typeof value !== "string" || !value.trim()) throw new HttpError(400, `${field} is required`);
   if (value.trim().length > MAX_LENGTH) throw new HttpError(400, `${field} must be at most ${MAX_LENGTH} characters`);

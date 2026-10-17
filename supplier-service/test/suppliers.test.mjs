@@ -18,6 +18,9 @@
  * AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-10-01.
  * Scope: Operating hours in GET responses and PUT replacement checks.
  * Author review: Pending.
+ * AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-10-15.
+ * Scope: POST, PUT, and DELETE /types and /buildings checks.
+ * Author review: Pending.
  */
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
@@ -485,6 +488,72 @@ test("POST can create an inactive supplier", async () => {
   assert.equal(response.status, 201);
   assert.equal((await response.json()).isActive, false);
   assert.equal((await getSuppliers({ name: "Hidden New Cafe" }, "student-token")).length, 0);
+});
+
+for (const [path, label] of [["/types", "type"], ["/buildings", "building"]]) {
+  test(`${path} writes are administrator-only`, async () => {
+    const body = { name: `Guarded ${label}` };
+    assert.equal((await request(path, { method: "POST", body })).status, 401);
+    assert.equal((await request(path, { method: "POST", body, token: "student-token" })).status, 403);
+    const listed = await (await request(path, { token: "admin-token" })).json();
+    assert.equal(listed.some(row => row.name === body.name), false);
+    const [first] = listed;
+    assert.equal((await request(`${path}/${first.id}`, { method: "PUT", body, token: "student-token" })).status, 403);
+    assert.equal((await request(`${path}/${first.id}`, { method: "DELETE", token: "student-token" })).status, 403);
+  });
+
+  test(`${path} supports create, rename, and delete`, async () => {
+    const created = await request(path, { method: "POST", token: "admin-token", body: { name: `  New ${label}  ` } });
+    assert.equal(created.status, 201);
+    const row = await created.json();
+    assert.equal(typeof row.id, "string");
+    assert.equal(row.name, `New ${label}`);
+
+    const renamed = await request(`${path}/${row.id}`, { method: "PUT", token: "admin-token", body: { name: `Renamed ${label}` } });
+    assert.equal(renamed.status, 200);
+    assert.deepEqual(await renamed.json(), { id: row.id, name: `Renamed ${label}` });
+
+    assert.equal((await request(`${path}/${row.id}`, { method: "DELETE", token: "admin-token" })).status, 204);
+    assert.equal((await request(`${path}/${row.id}`, { method: "DELETE", token: "admin-token" })).status, 404);
+    assert.equal((await request(`${path}/${row.id}`, { method: "PUT", token: "admin-token", body: { name: "Gone" } })).status, 404);
+    assert.equal((await request(`${path}/not-a-uuid`, { method: "DELETE", token: "admin-token" })).status, 404);
+  });
+
+  test(`${path} rejects blank, long, and duplicate names`, async () => {
+    for (const body of [{ name: "" }, { name: "   " }, { name: "x".repeat(257) }, {}, []]) {
+      const response = await request(path, { method: "POST", token: "admin-token", body });
+      assert.equal(response.status, 400);
+      assert.equal(typeof (await response.json()).error, "string");
+    }
+    const existing = path === "/types" ? "Food" : "COM2";
+    assert.equal((await request(path, { method: "POST", token: "admin-token", body: { name: existing } })).status, 409);
+
+    const other = await (await request(path, { method: "POST", token: "admin-token", body: { name: `Other ${label}` } })).json();
+    const clash = await request(`${path}/${other.id}`, { method: "PUT", token: "admin-token", body: { name: existing } });
+    assert.equal(clash.status, 409);
+    assert.match((await clash.json()).error, /already exists/);
+    assert.equal((await request(`${path}/${other.id}`, { method: "DELETE", token: "admin-token" })).status, 204);
+  });
+}
+
+test("renaming a type or building updates its suppliers, and in-use rows cannot be deleted", async () => {
+  const [type] = await db.insert(schema.types).values({ name: "Laundry" }).returning();
+  const [building] = await db.insert(schema.buildings).values({ name: "UTown Residence" }).returning();
+  await db.insert(schema.suppliers).values({
+    name: "Wash Corner", supplierTypeId: type.id, buildingId: building.id, isActive: true, latitude: "1.3", longitude: "103.7",
+  });
+
+  for (const [path, id] of [["/types", type.id], ["/buildings", building.id]]) {
+    const response = await request(`${path}/${id}`, { method: "DELETE", token: "admin-token" });
+    assert.equal(response.status, 409);
+    assert.match((await response.json()).error, /still used/);
+  }
+  assert.equal((await request(`/types/${type.id}`, { method: "PUT", token: "admin-token", body: { name: "Laundromat" } })).status, 200);
+  assert.equal((await request(`/buildings/${building.id}`, { method: "PUT", token: "admin-token", body: { name: "UTown" } })).status, 200);
+
+  const [supplier] = await getSuppliers({ name: "Wash Corner" });
+  assert.equal(supplier.type, "Laundromat");
+  assert.equal(supplier.buildingName, "UTown");
 });
 
 test("POST stores operating hours, including 24-hour and overnight periods", async () => {

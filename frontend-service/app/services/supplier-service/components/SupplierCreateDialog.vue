@@ -1,13 +1,15 @@
 <!-- AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-09-30.
 Scope: Administrator form for POST /suppliers, with type/building dropdowns and browser geolocation. Author review: Done.
 AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-09-30.
-Scope: Operating hours field. Author review: Pending. -->
+Scope: Operating hours field. Author review: Pending.
+Claude Code (Opus 5.5), 2026-10-15. Scope: Buttons opening the type and building management dialog. Author review: Pending. -->
 <script setup lang="ts">
-import type { Supplier, SupplierCreate, SupplierReference } from "#shared/services/supplier-service/types";
+import type { Supplier, SupplierCreate, SupplierReference, SupplierReferenceKind } from "#shared/services/supplier-service/types";
 import OperatingHoursPicker from "./OperatingHoursPicker.vue";
+import SupplierReferenceDialog from "./SupplierReferenceDialog.vue";
 
 const props = defineProps<{ open: boolean }>();
-const emit = defineEmits<{ close: []; created: [supplier: Supplier]; unauthorized: [] }>();
+const emit = defineEmits<{ close: []; created: [supplier: Supplier]; unauthorized: []; referencesChanged: [] }>();
 
 const dialog = ref<HTMLDialogElement | null>(null);
 const form = ref<SupplierCreate>(emptyForm());
@@ -20,6 +22,7 @@ const locating = ref(false);
 const locationMessage = ref("");
 // Remounts the hours picker so each opening starts with no selection.
 const openCount = ref(0);
+const managing = ref<SupplierReferenceKind | null>(null);
 
 function emptyForm(): SupplierCreate {
   return { name: "", type: "", buildingName: null, floor: "", locationDescription: "", latitude: "", longitude: "", imageUrl: "", operatingHours: [] };
@@ -51,6 +54,14 @@ async function loadOptions() {
     if (statusOf(error) === 401) emit("unauthorized");
     else optionsError.value = "Supplier types and buildings could not be loaded.";
   }
+}
+
+// A renamed or deleted selection no longer matches an option, so it is cleared.
+async function onManageClosed() {
+  managing.value = null;
+  await loadOptions();
+  if (!types.value.some(type => type.name === form.value.type)) form.value.type = "";
+  if (form.value.buildingName && !buildings.value.some(building => building.name === form.value.buildingName)) form.value.buildingName = null;
 }
 
 watch(() => props.open, (open) => {
@@ -176,10 +187,24 @@ const input = "w-full rounded-lg border border-[#cfd5da] bg-white px-3 py-2 text
 
       <p v-if="errorMessage" class="mt-4 text-sm text-red-700" role="alert">{{ errorMessage }}</p>
 
-      <div class="mt-5 flex justify-end gap-2">
-        <button type="button" class="rounded-lg px-4 py-2 text-sm font-medium text-[#5b6570] hover:bg-[#f7f9fc]" @click="dialog?.close()">Cancel</button>
-        <button type="submit" class="rounded-lg bg-[#064784] px-4 py-2 text-sm font-medium text-white hover:bg-[#053765]" :disabled="saving">{{ saving ? 'Adding…' : 'Add supplier' }}</button>
+      <div class="mt-5 flex flex-wrap items-center justify-between gap-2">
+        <div class="flex gap-2">
+          <button type="button" class="rounded-lg border border-[#cfd5da] px-3 py-2 text-sm font-medium text-[#064784] hover:bg-[#f7f9fc]" @click="managing = 'buildings'">Buildings</button>
+          <button type="button" class="rounded-lg border border-[#cfd5da] px-3 py-2 text-sm font-medium text-[#064784] hover:bg-[#f7f9fc]" @click="managing = 'types'">Types</button>
+        </div>
+        <div class="flex gap-2">
+          <button type="button" class="rounded-lg px-4 py-2 text-sm font-medium text-[#5b6570] hover:bg-[#f7f9fc]" @click="dialog?.close()">Cancel</button>
+          <button type="submit" class="rounded-lg bg-[#064784] px-4 py-2 text-sm font-medium text-white hover:bg-[#053765]" :disabled="saving">{{ saving ? 'Adding…' : 'Add supplier' }}</button>
+        </div>
       </div>
     </form>
+
+    <!-- Outside the form, so its own forms are not nested. -->
+    <SupplierReferenceDialog
+      :kind="managing"
+      @close="onManageClosed"
+      @changed="emit('referencesChanged')"
+      @unauthorized="emit('unauthorized')"
+    />
   </dialog>
 </template>
