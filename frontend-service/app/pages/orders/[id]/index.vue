@@ -1,11 +1,14 @@
 <!-- AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-10-17.
 Scope: Order details page after the student's mockups: the order card with the viewer's
 action, and the order's history. Refreshes while the credit saga is still running.
-Author review: Pending. -->
+Author review: Pending.
+Claude Code (Opus 5.5), 2026-10-17. Scope: Live updates from notification-service instead of
+polling. Author review: Pending. -->
 <script setup lang="ts">
 import type { Order, OrderAction, OrderEvent } from "#shared/services/order-service/types";
 import OrderCard from "~/services/order-service/components/OrderCard.vue";
 import OrderHistory from "~/services/order-service/components/OrderHistory.vue";
+import { useOrderNotifications } from "~/services/notification-service/composables/useNotifications";
 import { statusOf, useOrderActions, useViewerId } from "~/services/order-service/composables/useOrders";
 
 definePageMeta({ middleware: "auth" });
@@ -25,14 +28,14 @@ async function onAction(action: OrderAction) {
   await refresh();
 }
 
-// A new order is PENDING until the credit check finishes; check again every 2 seconds.
-let timer: ReturnType<typeof setInterval> | undefined;
-onMounted(() => {
-  timer = setInterval(() => {
-    if (order.value?.state === "PENDING") refresh();
-  }, 2000);
+// Live updates: re-fetch when this order changes, and after (re)connecting in case
+// something changed while offline.
+useOrderNotifications({
+  onEvent: (event) => {
+    if (event.orderId === id) refresh();
+  },
+  onConnect: () => refresh(),
 });
-onBeforeUnmount(() => clearInterval(timer));
 
 watch(error, (value) => {
   if (statusOf(value) === 401) navigateTo({ path: "/login", query: { redirect: route.fullPath } });
