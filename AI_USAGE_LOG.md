@@ -813,3 +813,35 @@ for context, frontend-service is being set up. The frontend’s supplier screen 
   against the Pub/Sub emulator with the real user, supplier and order services: listing,
   filters, creating, editing, completing (settled by a stand-in orchestrator), and mobile layouts.
 - Author review: Pending.
+
+# AI usage log (Notification Service)
+
+## 2026-10-17: Notification service and live order updates
+
+- Tool: Claude Code (Opus 5.5). Mode: Implementation, tests, documentation, and verification.
+- Exact prompt: `go ahead`, following a conversation in which the student specified the
+  notification service: ingress all with local JWT verification, WebSockets, listening to all
+  order events (credit events later) with attribute-based filtering, a map of user id to
+  sockets, and one subscription per instance so every instance receives every event. The
+  student chose short-lived tickets for WebSocket authentication because the JWT is in an
+  httpOnly cookie.
+- Key response:
+  - order-service publishes `type` and `orderId` as Pub/Sub message attributes.
+  - New `notification-service`: `POST /tickets` (JWT → signed single-use ticket), `/ws`
+    WebSocket endpoint with origin checks, heartbeats and closing at JWT expiry, a per-instance
+    filtered pull subscription deleted on shutdown, and routing of each order event to the
+    requester's and courier's sockets.
+  - frontend: ticket endpoint, a shared reconnecting WebSocket composable, and live updates on
+    the Orders and Order Details pages in place of polling.
+- Affected files: `notification-service/` (all files), `order-service/src/events/`,
+  `order-service/test/orders.test.mjs`, `order-service/README.md`,
+  `frontend-service/server/api/notification-service/`, `frontend-service/app/services/notification-service/`,
+  `frontend-service/app/services/order-service/components/OrderBoard.vue`,
+  `frontend-service/app/pages/orders/[id]/index.vue`, `frontend-service/nuxt.config.ts`,
+  `compose.yaml`, `compose.dev.yaml`, and this log.
+- Verification: notification-service tests (4/4), order-service tests (17/17), strict
+  TypeScript and Nuxt typechecks passed. On the Pub/Sub emulator with two notification
+  instances, an order event reached users connected to different instances (~120ms), a
+  stopped instance deleted its subscription, and the Order Details page updated in Chrome
+  without reloading. Docker Compose and Cloud deployment were not run.
+- Author review: Pending.
