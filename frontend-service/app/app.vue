@@ -1,8 +1,10 @@
 <!-- AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-28.
 Scope: Shared frontend shell. Author review: Done.
-Claude Code (Opus 5.5), 2026-10-17. Scope: Orders navigation link. Author review: Pending. -->
+Claude Code (Opus 5.5), 2026-10-17. Scope: Orders navigation link. Author review: Pending.
+Claude Code (Opus 5.5), 2026-10-17. Scope: Notification bell for signed-in users. Author review: Pending. -->
 <script setup lang="ts">
 import type { User } from "#shared/services/user-service/types";
+import NotificationCenter from "~/services/notification-service/components/NotificationCenter.vue";
 
 function isUnauthorized(error: unknown): boolean {
   if (typeof error !== "object" || error === null) return false;
@@ -76,6 +78,7 @@ const { data: user } = await useAsyncData<User | null>("navigation-user", async 
           >
             Users
           </NuxtLink>
+          <NotificationCenter v-if="user" />
         </div>
       </div>
     </nav>

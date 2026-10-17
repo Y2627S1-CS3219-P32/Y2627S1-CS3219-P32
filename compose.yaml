@@ -93,6 +93,9 @@ services:
       NUXT_SUPPLIER_SERVICE_BASE_URL: http://supplier-service:3000
       # Claude Code (Opus 5.5), 2026-10-17. Author review: Pending.
       NUXT_ORDER_SERVICE_BASE_URL: http://order-service:3000
+      # Claude Code (Opus 5.5), 2026-10-17. Author review: Pending.
+      NUXT_NOTIFICATION_SERVICE_BASE_URL: http://notification-service:3000
+      NUXT_PUBLIC_NOTIFICATION_SERVICE_URL: ws://127.0.0.1:3003
     ports:
       - "3001:3000"
     depends_on:
@@ -242,6 +245,65 @@ services:
       pubsub-emulator:
         condition: service_healthy
 
+  # AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-10-17.
+  # Scope: Notification service (WebSockets for order events). Author review: Pending.
+  # Claude Code (Opus 5.5), 2026-10-17: database and migrations for stored notifications. Author review: Pending.
+  notification-db:
+    image: postgres:17
+    ports:
+      - "127.0.0.1:5436:5432"
+    environment:
+      POSTGRES_USER: notification
+      POSTGRES_PASSWORD: notification
+      POSTGRES_DB: notifications
+    volumes:
+      - notification-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U notification -d notifications"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  notification-db-migrate:
+    build:
+      context: ./notification-service
+      target: tooling
+    command: ["npm", "run", "db:migrate"]
+    environment:
+      DATABASE_URL: postgres://notification:notification@notification-db:5432/notifications
+    depends_on:
+      notification-db:
+        condition: service_healthy
+
+  notification-service:
+    build: ./notification-service
+    environment:
+      PORT: "3000"
+      DATABASE_URL: postgres://notification:notification@notification-db:5432/notifications
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      # Local only; in Cloud this is a Secret Manager secret shared by all instances.
+      NOTIFICATION_TICKET_SECRET: ${NOTIFICATION_TICKET_SECRET:-local-only-notification-ticket-secret-00}
+      ALLOWED_ORIGINS: http://127.0.0.1:3001,http://localhost:3001
+      PUBSUB_EMULATOR_HOST: pubsub-emulator:8085
+      PUBSUB_PROJECT_ID: foc-local
+    ports:
+      - "3003:3000"
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/health').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    depends_on:
+      notification-db-migrate:
+        condition: service_completed_successfully
+      pubsub-emulator:
+        condition: service_healthy
+
   # Runs the expiry sweep and the outbox relay every minute, as Cloud Scheduler does in GCP.
   order-ticker:
     image: curlimages/curl:8.11.1
@@ -263,3 +325,4 @@ volumes:
   supplier-db-data:
   user-db-data:
   order-db-data:
+  notification-db-data:

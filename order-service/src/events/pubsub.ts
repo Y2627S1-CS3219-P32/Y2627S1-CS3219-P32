@@ -3,11 +3,13 @@
  * Scope: Pub/Sub publishing with ordering keys, push-message decoding, and topic
  * and push-subscription setup on the local emulator (as user-service does).
  * Author review: Pending.
+ * Claude Code (Opus 5.5), 2026-10-17: message attributes, so subscribers can filter by
+ * event type. Author review: Pending.
  */
 import { PubSub } from "@google-cloud/pubsub";
 import { config } from "../config.js";
 
-export type Publisher = (topic: string, data: unknown, orderingKey: string) => Promise<void>;
+export type Publisher = (topic: string, data: unknown, orderingKey: string, attributes?: Record<string, string>) => Promise<void>;
 
 let client: PubSub | undefined;
 function pubsub(): PubSub {
@@ -15,10 +17,10 @@ function pubsub(): PubSub {
   return client;
 }
 
-const publishToPubSub: Publisher = async (topicName, data, orderingKey) => {
+const publishToPubSub: Publisher = async (topicName, data, orderingKey, attributes = {}) => {
   const topic = pubsub().topic(topicName, { messageOrdering: true });
   try {
-    await topic.publishMessage({ json: data, orderingKey });
+    await topic.publishMessage({ json: data, orderingKey, attributes });
   } catch (error) {
     // An ordering key pauses after a failure until resumed.
     topic.resumePublishing(orderingKey);
@@ -28,8 +30,8 @@ const publishToPubSub: Publisher = async (topicName, data, orderingKey) => {
 
 let publisher: Publisher = publishToPubSub;
 
-export function publish(topic: string, data: unknown, orderingKey: string): Promise<void> {
-  return publisher(topic, data, orderingKey);
+export function publish(topic: string, data: unknown, orderingKey: string, attributes?: Record<string, string>): Promise<void> {
+  return publisher(topic, data, orderingKey, attributes);
 }
 
 // Tests replace Pub/Sub with an in-memory publisher.

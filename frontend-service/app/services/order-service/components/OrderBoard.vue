@@ -2,10 +2,12 @@
 Scope: Orders page after the student's mockups: state tabs, supplier filter and reward/time
 sorting (FR11.1.2), cursor-paged "Load more", accepting from the list, and the new-order
 button. Author review: Pending.
-Claude Code (Opus 5.5), 2026-10-17. Scope: Mine tab. Author review: Pending. -->
+Claude Code (Opus 5.5), 2026-10-17. Scope: Mine tab. Author review: Pending.
+Claude Code (Opus 5.5), 2026-10-17. Scope: Live updates from notification-service. Author review: Pending. -->
 <script setup lang="ts">
 import type { Order, OrderPage, OrderSort } from "#shared/services/order-service/types";
 import type { Supplier } from "#shared/services/supplier-service/types";
+import { useOrderNotifications } from "~/services/notification-service/composables/useNotifications";
 import { statusOf, useOrderActions, useViewerId } from "../composables/useOrders";
 import { ORDER_TABS } from "../order-view";
 import OrderCard from "./OrderCard.vue";
@@ -66,6 +68,16 @@ async function onAction(order: Order, action: Parameters<typeof perform>[1]) {
   if (updated) await navigateTo(`/orders/${order.id}`);
   else await refresh();
 }
+
+// Notifications cover the viewer's own orders (as requester or courier). Bursts of events
+// (e.g. a saga step right after creation) cause a single refresh.
+let pendingRefresh: ReturnType<typeof setTimeout> | undefined;
+function refreshSoon() {
+  clearTimeout(pendingRefresh);
+  pendingRefresh = setTimeout(() => refresh(), 300);
+}
+useOrderNotifications({ onEvent: refreshSoon, onConnect: refreshSoon });
+onBeforeUnmount(() => clearTimeout(pendingRefresh));
 
 watch(error, (value) => {
   if (statusOf(value) === 401) navigateTo({ path: "/login", query: { redirect: route.fullPath } });

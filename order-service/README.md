@@ -91,7 +91,8 @@ Every event on `order-events`:
 { "eventId", "type", "orderId", "sequence", "state", "actorId", "commandId", "occurredAt", "order": { ... } }
 ```
 
-`order` is the full order after the change. Delivery is at least once, so consumers dedupe by
+`order` is the full order after the change. Each message also has the attributes `type` and
+`orderId`, so subscriptions can filter, e.g. `hasPrefix(attributes.type, "order.")`. Delivery is at least once, so consumers dedupe by
 `eventId`. Types: `order.created`, `order.opened`, `order.rejected`, `order.aborted`,
 `order.edited`, `order.accepted`, `order.cancelled`, `order.expired`, `order.picked_up`, `order.delivered`,
 `order.completed`, `order.settled`.
