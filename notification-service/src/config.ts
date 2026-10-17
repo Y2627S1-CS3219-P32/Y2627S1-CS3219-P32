@@ -1,6 +1,7 @@
 /**
  * AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-10-17.
  * Scope: Notification-service environment configuration. Author review: Pending.
+ * Claude Code (Opus 5.5), 2026-10-17: shared store subscription. Author review: Pending.
  */
 import "dotenv/config";
 
@@ -29,5 +30,7 @@ export const config = {
     emulatorHost: process.env.PUBSUB_EMULATOR_HOST || undefined,
     orderEventsTopic: process.env.ORDER_EVENTS_TOPIC ?? "order-events",
     subscriptionPrefix: process.env.SUBSCRIPTION_PREFIX ?? "notification",
+    // Shared by all instances, for storing notifications.
+    storeSubscription: process.env.STORE_SUBSCRIPTION ?? "notification-store",
   },
 };
