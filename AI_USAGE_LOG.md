@@ -868,3 +868,61 @@ for context, frontend-service is being set up. The frontend’s supplier screen 
   panel (mobile and desktop), toast, and marking as read worked.
 - Author review: Pending.
 
+# AI usage log (Synchronization Service)
+
+## 2026-10-17: Group orders with collaborative descriptions
+
+- Tool: Claude Code (Opus 5.5). Mode: Implementation, tests, documentation, and verification.
+- Exact prompt: `yes`, confirming the student's group-order design: a SYNCHRONISING state before
+  PENDING; `isGroupOrder` on creation with a shareable, login-protected join link; members
+  stored in a separate table; the description kept as a CRDT and edited over WebSockets through
+  a new synchronization service (tickets as for notifications, updates relayed between
+  instances); `order.member_joined` events that also notify; the requester placing the order
+  through the sync service (`group.placed`), after which the order moves to PENDING and emits
+  `order.created` with the member ids; members notified like the requester; and cancelling by
+  the requester any time before acceptance. Claude proposed Yjs and the event and storage
+  details, which the student accepted.
+- Key response:
+  - order-service: SYNCHRONISING state, `is_group_order`, `order_members`, `POST
+    /orders/:orderId/join`, `group.placed` consumer, `memberIds` in event payloads, cancelling
+    from SYNCHRONISING/PENDING/OPEN, and `/orders/me` including joined orders.
+  - New `sync-service`: Yjs documents per group order over the y-websocket protocol, an
+    append-only update log with compaction, per-instance relay subscriptions, a shared order
+    events subscription, access checks from member events, tickets, and placing.
+  - notification-service: members receive the requester's notifications plus joins, placing
+    and cancelling; members' pages refresh live.
+  - frontend: group order option, Group Draft state, group panel with share link and members,
+    join page, and a collaborative description editor with presence and Place Order.
+- Affected files: `sync-service/` (all files), `order-service/` (schema, migration, write path,
+  queries, consumers, routes, tests, README), `notification-service/` (rules, routing, tests,
+  README), `frontend-service/` (order types and views, card, form, details and join pages,
+  group panel, sync-service editor and routes, notification text), `compose.yaml`,
+  `compose.dev.yaml`, and this log.
+- Verification: order-service (19/19), sync-service (7/7) and notification-service (9/9) tests,
+  and the Nuxt typecheck passed. End to end on the Pub/Sub emulator: a group order created in
+  Chrome, a second user joining and typing through the real APIs, both edits appearing on both
+  sides, placing moving the order to PENDING and then OPEN with the agreed description, and the
+  join/placed/opened notifications. A bug where the joined member was read from the wrong place
+  in the event was found this way and fixed.
+- Author review: Pending.
+
+## 2026-10-17: Group order fixes, shared cursors
+
+- Tool: Claude Code (Opus 5.5). Mode: Debugging, implementation, tests, and verification.
+- Exact prompts: `this shoudlnt be possible right` (with a screenshot of a group member
+  accepting their own group order), `also only the requester can make it complete`, and
+  `yes do both` (after asking whether Yjs can show where each person is).
+- Key response: group members can no longer accept their own group order (order-service and
+  frontend); a test confirms only the requester can complete it; the sync service relays
+  presence between instances; the description editor is now CodeMirror 6 with
+  y-codemirror.next, showing everyone's cursor and selection with their name.
+- Affected files: `order-service/src/orders/write.ts`, `order-service/test/orders.test.mjs`,
+  `sync-service/src/documents.ts`, `sync-service/src/subscriptions.ts`,
+  `sync-service/test/sync.test.mjs`, `sync-service/README.md`,
+  `frontend-service/app/services/order-service/order-view.ts`,
+  `frontend-service/app/services/sync-service/components/GroupEditor.vue`,
+  `frontend-service/package.json`, and this log.
+- Verification: order-service (19/19) and sync-service (8/8) tests and the Nuxt typecheck
+  passed; in Chrome, a second user's cursor and selection appeared with their name.
+- Author review: Pending.
+
