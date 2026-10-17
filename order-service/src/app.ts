@@ -6,16 +6,18 @@
  * Author review: Pending.
  * Claude Code (Opus 5.5), 2026-10-17: GET /orders/:orderId, its event history, and
  * PATCH /orders/:orderId for editing. Author review: Pending.
+ * Claude Code (Opus 5.5), 2026-10-17: joining group orders and group.placed from the sync
+ * service. Author review: Pending.
  */
 import express, { type ErrorRequestHandler, type Request, type Response } from "express";
 import { getUserId, requireInternal, requireUser } from "./auth.js";
-import { applySupplierEvent, applyUserEvent, InvalidMessageError, parseSagaCommand } from "./events/consumers.js";
+import { applySupplierEvent, applyUserEvent, InvalidMessageError, parseGroupPlaced, parseSagaCommand } from "./events/consumers.js";
 import { publishPendingEvents } from "./events/outbox.js";
 import { decodePushMessage } from "./events/pubsub.js";
 import { HttpError } from "./errors.js";
 import { parseListQuery, parseOrderEdit, parseOrderInput, UUID_PATTERN } from "./orders/input.js";
 import { getOrder, listOrderEvents, listOrders } from "./orders/queries.js";
-import { createOrder, editOrder, expireOverdueOrders, handleSagaCommand, performUserAction, USER_ACTIONS, type UserAction } from "./orders/write.js";
+import { createOrder, editOrder, expireOverdueOrders, joinOrder, placeGroupOrder, handleSagaCommand, performUserAction, USER_ACTIONS, type UserAction } from "./orders/write.js";
 
 export const app = express();
 app.use(express.json({ limit: "10kb" }));
@@ -71,6 +73,13 @@ app.patch("/orders/:orderId", requireUser, async (req, res) => {
   await sendOrder(res, id);
 });
 
+// Members join a group order through its shareable link while it is SYNCHRONISING.
+app.post("/orders/:orderId/join", requireUser, async (req, res) => {
+  const id = getOrderIdParam(req);
+  await joinOrder(id, getUserId(res));
+  await sendOrder(res, id);
+});
+
 for (const action of Object.keys(USER_ACTIONS) as UserAction[]) {
   app.post(`/orders/:orderId/${action}`, requireUser, async (req, res) => {
     const id = getOrderIdParam(req);
@@ -104,6 +113,13 @@ internal.post("/pubsub/order-commands", pushHandler("order-commands", async (mes
   const command = parseSagaCommand(message);
   const result = await handleSagaCommand(command);
   if (result !== "applied") console.log(`[order-service] ${command.type} ${command.commandId} for ${command.orderId}: ${result}`);
+}));
+
+internal.post("/pubsub/sync-events", pushHandler("sync-events", async (message) => {
+  const placed = parseGroupPlaced(message);
+  if (!placed) return;
+  const result = await placeGroupOrder(placed);
+  if (result !== "applied") console.log(`[order-service] group.placed ${placed.eventId} for ${placed.orderId}: ${result}`);
 }));
 
 // Called every minute by Cloud Scheduler (locally by the order-ticker container).
