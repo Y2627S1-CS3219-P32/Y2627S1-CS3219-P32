@@ -96,6 +96,9 @@ services:
       # Claude Code (Opus 5.5), 2026-10-17. Author review: Pending.
       NUXT_NOTIFICATION_SERVICE_BASE_URL: http://notification-service:3000
       NUXT_PUBLIC_NOTIFICATION_SERVICE_URL: ws://127.0.0.1:3003
+      # Claude Code (Opus 5.5), 2026-10-17. Author review: Pending.
+      NUXT_SYNC_SERVICE_BASE_URL: http://sync-service:3000
+      NUXT_PUBLIC_SYNC_SERVICE_URL: ws://127.0.0.1:3004
     ports:
       - "3001:3000"
     depends_on:
@@ -304,6 +307,64 @@ services:
       pubsub-emulator:
         condition: service_healthy
 
+  # AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-10-17.
+  # Scope: Synchronization service for group orders, its database and migrations. Author review: Pending.
+  sync-db:
+    image: postgres:17
+    ports:
+      - "127.0.0.1:5437:5432"
+    environment:
+      POSTGRES_USER: sync
+      POSTGRES_PASSWORD: sync
+      POSTGRES_DB: sync
+    volumes:
+      - sync-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sync -d sync"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  sync-db-migrate:
+    build:
+      context: ./sync-service
+      target: tooling
+    command: ["npm", "run", "db:migrate"]
+    environment:
+      DATABASE_URL: postgres://sync:sync@sync-db:5432/sync
+    depends_on:
+      sync-db:
+        condition: service_healthy
+
+  sync-service:
+    build: ./sync-service
+    environment:
+      PORT: "3000"
+      DATABASE_URL: postgres://sync:sync@sync-db:5432/sync
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      # Local only; in Cloud this is a Secret Manager secret shared by all instances.
+      SYNC_TICKET_SECRET: ${SYNC_TICKET_SECRET:-local-only-sync-ticket-secret-000000000}
+      ALLOWED_ORIGINS: http://127.0.0.1:3001,http://localhost:3001
+      PUBSUB_EMULATOR_HOST: pubsub-emulator:8085
+      PUBSUB_PROJECT_ID: foc-local
+    ports:
+      - "3004:3000"
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/health').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    depends_on:
+      sync-db-migrate:
+        condition: service_completed_successfully
+      pubsub-emulator:
+        condition: service_healthy
+
   # Runs the expiry sweep and the outbox relay every minute, as Cloud Scheduler does in GCP.
   order-ticker:
     image: curlimages/curl:8.11.1
@@ -326,3 +387,4 @@ volumes:
   user-db-data:
   order-db-data:
   notification-db-data:
+  sync-db-data:
