@@ -1,5 +1,6 @@
 <!-- AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-10-17.
-Scope: Order-service setup, endpoint, event and command documentation. Author review: Pending. -->
+Scope: Order-service setup, endpoint, event and command documentation. Author review: Pending.
+Claude Code (Opus 5.5), 2026-10-17: title, order details, history and edit endpoints. Author review: Pending. -->
 # Order Service
 
 Errand requests (FR10–FR13). Express, Drizzle and PostgreSQL, with Google Pub/Sub for
@@ -49,6 +50,9 @@ Errors are `{ "error": "message" }`.
 | `POST` | `/orders` | anyone | — | `PENDING` |
 | `GET` | `/orders` | anyone | | |
 | `GET` | `/orders/me` | anyone (own requests) | | |
+| `GET` | `/orders/:orderId` | anyone | | |
+| `GET` | `/orders/:orderId/events` | anyone (history, oldest first) | | |
+| `PATCH` | `/orders/:orderId` | requester | `OPEN` | `OPEN` (`order.edited`) |
 | `POST` | `/orders/:orderId/accept` | anyone except the requester | `OPEN` | `ACCEPTED` |
 | `POST` | `/orders/:orderId/cancel` | requester | `OPEN` | `CANCELLED` |
 | `POST` | `/orders/:orderId/pickup` | assigned courier | `ACCEPTED` | `PICKED_UP` |
@@ -58,14 +62,20 @@ Errors are `{ "error": "message" }`.
 Actions return the updated order, `404` for an unknown order, `403` for the wrong user, and
 `409` for the wrong state. An `OPEN` order past its expiry time cannot be accepted.
 
-`POST /orders` body: `{ "supplierId", "description", "deliveryLocation", "creditReward" }`.
-The supplier must exist and be active; `creditReward` must be a positive whole number.
+`POST /orders` body: `{ "supplierId", "title", "description", "deliveryLocation", "creditReward" }`
+(title up to 100 characters, description up to 500). The supplier must exist and be active;
+`creditReward` must be a positive whole number. `PATCH` accepts only `title`, `description` and
+`deliveryLocation`; the supplier and reward are fixed.
+
+Orders are returned with `requester` and `courier` as `{ id, displayName }`, and the supplier
+version they were created with. History entries are `{ id, sequence, type, state, actor, createdAt }`
+with `actor` null for system changes.
 
 `GET /orders` and `GET /orders/me` query parameters:
 
 | Parameter | Behavior |
 | --- | --- |
-| `state` | Exact state, e.g. `OPEN` |
+| `state` | One state or a comma-separated list, e.g. `ACCEPTED,PICKED_UP,DELIVERED` |
 | `supplierId` | Orders for this supplier (any version) |
 | `sort` | `createdAt`, `-createdAt` (default), `reward`, `-reward` |
 | `limit` | 1–100, default 20 |
@@ -83,7 +93,7 @@ Every event on `order-events`:
 
 `order` is the full order after the change. Delivery is at least once, so consumers dedupe by
 `eventId`. Types: `order.created`, `order.opened`, `order.rejected`, `order.aborted`,
-`order.accepted`, `order.cancelled`, `order.expired`, `order.picked_up`, `order.delivered`,
+`order.edited`, `order.accepted`, `order.cancelled`, `order.expired`, `order.picked_up`, `order.delivered`,
 `order.completed`, `order.settled`.
 
 Saga commands on `order-commands`: `{ "commandId": uuid, "type", "orderId": uuid }`.
