@@ -54,3 +54,16 @@ services:
             - .data/
         - action: rebuild
           path: ./frontend-service/package.json
+
+  # Claude Code (Opus 5.5), 2026-10-17: order-service hot reloading. Author review: Pending.
+  order-service:
+    build:
+      target: tooling
+    command: ["npx", "tsx", "watch", "src/index.ts"]
+    develop:
+      watch:
+        - action: sync
+          path: ./order-service/src
+          target: /app/src
+        - action: rebuild
+          path: ./order-service/package.json

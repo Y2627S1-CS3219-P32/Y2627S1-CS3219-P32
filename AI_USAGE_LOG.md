@@ -758,3 +758,58 @@ for context, frontend-service is being set up. The frontend’s supplier screen 
   Drizzle Kit's development dependency chain reported four moderate findings
   associated with esbuild; npm's suggested fix requires a breaking downgrade.
 - Author review: Check for correctness.
+
+# AI usage log (Order Service)
+
+## 2026-10-17: Order service implementation
+
+- Tool: Claude Code (Opus 5.5). Mode: Implementation, tests, documentation, and verification.
+- Exact prompt: `ok you have enough information i feel`, following a conversation in which
+  the student specified the order service: local user copy (id, display name, role, soft
+  delete) and append-only supplier copy (everything except `imageUrl`) built from
+  `user-events` and `supplier-events`; the `orders` table with a `current_state` column and
+  the `order_events` table as log and transactional outbox; FR10–FR13 endpoints
+  (`POST /orders`, `GET /orders` with state/supplier filters, `+`/`-` sorting and cursor
+  pagination, `GET /orders/me`, accept/cancel/pickup/deliver/confirm); the states and the
+  orchestrated saga commands (`OpenOrder`, `RejectOrder`, `AbortOrder`, `SettleOrder`); and
+  expiry by a database sweep. When asked, Claude gave feedback and options (for example the
+  `current_state` column, the sweep instead of Cloud Tasks, and the `AbortOrder` and
+  `SettleOrder` names); the student made the choices.
+- Key response:
+  - New `order-service` (Express, Drizzle, PostgreSQL) with a local HS256 JWT check, the
+    student-defined schema and migration, and one write path that appends an event and
+    updates `current_state` in the same transaction.
+  - Pub/Sub push consumers for user and supplier events and saga commands (idempotent via
+    event versions and command ids), an outbox relay to `order-events`, and internal routes
+    authenticated by Google OIDC tokens or a local shared secret.
+  - Compose services for the order database, migrations, the service, and a ticker that runs
+    the expiry sweep and outbox relay every minute.
+- Affected files: `order-service/` (all files), `compose.yaml`, `compose.dev.yaml`, and this log.
+- Verification: `npm test` (15/15 integration tests against PostgreSQL), strict TypeScript
+  checking, `drizzle-kit migrate`, and a local startup smoke test passed. The Compose stack
+  was not run because Docker was unavailable. Cloud deployment is not yet wired.
+- Author review: Pending.
+
+## 2026-10-17: Order pages in the frontend
+
+- Tool: Claude Code (Opus 5.5). Mode: Implementation, verification.
+- Exact prompt: ten mockup images of the Orders, New Order, Edit Order and order details pages
+  (desktop and mobile), with `N1 N2 are navigation bars btw, if the frontend already has them,
+  use it, if not ignore it`. The student then chose: a required title column, a supplier
+  dropdown plus free-text delivery location, editing of title/description/location while
+  `OPEN` (reward fixed), and no order number (heading "Order Details").
+- Key response:
+  - order-service: `title` column, requester/courier display names in responses,
+    `GET /orders/:orderId`, `GET /orders/:orderId/events`, `PATCH /orders/:orderId`
+    (`order.edited`), and comma-separated `state` filters; description limit 500.
+  - frontend: Orders link in the existing navigation; Orders page with All/Open/In
+    Progress/Done tabs, supplier filter, sorting and "Load more"; New Order and Edit Order
+    forms; Order Details page with the viewer's action and the history grouped by day.
+    Available credits are not shown because credit-service does not exist yet.
+- Affected files: `order-service/src/`, `order-service/drizzle/`, `order-service/test/`,
+  `order-service/README.md`, `frontend-service/` (order-service pages, components, server
+  routes, shared types, `app.vue`, `nuxt.config.ts`), `compose.yaml`, and this log.
+- Verification: order-service tests (17/17) and the Nuxt typecheck passed. Checked in Chrome
+  against the Pub/Sub emulator with the real user, supplier and order services: listing,
+  filters, creating, editing, completing (settled by a stand-in orchestrator), and mobile layouts.
+- Author review: Pending.
