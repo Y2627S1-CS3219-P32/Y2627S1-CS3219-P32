@@ -845,3 +845,26 @@ for context, frontend-service is being set up. The frontend’s supplier screen 
   stopped instance deleted its subscription, and the Order Details page updated in Chrome
   without reloading. Docker Compose and Cloud deployment were not run.
 - Author review: Pending.
+
+## 2026-10-17: Stored notifications, notification panel and toasts
+
+- Tool: Claude Code (Opus 5.5). Mode: Implementation, tests, documentation, and verification.
+- Exact prompt: `ok add the source column and go ahead`, following the student's request for
+  toasts and a notification panel backed by a notifications table and a paginated
+  `GET /notifications`, and a discussion of storing through a shared subscription, keying rows
+  by the source event id, and adding a `source` column.
+- Key response:
+  - notification-service: PostgreSQL `notifications` table (unique on source, event and user),
+    notification rules in one place, a shared `notification-store` subscription that stores
+    each event once with retries, `GET /notifications` (cursor paged), `GET
+    /notifications/unread-count`, `POST /notifications/read`, and live `notification` pushes.
+  - frontend: Nuxt proxy routes, a bell with unread badge and a panel of past notifications
+    (mark as read, load more), and toasts for live notifications.
+- Affected files: `notification-service/` (schema, migration, rules, store, API, subscription,
+  tests, README, Dockerfile, package files), `frontend-service/` (notification-service server
+  routes, client, types, components, composable, `app.vue`), `compose.yaml`, and this log.
+- Verification: notification-service tests (7/7) and the Nuxt typecheck passed. On the Pub/Sub
+  emulator the seeded order events were stored once per recipient, and in Chrome the badge,
+  panel (mobile and desktop), toast, and marking as read worked.
+- Author review: Pending.
+
