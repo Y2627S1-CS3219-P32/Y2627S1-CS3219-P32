@@ -7,6 +7,8 @@
  * Claude Code (Opus 5.5), 2026-10-17: titles, display names, order details, history,
  * editing, and multi-state filters. Author review: Pending.
  * Claude Code (Opus 5.5), 2026-10-17: message attributes. Author review: Pending.
+ * Claude Code (Opus 5.5), 2026-10-17: group orders and cancelling before acceptance.
+ * Author review: Pending.
  */
 import assert from "node:assert/strict";
 import { createHmac, randomBytes, randomUUID } from "node:crypto";
@@ -355,9 +357,14 @@ test("the full errand flow runs from OPEN to SETTLED with the right people", asy
   assert.equal((await request("/orders/not-a-uuid/accept", { method: "POST", user: COURIER })).status, 404);
 });
 
-test("only the requester can cancel, and only while OPEN (FR13.1)", async () => {
+test("only the requester can cancel, and only before acceptance (FR13.1)", async () => {
   const pending = await createOrder();
-  assert.equal((await request(`/orders/${pending.id}/cancel`, { method: "POST", user: REQUESTER })).status, 409);
+  assert.equal((await request(`/orders/${pending.id}/cancel`, { method: "POST", user: COURIER })).status, 403);
+  assert.equal((await (await request(`/orders/${pending.id}/cancel`, { method: "POST", user: REQUESTER })).json()).state, "CANCELLED");
+
+  const accepted = await openOrder();
+  await request(`/orders/${accepted.id}/accept`, { method: "POST", user: COURIER });
+  assert.equal((await request(`/orders/${accepted.id}/cancel`, { method: "POST", user: REQUESTER })).status, 409);
 
   const order = await openOrder();
   assert.equal((await request(`/orders/${order.id}/cancel`, { method: "POST", user: COURIER })).status, 403);
@@ -484,4 +491,86 @@ test("PATCH /orders/:orderId lets the requester edit text fields while OPEN", as
 
   await request(`/orders/${order.id}/accept`, { method: "POST", user: COURIER });
   assert.equal((await edit(order.id, { title: "Too late" })).status, 409);
+});
+
+function placed(orderId, description = "Two lattes, one less sweet", eventId = randomUUID()) {
+  return push("sync-events", { eventId, type: "group.placed", orderId, description, placedBy: REQUESTER, occurredAt: new Date().toISOString() });
+}
+
+test("group orders start SYNCHRONISING, members join, and placing starts the saga", async () => {
+  const order = await createOrder({ isGroupOrder: true, description: "Coffee run" });
+  assert.equal(order.state, "SYNCHRONISING");
+  assert.equal(order.isGroupOrder, true);
+  assert.deepEqual(order.members, []);
+  assert.equal((await request("/orders", { method: "POST", user: REQUESTER, body: { supplierId, title: "t", description: "d", deliveryLocation: "l", creditReward: 1, isGroupOrder: "yes" } })).status, 400);
+
+  await outbox.outboxIdle();
+  const started = published.find((item) => item.data.orderId === order.id);
+  assert.equal(started.data.type, "order.group_started");
+  assert.deepEqual(started.data.order.memberIds, [REQUESTER]);
+
+  const join = (user, id = order.id) => request(`/orders/${id}/join`, { method: "POST", user });
+  const joined = await (await join(COURIER)).json();
+  assert.deepEqual(joined.members, [{ id: COURIER, displayName: `user-${COURIER}` }]);
+  await join(COURIER); // again: no-op
+  await join(REQUESTER); // requester: no-op
+  await join(OTHER);
+  const log = await events(order.id);
+  assert.deepEqual(log.map((event) => [event.type, event.state, event.actor_id]), [
+    ["order.group_started", "SYNCHRONISING", REQUESTER],
+    ["order.member_joined", "SYNCHRONISING", COURIER],
+    ["order.member_joined", "SYNCHRONISING", OTHER],
+  ]);
+  const { rows: [joinedEvent] } = await pool.query("select payload from order_events where order_id = $1 and sequence = 3", [order.id]);
+  assert.deepEqual(joinedEvent.payload.member, { id: OTHER, displayName: `user-${OTHER}` });
+  assert.deepEqual(joinedEvent.payload.memberIds, [REQUESTER, COURIER, OTHER]);
+
+  assert.equal((await join(COURIER, (await createOrder()).id)).status, 409); // not a group order
+  assert.equal((await request(`/orders/${order.id}/accept`, { method: "POST", user: COURIER })).status, 403); // members can never accept
+  assert.ok((await (await request("/orders/me?limit=100", { user: OTHER })).json()).items.some((item) => item.id === order.id));
+
+  // Invalid descriptions are dropped; the order stays SYNCHRONISING.
+  assert.equal((await placed(order.id, "")).status, 204);
+  assert.equal((await placed(order.id, "x".repeat(501))).status, 204);
+  assert.equal((await (await request(`/orders/${order.id}`, { user: REQUESTER })).json()).state, "SYNCHRONISING");
+
+  const eventId = randomUUID();
+  await placed(order.id, "Two lattes, one less sweet", eventId);
+  await placed(order.id, "ignored redelivery", eventId);
+  const pendingOrder = await (await request(`/orders/${order.id}`, { user: REQUESTER })).json();
+  assert.equal(pendingOrder.state, "PENDING");
+  assert.equal(pendingOrder.description, "Two lattes, one less sweet");
+  await push("user-events", userEvent(70));
+  assert.equal((await join(70)).status, 409); // placed: no more joining
+
+  await outbox.outboxIdle();
+  const created = published.filter((item) => item.data.orderId === order.id && item.data.type === "order.created");
+  assert.equal(created.length, 1);
+  assert.deepEqual(created[0].data.order.memberIds, [REQUESTER, COURIER, OTHER]);
+  assert.equal(created[0].data.commandId, eventId);
+
+  await command("OpenOrder", order.id);
+  assert.equal((await (await request(`/orders/${order.id}`, { user: REQUESTER })).json()).state, "OPEN");
+
+  // Members are part of the request: they cannot accept it; outsiders can.
+  const memberAccept = await request(`/orders/${order.id}/accept`, { method: "POST", user: COURIER });
+  assert.equal(memberAccept.status, 403);
+  assert.equal((await memberAccept.json()).error, "You cannot accept a group order you are part of");
+  assert.equal((await request(`/orders/${order.id}/accept`, { method: "POST", user: 70 })).status, 200);
+
+  // Only the requester confirms receipt, not other members.
+  await request(`/orders/${order.id}/pickup`, { method: "POST", user: 70 });
+  await request(`/orders/${order.id}/deliver`, { method: "POST", user: 70 });
+  assert.equal((await request(`/orders/${order.id}/confirm`, { method: "POST", user: COURIER })).status, 403);
+  assert.equal((await request(`/orders/${order.id}/confirm`, { method: "POST", user: OTHER })).status, 403);
+  assert.equal((await (await request(`/orders/${order.id}/confirm`, { method: "POST", user: REQUESTER })).json()).state, "COMPLETE");
+});
+
+test("group orders can be cancelled by the requester while SYNCHRONISING", async () => {
+  const order = await createOrder({ isGroupOrder: true });
+  await request(`/orders/${order.id}/join`, { method: "POST", user: COURIER });
+  assert.equal((await request(`/orders/${order.id}/cancel`, { method: "POST", user: COURIER })).status, 403);
+  assert.equal((await (await request(`/orders/${order.id}/cancel`, { method: "POST", user: REQUESTER })).json()).state, "CANCELLED");
+  await placed(order.id); // too late: ignored
+  assert.equal((await (await request(`/orders/${order.id}`, { user: REQUESTER })).json()).state, "CANCELLED");
 });

@@ -1,6 +1,7 @@
 <!-- AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-10-17.
 Scope: New and edit order form after the student's mockups. The supplier and reward are
-fixed once an order exists. Author review: Pending. -->
+fixed once an order exists. Author review: Pending.
+Claude Code (Opus 5.5), 2026-10-17. Scope: Group order option. Author review: Pending. -->
 <script setup lang="ts">
 import type { Order, OrderCreate } from "#shared/services/order-service/types";
 import type { Supplier } from "#shared/services/supplier-service/types";
@@ -23,6 +24,7 @@ const supplierId = ref(props.order?.supplier.id ?? "");
 const deliveryLocation = ref(props.order?.deliveryLocation ?? "");
 const description = ref(props.order?.description ?? "");
 const reward = ref(props.order?.creditReward ?? 10);
+const isGroupOrder = ref(false);
 
 const activeSuppliers = computed(() => (props.suppliers ?? []).filter(supplier => supplier.isActive));
 const supplierLabel = (supplier: Supplier) => supplier.buildingName ? `${supplier.name} (${supplier.buildingName})` : supplier.name;
@@ -33,6 +35,7 @@ function setReward(value: number) {
 
 function submit() {
   emit("submit", {
+    ...(editing.value ? {} : { isGroupOrder: isGroupOrder.value }),
     supplierId: supplierId.value,
     title: title.value.trim(),
     description: description.value.trim(),
@@ -69,7 +72,7 @@ const field = "min-w-0 flex-1 rounded-none bg-[#f3f3f3] px-3 py-2 text-[15px] te
     </label>
 
     <label class="block">
-      <span class="mb-2 block font-semibold text-[#111]">Description ({{ description.length }}/{{ MAX_DESCRIPTION }}):</span>
+      <span class="mb-2 block font-semibold text-[#111]">{{ isGroupOrder ? "Starting description" : "Description" }} ({{ description.length }}/{{ MAX_DESCRIPTION }}):</span>
       <textarea v-model="description" :class="field" class="block h-40 w-full resize-y" :maxlength="MAX_DESCRIPTION" required />
     </label>
 
@@ -93,6 +96,14 @@ const field = "min-w-0 flex-1 rounded-none bg-[#f3f3f3] px-3 py-2 text-[15px] te
         <span class="text-sm text-[#8a9099]">Fixed once the order is created</span>
       </template>
     </div>
+
+    <label v-if="!editing" class="flex items-start gap-3 rounded-md bg-[#f6f3fc] p-3">
+      <input v-model="isGroupOrder" type="checkbox" class="mt-1 size-4 accent-[#7a5cc2]">
+      <span>
+        <span class="block font-semibold text-[#111]">Group order</span>
+        <span class="block text-sm text-[#5b6570]">Get a link friends can use to join and add to the description together. You place the order when everyone is done.</span>
+      </span>
+    </label>
 
     <p v-if="error" role="alert" class="rounded-md bg-[#fdf2f2] px-3 py-2 text-sm text-[#c62828]">{{ error }}</p>
 

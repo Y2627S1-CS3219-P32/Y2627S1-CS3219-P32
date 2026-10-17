@@ -5,11 +5,13 @@
  * Author review: Pending.
  * Claude Code (Opus 5.5), 2026-10-17: title, requester and courier display names,
  * several states per filter, and the order's event history. Author review: Pending.
+ * Claude Code (Opus 5.5), 2026-10-17: group orders (members with display names; the
+ * caller's own orders include group orders they joined). Author review: Pending.
  */
-import { and, asc, desc, eq, inArray, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, or, sql, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { db } from "../db/index.js";
-import { orderEvents, orders, supplierVersions, users } from "../db/schema.js";
+import { orderEvents, orderMembers, orders, supplierVersions, users } from "../db/schema.js";
 import { encodeCursor, type ListQuery } from "./input.js";
 
 const requesters = alias(users, "requesters");
@@ -24,6 +26,12 @@ function selectOrders() {
       createdAtText: sql<string>`${orders.createdAt}::text`,
       requesterName: requesters.displayName,
       courierName: couriers.displayName,
+      // Members other than the requester, in joining order.
+      members: sql<{ id: number; displayName: string | null }[]>`coalesce((
+        select json_agg(json_build_object('id', ${users.id}, 'displayName', ${users.displayName}) order by ${orderMembers.joinedAt}, ${users.id})
+        from ${orderMembers} join ${users} on ${users.id} = ${orderMembers.userId}
+        where ${orderMembers.orderId} = ${orders.id}
+      ), '[]'::json)`,
       supplier: {
         name: supplierVersions.name,
         type: supplierVersions.type,
@@ -45,7 +53,7 @@ function selectOrders() {
 
 type Row = Awaited<ReturnType<ReturnType<typeof selectOrders>["execute"]>>[number];
 
-function toResponse({ order, supplier, requesterName, courierName }: Row) {
+function toResponse({ order, supplier, requesterName, courierName, members }: Row) {
   return {
     id: order.id,
     // Display names are null for users deleted before their creation event arrived.
@@ -57,6 +65,8 @@ function toResponse({ order, supplier, requesterName, courierName }: Row) {
     description: order.description,
     deliveryLocation: order.deliveryLocation,
     creditReward: order.creditReward,
+    isGroupOrder: order.isGroupOrder,
+    members,
     state: order.currentState,
     acceptedAt: order.acceptedAt,
     expiresAt: order.expiresAt,
@@ -95,7 +105,8 @@ export async function listOrderEvents(orderId: string) {
   }));
 }
 
-export async function listOrders(query: ListQuery, requesterId?: number) {
+// With involvedUserId: orders that user requested or joined as a group member.
+export async function listOrders(query: ListQuery, involvedUserId?: number) {
   const descending = query.sort.startsWith("-");
   const byReward = query.sort.endsWith("reward");
   const column = byReward ? orders.creditReward : orders.createdAt;
@@ -114,7 +125,12 @@ export async function listOrders(query: ListQuery, requesterId?: number) {
     .where(and(
       query.states.length > 0 ? inArray(orders.currentState, query.states) : undefined,
       query.supplierId ? eq(orders.supplierId, query.supplierId) : undefined,
-      requesterId !== undefined ? eq(orders.requesterId, requesterId) : undefined,
+      involvedUserId !== undefined
+        ? or(
+          eq(orders.requesterId, involvedUserId),
+          sql`exists (select 1 from ${orderMembers} where ${orderMembers.orderId} = ${orders.id} and ${orderMembers.userId} = ${involvedUserId})`,
+        )
+        : undefined,
       after,
     ))
     .orderBy(direction(column), direction(orders.id))

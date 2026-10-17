@@ -6,11 +6,14 @@
  * Author review: Pending.
  * Claude Code (Opus 5.5), 2026-10-17: title, and editing an OPEN order (order.edited).
  * Author review: Pending.
+ * Claude Code (Opus 5.5), 2026-10-17: group orders (start in SYNCHRONISING, members join,
+ * placed by the sync service), member ids in snapshots, transitions from several states,
+ * and cancelling before acceptance. Author review: Pending.
  */
 import { and, asc, desc, eq, lte } from "drizzle-orm";
 import { config } from "../config.js";
 import { db, type Transaction } from "../db/index.js";
-import { orderEvents, orders, supplierVersions, type OrderState } from "../db/schema.js";
+import { orderEvents, orderMembers, orders, supplierVersions, users, type OrderState } from "../db/schema.js";
 import { HttpError } from "../errors.js";
 import { requestOutboxPublish } from "../events/outbox.js";
 import type { OrderEdit, OrderInput } from "./input.js";
@@ -19,13 +22,14 @@ type Order = typeof orders.$inferSelect;
 type OrderUpdates = Partial<Pick<Order, "courierId" | "acceptedAt" | "expiresAt" | "title" | "description" | "deliveryLocation">>;
 
 interface Transition {
-  from: OrderState;
+  from: readonly OrderState[];
   to: OrderState;
   type: string;
 }
 
-// The order as carried in every event payload (event-carried state transfer).
-function snapshot(order: Order) {
+// The order as carried in every event payload (event-carried state transfer). memberIds
+// lists everyone in a group order, requester first; it is empty for normal orders.
+function snapshot(order: Order, memberIds: number[]) {
   return {
     id: order.id,
     requesterId: order.requesterId,
@@ -36,11 +40,22 @@ function snapshot(order: Order) {
     description: order.description,
     deliveryLocation: order.deliveryLocation,
     creditReward: order.creditReward,
+    isGroupOrder: order.isGroupOrder,
+    memberIds,
     state: order.currentState,
     acceptedAt: order.acceptedAt?.toISOString() ?? null,
     expiresAt: order.expiresAt?.toISOString() ?? null,
     createdAt: order.createdAt.toISOString(),
   };
+}
+
+const allows = (transition: Transition, state: OrderState) => transition.from.includes(state);
+
+async function memberIdsOf(tx: Transaction, order: Order): Promise<number[]> {
+  if (!order.isGroupOrder) return [];
+  const members = await tx.select({ userId: orderMembers.userId }).from(orderMembers)
+    .where(eq(orderMembers.orderId, order.id)).orderBy(asc(orderMembers.joinedAt), asc(orderMembers.userId));
+  return [order.requesterId, ...members.map((member) => member.userId)];
 }
 
 async function lockOrder(tx: Transaction, id: string): Promise<Order | undefined> {
@@ -53,7 +68,7 @@ async function appendEvent(
   tx: Transaction,
   order: Order,
   transition: Transition,
-  options: { actorId: number | null; commandId?: string; updates?: OrderUpdates },
+  options: { actorId: number | null; commandId?: string; updates?: OrderUpdates; extra?: Record<string, unknown> },
 ): Promise<Order> {
   const [last] = await tx.select({ sequence: orderEvents.sequence }).from(orderEvents)
     .where(eq(orderEvents.orderId, order.id)).orderBy(desc(orderEvents.sequence)).limit(1);
@@ -71,13 +86,14 @@ async function appendEvent(
     state: transition.to,
     actorId: options.actorId,
     commandId: options.commandId ?? null,
-    payload: snapshot(updated),
+    payload: { ...snapshot(updated, await memberIdsOf(tx, updated)), ...options.extra },
   });
   return updated;
 }
 
 // FR10.1: the order starts PENDING and records order.created, which starts the
-// credit reservation saga.
+// credit reservation saga. A group order starts SYNCHRONISING (order.group_started) while
+// members edit the description together; order.created follows when it is placed.
 export async function createOrder(requesterId: number, input: OrderInput): Promise<string> {
   const id = await db.transaction(async (tx) => {
     // The latest version is the supplier as it is now; the order keeps pointing at it.
@@ -95,17 +111,18 @@ export async function createOrder(requesterId: number, input: OrderInput): Promi
       description: input.description,
       deliveryLocation: input.deliveryLocation,
       creditReward: input.creditReward,
-      currentState: "PENDING",
+      isGroupOrder: input.isGroupOrder,
+      currentState: input.isGroupOrder ? "SYNCHRONISING" : "PENDING",
     }).returning();
     if (!order) throw new Error("Order insert returned no row");
 
     await tx.insert(orderEvents).values({
       orderId: order.id,
       sequence: 1,
-      type: "order.created",
-      state: "PENDING",
+      type: input.isGroupOrder ? "order.group_started" : "order.created",
+      state: order.currentState,
       actorId: requesterId,
-      payload: snapshot(order),
+      payload: snapshot(order, input.isGroupOrder ? [requesterId] : []),
     });
     return order.id;
   });
@@ -114,11 +131,11 @@ export async function createOrder(requesterId: number, input: OrderInput): Promi
 }
 
 export const USER_ACTIONS = {
-  accept: { from: "OPEN", to: "ACCEPTED", type: "order.accepted" },
-  cancel: { from: "OPEN", to: "CANCELLED", type: "order.cancelled" },
-  pickup: { from: "ACCEPTED", to: "PICKED_UP", type: "order.picked_up" },
-  deliver: { from: "PICKED_UP", to: "DELIVERED", type: "order.delivered" },
-  confirm: { from: "DELIVERED", to: "COMPLETE", type: "order.completed" },
+  accept: { from: ["OPEN"], to: "ACCEPTED", type: "order.accepted" },
+  cancel: { from: ["SYNCHRONISING", "PENDING", "OPEN"], to: "CANCELLED", type: "order.cancelled" },
+  pickup: { from: ["ACCEPTED"], to: "PICKED_UP", type: "order.picked_up" },
+  deliver: { from: ["PICKED_UP"], to: "DELIVERED", type: "order.delivered" },
+  confirm: { from: ["DELIVERED"], to: "COMPLETE", type: "order.completed" },
 } as const satisfies Record<string, Transition>;
 
 export type UserAction = keyof typeof USER_ACTIONS;
@@ -153,10 +170,14 @@ export async function performUserAction(action: UserAction, orderId: string, use
 
     const reason = forbiddenReason(action, order, userId);
     if (reason) throw new HttpError(403, reason);
+    // Group members are part of the request too, so they cannot accept it either.
+    if (action === "accept" && order.isGroupOrder && (await memberIdsOf(tx, order)).includes(userId)) {
+      throw new HttpError(403, "You cannot accept a group order you are part of");
+    }
 
     // An OPEN order past its expiry time cannot be accepted, even if the sweep has not run yet.
     const overdue = action === "accept" && order.expiresAt !== null && order.expiresAt.getTime() <= Date.now();
-    if (order.currentState !== transition.from || overdue) {
+    if (!allows(transition, order.currentState) || overdue) {
       throw new HttpError(409, `Order cannot be ${PAST_TENSE[action]} while ${overdue ? "EXPIRED" : order.currentState}`);
     }
 
@@ -166,7 +187,7 @@ export async function performUserAction(action: UserAction, orderId: string, use
   requestOutboxPublish();
 }
 
-const EDIT = { from: "OPEN", to: "OPEN", type: "order.edited" } as const satisfies Transition;
+const EDIT = { from: ["OPEN"], to: "OPEN", type: "order.edited" } as const satisfies Transition;
 
 // The requester may change the text fields while the order is OPEN. The reward is
 // fixed because the credit saga has already reserved it.
@@ -175,17 +196,64 @@ export async function editOrder(orderId: string, userId: number, edit: OrderEdit
     const order = await lockOrder(tx, orderId);
     if (!order) throw new HttpError(404, "Order not found");
     if (order.requesterId !== userId) throw new HttpError(403, "Only the requester can do this");
-    if (order.currentState !== EDIT.from) throw new HttpError(409, `Order cannot be edited while ${order.currentState}`);
+    if (!allows(EDIT, order.currentState)) throw new HttpError(409, `Order cannot be edited while ${order.currentState}`);
     await appendEvent(tx, order, EDIT, { actorId: userId, updates: edit });
   });
   requestOutboxPublish();
 }
 
+const JOIN = { from: ["SYNCHRONISING"], to: "SYNCHRONISING", type: "order.member_joined" } as const satisfies Transition;
+
+// Joining a group order through its link. Joining again (or the requester joining) is a no-op.
+export async function joinOrder(orderId: string, userId: number): Promise<void> {
+  const joined = await db.transaction(async (tx) => {
+    const order = await lockOrder(tx, orderId);
+    if (!order) throw new HttpError(404, "Order not found");
+    if (!order.isGroupOrder) throw new HttpError(409, "This is not a group order");
+    if (order.requesterId === userId) return false;
+    const [existing] = await tx.select().from(orderMembers)
+      .where(and(eq(orderMembers.orderId, orderId), eq(orderMembers.userId, userId)));
+    if (existing) return false;
+    if (!allows(JOIN, order.currentState)) throw new HttpError(409, "This group order has already been placed");
+
+    await tx.insert(orderMembers).values({ orderId, userId });
+    const [member] = await tx.select({ displayName: users.displayName }).from(users).where(eq(users.id, userId));
+    await appendEvent(tx, order, JOIN, {
+      actorId: userId,
+      extra: { member: { id: userId, displayName: member?.displayName ?? null } },
+    });
+    return true;
+  });
+  if (joined) requestOutboxPublish();
+}
+
+const PLACE = { from: ["SYNCHRONISING"], to: "PENDING", type: "order.created" } as const satisfies Transition;
+
+// group.placed from the sync service: stores the agreed description and starts the saga
+// with order.created. Redeliveries (same event id) and placed or cancelled orders are ignored.
+export async function placeGroupOrder(placed: { eventId: string; orderId: string; description: string; placedBy: number }): Promise<CommandResult> {
+  const result = await db.transaction(async (tx): Promise<CommandResult> => {
+    const order = await lockOrder(tx, placed.orderId);
+    if (!order || !order.isGroupOrder) return "ignored";
+    const [seen] = await tx.select({ id: orderEvents.id }).from(orderEvents).where(eq(orderEvents.commandId, placed.eventId));
+    if (seen) return "duplicate";
+    if (!allows(PLACE, order.currentState)) return "ignored";
+    await appendEvent(tx, order, PLACE, {
+      actorId: placed.placedBy,
+      commandId: placed.eventId,
+      updates: { description: placed.description },
+    });
+    return "applied";
+  });
+  if (result === "applied") requestOutboxPublish();
+  return result;
+}
+
 export const SAGA_COMMANDS = {
-  OpenOrder: { from: "PENDING", to: "OPEN", type: "order.opened" },
-  RejectOrder: { from: "PENDING", to: "REJECTED", type: "order.rejected" },
-  AbortOrder: { from: "PENDING", to: "ABORTED", type: "order.aborted" },
-  SettleOrder: { from: "COMPLETE", to: "SETTLED", type: "order.settled" },
+  OpenOrder: { from: ["PENDING"], to: "OPEN", type: "order.opened" },
+  RejectOrder: { from: ["PENDING"], to: "REJECTED", type: "order.rejected" },
+  AbortOrder: { from: ["PENDING"], to: "ABORTED", type: "order.aborted" },
+  SettleOrder: { from: ["COMPLETE"], to: "SETTLED", type: "order.settled" },
 } as const satisfies Record<string, Transition>;
 
 export type SagaCommandType = keyof typeof SAGA_COMMANDS;
@@ -203,7 +271,7 @@ export async function handleSagaCommand(command: { commandId: string; type: Saga
     const [seen] = await tx.select({ id: orderEvents.id }).from(orderEvents)
       .where(eq(orderEvents.commandId, command.commandId));
     if (seen) return "duplicate";
-    if (order.currentState !== transition.from) return "ignored";
+    if (!allows(transition, order.currentState)) return "ignored";
 
     const updates: OrderUpdates = command.type === "OpenOrder"
       ? { expiresAt: new Date(Date.now() + config.openOrderTtlSeconds * 1000) }
@@ -215,7 +283,7 @@ export async function handleSagaCommand(command: { commandId: string; type: Saga
   return result;
 }
 
-const EXPIRE = { from: "OPEN", to: "EXPIRED", type: "order.expired" } as const satisfies Transition;
+const EXPIRE = { from: ["OPEN"], to: "EXPIRED", type: "order.expired" } as const satisfies Transition;
 const EXPIRY_BATCH = 100;
 
 // FR13.2: moves overdue OPEN orders to EXPIRED. SKIP LOCKED leaves orders that an

@@ -1,6 +1,7 @@
 // AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-10-17.
 // Scope: Server-side client for the order service, forwarding the user's bearer token,
 // mirroring the supplier-service client. Author review: Pending.
+// Claude Code (Opus 5.5), 2026-10-17: joining group orders. Author review: Pending.
 import type { H3Event } from "h3";
 import type { Order, OrderAction, OrderCreate, OrderEdit, OrderEvent, OrderListQuery, OrderPage } from "#shared/services/order-service/types";
 
@@ -48,6 +49,7 @@ export const getOrder = (event: H3Event, id: string) => call<Order>(event, order
 export const getOrderEvents = (event: H3Event, id: string) => call<OrderEvent[]>(event, `${orderPath(id)}/events`);
 export const createOrder = (event: H3Event, body: OrderCreate) => call<Order>(event, "/orders", { method: "POST", body });
 export const editOrder = (event: H3Event, id: string, body: OrderEdit) => call<Order>(event, orderPath(id), { method: "PATCH", body });
+export const joinOrder = (event: H3Event, id: string) => call<Order>(event, `${orderPath(id)}/join`, { method: "POST" });
 export const performOrderAction = (event: H3Event, id: string, action: OrderAction) =>
   call<Order>(event, `${orderPath(id)}/${action}`, { method: "POST" });
 
