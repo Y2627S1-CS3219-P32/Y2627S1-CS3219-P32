@@ -1,6 +1,7 @@
 <!-- AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-10-17.
 Scope: Order-service setup, endpoint, event and command documentation. Author review: Pending.
-Claude Code (Opus 5.5), 2026-10-17: title, order details, history and edit endpoints. Author review: Pending. -->
+Claude Code (Opus 5.5), 2026-10-17: title, order details, history and edit endpoints. Author review: Pending.
+Claude Code (Opus 5.5), 2026-10-17: group orders. Author review: Pending. -->
 # Order Service
 
 Errand requests (FR10–FR13). Express, Drizzle and PostgreSQL, with Google Pub/Sub for
@@ -54,7 +55,8 @@ Errors are `{ "error": "message" }`.
 | `GET` | `/orders/:orderId/events` | anyone (history, oldest first) | | |
 | `PATCH` | `/orders/:orderId` | requester | `OPEN` | `OPEN` (`order.edited`) |
 | `POST` | `/orders/:orderId/accept` | anyone except the requester | `OPEN` | `ACCEPTED` |
-| `POST` | `/orders/:orderId/cancel` | requester | `OPEN` | `CANCELLED` |
+| `POST` | `/orders/:orderId/join` | anyone (group orders) | `SYNCHRONISING` | `SYNCHRONISING` (`order.member_joined`) |
+| `POST` | `/orders/:orderId/cancel` | requester | `SYNCHRONISING`, `PENDING` or `OPEN` | `CANCELLED` |
 | `POST` | `/orders/:orderId/pickup` | assigned courier | `ACCEPTED` | `PICKED_UP` |
 | `POST` | `/orders/:orderId/deliver` | assigned courier | `PICKED_UP` | `DELIVERED` |
 | `POST` | `/orders/:orderId/confirm` | requester | `DELIVERED` | `COMPLETE` |
@@ -67,7 +69,8 @@ Actions return the updated order, `404` for an unknown order, `403` for the wron
 `creditReward` must be a positive whole number. `PATCH` accepts only `title`, `description` and
 `deliveryLocation`; the supplier and reward are fixed.
 
-Orders are returned with `requester` and `courier` as `{ id, displayName }`, and the supplier
+Orders are returned with `requester` and `courier` as `{ id, displayName }`, `isGroupOrder`,
+`members` (other group members, as `{ id, displayName }`), and the supplier
 version they were created with. History entries are `{ id, sequence, type, state, actor, createdAt }`
 with `actor` null for system changes.
 
@@ -83,6 +86,20 @@ with `actor` null for system changes.
 
 Responses are `{ "items": [...], "nextCursor": string | null }`.
 
+## Group orders
+
+`POST /orders` with `"isGroupOrder": true` starts the order in `SYNCHRONISING` and publishes
+`order.group_started` instead of `order.created`. Others join with `POST /orders/:orderId/join`
+(stored in `order_members`; `order.member_joined` carries the new `member` in the order
+payload). The description is edited in sync-service; when the requester places the order,
+sync-service publishes `group.placed` on `sync-events`, and the order service stores the
+description, moves the order to `PENDING` and publishes `order.created`, so the saga starts as
+usual. Every event's order payload has `isGroupOrder` and `memberIds` (requester first; empty
+for normal orders). `GET /orders/me` includes group orders the caller joined.
+
+Note for the orchestrator: an order can now be cancelled while `PENDING`, so reserved
+credits must be released on `order.cancelled` from `PENDING`.
+
 ## Events and commands
 
 Every event on `order-events`:
@@ -93,7 +110,7 @@ Every event on `order-events`:
 
 `order` is the full order after the change. Each message also has the attributes `type` and
 `orderId`, so subscriptions can filter, e.g. `hasPrefix(attributes.type, "order.")`. Delivery is at least once, so consumers dedupe by
-`eventId`. Types: `order.created`, `order.opened`, `order.rejected`, `order.aborted`,
+`eventId`. Types: `order.group_started`, `order.member_joined`, `order.created`, `order.opened`, `order.rejected`, `order.aborted`,
 `order.edited`, `order.accepted`, `order.cancelled`, `order.expired`, `order.picked_up`, `order.delivered`,
 `order.completed`, `order.settled`.
 
