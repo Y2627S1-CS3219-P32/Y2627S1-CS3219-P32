@@ -1,8 +1,11 @@
 <!-- AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-09-30.
 Scope: Administrator form for POST /suppliers, with type/building dropdowns and browser geolocation. Author review: Done.
+AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-09-30.
+Scope: Operating hours field. Author review: Pending.
 Claude Code (Opus 5.5), 2026-10-15. Scope: Buttons opening the type and building management dialog. Author review: Pending. -->
 <script setup lang="ts">
 import type { Supplier, SupplierCreate, SupplierReference, SupplierReferenceKind } from "#shared/services/supplier-service/types";
+import OperatingHoursPicker from "./OperatingHoursPicker.vue";
 import SupplierReferenceDialog from "./SupplierReferenceDialog.vue";
 
 const props = defineProps<{ open: boolean }>();
@@ -17,10 +20,12 @@ const saving = ref(false);
 const errorMessage = ref("");
 const locating = ref(false);
 const locationMessage = ref("");
+// Remounts the hours picker so each opening starts with no selection.
+const openCount = ref(0);
 const managing = ref<SupplierReferenceKind | null>(null);
 
 function emptyForm(): SupplierCreate {
-  return { name: "", type: "", buildingName: null, floor: "", locationDescription: "", latitude: "", longitude: "", imageUrl: "" };
+  return { name: "", type: "", buildingName: null, floor: "", locationDescription: "", latitude: "", longitude: "", imageUrl: "", operatingHours: [] };
 }
 
 function statusOf(error: unknown): number | undefined {
@@ -67,6 +72,7 @@ watch(() => props.open, (open) => {
   form.value = emptyForm();
   errorMessage.value = "";
   locationMessage.value = "";
+  openCount.value++;
   loadOptions();
   nextTick(() => dialog.value?.showModal());
 });
@@ -118,12 +124,12 @@ const input = "w-full rounded-lg border border-[#cfd5da] bg-white px-3 py-2 text
   <dialog
     ref="dialog"
     aria-labelledby="create-supplier-title"
-    class="m-auto w-[min(32rem,calc(100%-2rem))] rounded-lg bg-white p-0 text-[#25313c] shadow-xl backdrop:bg-black/40"
+    class="m-auto max-h-[calc(100%-2rem)] w-[min(36rem,calc(100%-2rem))] overflow-y-auto rounded-lg bg-white p-0 text-[#25313c] shadow-xl backdrop:bg-black/40"
     @close="emit('close')"
   >
     <form class="p-5" @submit.prevent="save">
       <h2 id="create-supplier-title" class="text-lg font-semibold">Add supplier</h2>
-      <p class="mt-1 text-xs text-[#5b6570]">New suppliers are active straight away. They show as closed until opening hours are added.</p>
+      <p class="mt-1 text-xs text-[#5b6570]">New suppliers are active straight away. They show as open during their operating hours.</p>
       <p v-if="optionsError" class="mt-3 text-sm text-red-700" role="alert">{{ optionsError }}</p>
 
       <div class="mt-4 grid gap-3 sm:grid-cols-2">
@@ -176,6 +182,7 @@ const input = "w-full rounded-lg border border-[#cfd5da] bg-white px-3 py-2 text
           <label for="create-image" :class="label">Image URL</label>
           <input id="create-image" v-model="form.imageUrl" type="url" :class="input">
         </div>
+        <OperatingHoursPicker :key="openCount" v-model="form.operatingHours" id-prefix="create" class="sm:col-span-2" />
       </div>
 
       <p v-if="errorMessage" class="mt-4 text-sm text-red-700" role="alert">{{ errorMessage }}</p>

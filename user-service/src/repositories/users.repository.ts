@@ -6,7 +6,7 @@
 **/
 import { eq, sql } from "drizzle-orm";
 
-import { db } from "../db";
+import { db, pool } from "../db";
 import { usersTable, type PublicUser, type User } from "../db/schema";
 
 const publicUserColumns = {
@@ -51,28 +51,35 @@ export async function countAdministrators(): Promise<number> {
   return admins.length;
 }
 
-export async function insertUser(values: {
-  name: string;
-  displayName?: string;
-  email: string;
-  role: "student" | "admin";
-  passwordHash: string;
-}): Promise<PublicUser> {
-  const [user] = await db.insert(usersTable).values(values).returning(publicUserColumns);
-  if (!user) throw new Error("Inserted user could not be found");
-  return user;
+export async function reserveUserId(): Promise<number> {
+  const { rows } = await pool.query<{ id: string }>(
+    "SELECT nextval(pg_get_serial_sequence('users', 'id')) AS id",
+  );
+  const id = Number(rows[0]?.id);
+  if (!Number.isSafeInteger(id) || id <= 0) {
+    throw new Error("Could not reserve a valid user id");
+  }
+  return id;
 }
 
-export async function updateUser(
-  id: number,
-  values: Partial<Pick<User, "name" | "displayName" | "email" | "role" | "passwordHash">>,
-): Promise<PublicUser | undefined> {
-  const [user] = await db.update(usersTable).set(values)
-    .where(eq(usersTable.id, id)).returning(publicUserColumns);
-  return user;
+export async function reserveUserEventVersion(): Promise<number> {
+  const { rows } = await pool.query<{ version: string }>(
+    "SELECT nextval('user_event_sequence') AS version",
+  );
+  const version = Number(rows[0]?.version);
+  if (!Number.isSafeInteger(version) || version <= 0) {
+    throw new Error("Could not reserve a valid user event version");
+  }
+  return version;
 }
 
-export async function deleteUser(id: number): Promise<boolean> {
-  const deleted = await db.delete(usersTable).where(eq(usersTable.id, id)).returning({ id: usersTable.id });
-  return deleted.length > 0;
+export async function findProjectedUserEventVersion(): Promise<number> {
+  const { rows } = await pool.query<{ version: string }>(
+    "SELECT COALESCE(MAX(version), 0)::text AS version FROM user_event_states",
+  );
+  const version = Number(rows[0]?.version);
+  if (!Number.isSafeInteger(version) || version < 0) {
+    throw new Error("Could not read the projected user event version");
+  }
+  return version;
 }

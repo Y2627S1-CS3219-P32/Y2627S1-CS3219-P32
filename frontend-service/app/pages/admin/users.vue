@@ -1,12 +1,17 @@
-<!-- AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-30.
-Scope: Administrator user management controls. Author review: Done. -->
+<!-- AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-30; Copilot SDK in VS Code,
+2026-10-15. Scope: Administrator user management controls and event-gated refresh.
+Author review: Pending for event-gated refresh. -->
 <script setup lang="ts">
 import { getApiErrorMessage } from "../../utils/get-api-error-message";
 import { useUsers } from "../../services/user-service/composables/useUsers";
 import type { User } from "#shared/services/user-service/types";
 
-const { data: users, pending, error, refresh } = await useUsers();
 const requestFetch = useRequestFetch();
+const { data: projectedVersion } = await useAsyncData<{ version: number }>(
+  "admin-users-event-version",
+  () => requestFetch("/api/user-service/users/version"),
+);
+const { data: users, pending, error, refresh } = await useUsers();
 const { data: currentUser, error: currentUserError } = await useAsyncData<User>(
   "admin-current-user",
   () => requestFetch("/api/user-service/me"),
@@ -14,6 +19,31 @@ const { data: currentUser, error: currentUserError } = await useAsyncData<User>(
 const pendingUserId = ref<number | null>(null);
 const actionError = ref("");
 const actionMessage = ref("");
+let lastSeenEventVersion = projectedVersion.value?.version ?? 0;
+let usersRefreshTimer: ReturnType<typeof setInterval> | undefined;
+let checkingForUserEvents = false;
+
+onMounted(() => {
+  usersRefreshTimer = setInterval(async () => {
+    if (pendingUserId.value !== null || checkingForUserEvents) return;
+    checkingForUserEvents = true;
+    try {
+      const latest = await $fetch<{ version: number }>("/api/user-service/users/version");
+      if (latest.version > lastSeenEventVersion) {
+        await refresh({ dedupe: "defer" });
+        if (!error.value) lastSeenEventVersion = latest.version;
+      }
+    } catch (error) {
+      console.error("[admin/users] Unable to check for user events", error);
+    } finally {
+      checkingForUserEvents = false;
+    }
+  }, 5000);
+});
+
+onBeforeUnmount(() => {
+  if (usersRefreshTimer !== undefined) clearInterval(usersRefreshTimer);
+});
 
 async function changeRole(user: User) {
   const nextRole = user.role === "admin" ? "student" : "admin";
@@ -28,8 +58,7 @@ async function changeRole(user: User) {
       method: "PUT",
       body: { role: nextRole },
     });
-    await refresh();
-    actionMessage.value = `${user.displayName || user.name} is now ${nextRole === "admin" ? "an admin" : "a student"}.`;
+    actionMessage.value = "Update accepted. The user list will refresh when the event is projected.";
   } catch (error) {
     actionError.value = getApiErrorMessage(error) ?? `Unable to ${action} this account.`;
   } finally {
@@ -47,8 +76,7 @@ async function removeUser(user: User) {
     await $fetch(`/api/user-service/users/${encodeURIComponent(user.id)}`, {
       method: "DELETE",
     });
-    await refresh();
-    actionMessage.value = `${user.displayName || user.name} was deleted.`;
+    actionMessage.value = "Deletion accepted. The user list will refresh when the event is projected.";
   } catch (error) {
     actionError.value = getApiErrorMessage(error) ?? "Unable to delete this account.";
   } finally {
@@ -71,8 +99,8 @@ async function removeUser(user: User) {
       <p v-if="currentUserError || !currentUser" class="mt-5 rounded-lg border border-red-200 bg-white p-4 text-sm text-red-700" role="alert">
         Unable to verify your account. User management actions are unavailable.
       </p>
-      <p v-if="pending" class="mt-6" role="status">Loading users...</p>
-      <div v-else-if="error" class="mt-6 rounded-lg border border-red-200 bg-white p-5" role="alert">
+      <p v-if="pending && !users?.length" class="mt-6" role="status">Loading users...</p>
+      <div v-else-if="error && !users?.length" class="mt-6 rounded-lg border border-red-200 bg-white p-5" role="alert">
         <p>Unable to load users.</p>
         <button
           class="mt-3 rounded-lg bg-[#064784] px-4 py-2 text-sm font-medium text-white hover:bg-[#053765]"

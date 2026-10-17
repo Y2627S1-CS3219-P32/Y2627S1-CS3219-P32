@@ -25,6 +25,10 @@ export async function listUsers(_req: Request, res: Response): Promise<void> {
   res.json(await users.listUsers());
 }
 
+export async function getProjectedEventVersion(_req: Request, res: Response): Promise<void> {
+  res.json({ version: await users.getProjectedEventVersion() });
+}
+
 export async function getUser(req: Request, res: Response): Promise<void> {
   res.json(await users.getUser(getUserIdParam(req)));
 }

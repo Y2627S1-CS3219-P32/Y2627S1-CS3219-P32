@@ -9,6 +9,7 @@ import { Router } from "express";
 import {
   createUser,
   deleteUser,
+  getProjectedEventVersion,
   getUser,
   listUsers,
   updateUser,
@@ -20,6 +21,7 @@ const router = Router();
 
 router.use(requireAuthentication, requireAdministrator);
 router.get("/", listUsers);
+router.get("/events/version", getProjectedEventVersion);
 router.post("/", createUser);
 router.get("/:id", getUser);
 router.put("/:id", updateUser);

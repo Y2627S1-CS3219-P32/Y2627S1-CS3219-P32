@@ -26,6 +26,16 @@ services:
         - action: rebuild
           path: ./user-service/package.json
 
+  user-event-worker:
+    command: ["npx", "tsx", "watch", "src/worker.ts"]
+    develop:
+      watch:
+        - action: sync
+          path: ./user-service/src
+          target: /app/src
+        - action: rebuild
+          path: ./user-service/package.json
+
   frontend-service:
     build:
       target: build
@@ -44,3 +54,29 @@ services:
             - .data/
         - action: rebuild
           path: ./frontend-service/package.json
+
+  # Claude Code (Opus 5.5), 2026-10-17: order-service hot reloading. Author review: Pending.
+  order-service:
+    build:
+      target: tooling
+    command: ["npx", "tsx", "watch", "src/index.ts"]
+    develop:
+      watch:
+        - action: sync
+          path: ./order-service/src
+          target: /app/src
+        - action: rebuild
+          path: ./order-service/package.json
+
+  # Claude Code (Opus 5.5), 2026-10-17: notification-service hot reloading. Author review: Pending.
+  notification-service:
+    build:
+      target: tooling
+    command: ["npx", "tsx", "watch", "src/index.ts"]
+    develop:
+      watch:
+        - action: sync
+          path: ./notification-service/src
+          target: /app/src
+        - action: rebuild
+          path: ./notification-service/package.json

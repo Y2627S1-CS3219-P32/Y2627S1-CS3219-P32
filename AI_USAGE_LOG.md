@@ -36,6 +36,87 @@ Author review: Checked for correctness. -->
 
 # AI usage log (User Service)
 
+## 2026-10-15: User-service Pub/Sub event architecture
+
+- Tool: Copilot SDK in VS Code. Mode: Implementation, tests, documentation, and verification.
+- Exact prompt: `I have decided on this architecture for the user service: I want to use event-driven architecture to store user information, creations, deletions, so that coupling is minimised. This project uses GCP and I want to use pubsub as my event stream. Do the following: Add a pubsub emulator in this docker environment for local dev. Modify the cloud script to handle pubsub. Make my user service emit events for state changes. Create a worker to ingest events and update the local PostgreSQL database of the user service.`
+- Key response:
+  - Added the Pub/Sub emulator and event worker to local Docker Compose, and
+    updated the Cloud deployment script to provision the topic and an
+    authenticated push subscription.
+  - Changed registration, administrator bootstrap and CRUD, and self-service
+    profile/password updates to publish versioned user-created, user-updated,
+    and user-deleted events. Events contain password hashes, not plaintext
+    passwords.
+  - Added a worker that applies events transactionally to the PostgreSQL
+    projection and ignores stale or duplicate deliveries.
+  - Documented the asynchronous projection behavior and local/cloud setup.
+- Affected files: `README.md`, `AI_USAGE_LOG.md`, `compose.yaml`,
+  `compose.dev.yaml`, `deploy.sh`, `user-service/README.md`,
+  `user-service/package.json`, `user-service/package-lock.json`,
+  `user-service/src/db/schema.ts`,
+  `user-service/src/repositories/users.repository.ts`,
+  `user-service/src/services/auth.service.ts`,
+  `user-service/src/services/users.service.ts`,
+  `user-service/src/events/user-events.ts`,
+  `user-service/src/events/parse-user-event.ts`,
+  `user-service/src/events/parse-user-event.test.ts`, and
+  `user-service/src/worker.ts`.
+- Verification: user-service tests passed (9/9), strict TypeScript checking,
+  Compose configuration validation, `bash -n deploy.sh`, and Drizzle schema
+  migration-plan generation passed. A live Compose end-to-end test was not run
+  because the Docker daemon was unavailable.
+- Author review: Pending.
+
+## 2026-10-01: Editing operating hours
+
+- Tool: Claude Code (Opus 5.5). Mode: Implementation, tests, documentation, and verification.
+- Exact prompt: `editing of operating hours should also be possible from the edit screen.`
+- Key response:
+  - `GET /suppliers` returns each supplier's `operatingHours` (as `HH:MM`,
+    sorted by day and opening time). `PUT /suppliers/:id` accepts an optional
+    `operatingHours` array, validated as for POST; when sent, it replaces all of
+    the supplier's hours in the same transaction as the row update, and when
+    omitted the hours are kept.
+  - The edit dialog reuses the operating hours picker, preselecting the matching
+    preset or opening the custom editor with the supplier's current hours.
+- Affected files: `supplier-service/src/operating-hours-input.ts`,
+  `supplier-service/src/index.ts`, `supplier-service/test/suppliers.test.mjs`,
+  `supplier-service/README.md`,
+  `frontend-service/shared/services/supplier-service/types.ts`,
+  `frontend-service/app/services/supplier-service/components/OperatingHoursPicker.vue`,
+  `frontend-service/app/services/supplier-service/components/SupplierCreateDialog.vue`,
+  `frontend-service/app/services/supplier-service/components/SupplierEditDialog.vue`,
+  and this log.
+- Verification: supplier-service typecheck and route tests (27/27) and the
+  frontend Nuxt typecheck passed.
+- Author review: Pending.
+
+## 2026-09-30: Operating hours on supplier creation
+
+- Tool: Claude Code (Opus 5.5). Mode: Implementation, tests, documentation, and verification.
+- Exact prompt: `can you implement operating hours upon supplier creation? provide a set of pre-defined selections (open 24/7, 9-5pm etc and allow for a custom field that allows the user to add day by day and hour by hour). refer to the schema.`
+- Key response:
+  - `POST /suppliers` accepts an optional `operatingHours` array of
+    `{ day, openingHrs, closingHrs }`, following the existing `operating_hours`
+    schema (0 is Sunday, overnight periods allowed, missing day means closed).
+    Periods are validated in the service layer, including the documented
+    non-overlap check, and inserted in the same transaction as the supplier.
+  - The add-supplier dialog has an operating hours picker with presets (open
+    24/7, every day 9am–5pm, weekdays 9am–5pm, every day 8am–10pm, no hours) and
+    a custom editor with per-day open/closed and 24-hour toggles, multiple
+    periods per day, and copying one day's hours to every day.
+- Affected files: `supplier-service/src/operating-hours-input.ts`,
+  `supplier-service/src/index.ts`, `supplier-service/test/suppliers.test.mjs`,
+  `supplier-service/README.md`,
+  `frontend-service/shared/services/supplier-service/types.ts`,
+  `frontend-service/app/services/supplier-service/components/OperatingHoursPicker.vue`,
+  `frontend-service/app/services/supplier-service/components/SupplierCreateDialog.vue`,
+  and this log.
+- Verification: supplier-service typecheck and route tests (25/25) and the
+  frontend Nuxt typecheck passed.
+- Author review: Pending.
+
 ## 2026-09-30: Redirect to first-administrator setup
 
 - Tool: ChatGPT (GPT-6). Mode: Implementation and verification.
@@ -712,3 +793,113 @@ for context, frontend-service is being set up. The frontend’s supplier screen 
   Drizzle Kit's development dependency chain reported four moderate findings
   associated with esbuild; npm's suggested fix requires a breaking downgrade.
 - Author review: Check for correctness.
+
+# AI usage log (Order Service)
+
+## 2026-10-17: Order service implementation
+
+- Tool: Claude Code (Opus 5.5). Mode: Implementation, tests, documentation, and verification.
+- Exact prompt: `ok you have enough information i feel`, following a conversation in which
+  the student specified the order service: local user copy (id, display name, role, soft
+  delete) and append-only supplier copy (everything except `imageUrl`) built from
+  `user-events` and `supplier-events`; the `orders` table with a `current_state` column and
+  the `order_events` table as log and transactional outbox; FR10–FR13 endpoints
+  (`POST /orders`, `GET /orders` with state/supplier filters, `+`/`-` sorting and cursor
+  pagination, `GET /orders/me`, accept/cancel/pickup/deliver/confirm); the states and the
+  orchestrated saga commands (`OpenOrder`, `RejectOrder`, `AbortOrder`, `SettleOrder`); and
+  expiry by a database sweep. When asked, Claude gave feedback and options (for example the
+  `current_state` column, the sweep instead of Cloud Tasks, and the `AbortOrder` and
+  `SettleOrder` names); the student made the choices.
+- Key response:
+  - New `order-service` (Express, Drizzle, PostgreSQL) with a local HS256 JWT check, the
+    student-defined schema and migration, and one write path that appends an event and
+    updates `current_state` in the same transaction.
+  - Pub/Sub push consumers for user and supplier events and saga commands (idempotent via
+    event versions and command ids), an outbox relay to `order-events`, and internal routes
+    authenticated by Google OIDC tokens or a local shared secret.
+  - Compose services for the order database, migrations, the service, and a ticker that runs
+    the expiry sweep and outbox relay every minute.
+- Affected files: `order-service/` (all files), `compose.yaml`, `compose.dev.yaml`, and this log.
+- Verification: `npm test` (15/15 integration tests against PostgreSQL), strict TypeScript
+  checking, `drizzle-kit migrate`, and a local startup smoke test passed. The Compose stack
+  was not run because Docker was unavailable. Cloud deployment is not yet wired.
+- Author review: Pending.
+
+## 2026-10-17: Order pages in the frontend
+
+- Tool: Claude Code (Opus 5.5). Mode: Implementation, verification.
+- Exact prompt: ten mockup images of the Orders, New Order, Edit Order and order details pages
+  (desktop and mobile), with `N1 N2 are navigation bars btw, if the frontend already has them,
+  use it, if not ignore it`. The student then chose: a required title column, a supplier
+  dropdown plus free-text delivery location, editing of title/description/location while
+  `OPEN` (reward fixed), and no order number (heading "Order Details").
+- Key response:
+  - order-service: `title` column, requester/courier display names in responses,
+    `GET /orders/:orderId`, `GET /orders/:orderId/events`, `PATCH /orders/:orderId`
+    (`order.edited`), and comma-separated `state` filters; description limit 500.
+  - frontend: Orders link in the existing navigation; Orders page with All/Open/In
+    Progress/Done tabs, supplier filter, sorting and "Load more"; New Order and Edit Order
+    forms; Order Details page with the viewer's action and the history grouped by day.
+    Available credits are not shown because credit-service does not exist yet.
+- Affected files: `order-service/src/`, `order-service/drizzle/`, `order-service/test/`,
+  `order-service/README.md`, `frontend-service/` (order-service pages, components, server
+  routes, shared types, `app.vue`, `nuxt.config.ts`), `compose.yaml`, and this log.
+- Verification: order-service tests (17/17) and the Nuxt typecheck passed. Checked in Chrome
+  against the Pub/Sub emulator with the real user, supplier and order services: listing,
+  filters, creating, editing, completing (settled by a stand-in orchestrator), and mobile layouts.
+- Author review: Pending.
+
+# AI usage log (Notification Service)
+
+## 2026-10-17: Notification service and live order updates
+
+- Tool: Claude Code (Opus 5.5). Mode: Implementation, tests, documentation, and verification.
+- Exact prompt: `go ahead`, following a conversation in which the student specified the
+  notification service: ingress all with local JWT verification, WebSockets, listening to all
+  order events (credit events later) with attribute-based filtering, a map of user id to
+  sockets, and one subscription per instance so every instance receives every event. The
+  student chose short-lived tickets for WebSocket authentication because the JWT is in an
+  httpOnly cookie.
+- Key response:
+  - order-service publishes `type` and `orderId` as Pub/Sub message attributes.
+  - New `notification-service`: `POST /tickets` (JWT → signed single-use ticket), `/ws`
+    WebSocket endpoint with origin checks, heartbeats and closing at JWT expiry, a per-instance
+    filtered pull subscription deleted on shutdown, and routing of each order event to the
+    requester's and courier's sockets.
+  - frontend: ticket endpoint, a shared reconnecting WebSocket composable, and live updates on
+    the Orders and Order Details pages in place of polling.
+- Affected files: `notification-service/` (all files), `order-service/src/events/`,
+  `order-service/test/orders.test.mjs`, `order-service/README.md`,
+  `frontend-service/server/api/notification-service/`, `frontend-service/app/services/notification-service/`,
+  `frontend-service/app/services/order-service/components/OrderBoard.vue`,
+  `frontend-service/app/pages/orders/[id]/index.vue`, `frontend-service/nuxt.config.ts`,
+  `compose.yaml`, `compose.dev.yaml`, and this log.
+- Verification: notification-service tests (4/4), order-service tests (17/17), strict
+  TypeScript and Nuxt typechecks passed. On the Pub/Sub emulator with two notification
+  instances, an order event reached users connected to different instances (~120ms), a
+  stopped instance deleted its subscription, and the Order Details page updated in Chrome
+  without reloading. Docker Compose and Cloud deployment were not run.
+- Author review: Pending.
+
+## 2026-10-17: Stored notifications, notification panel and toasts
+
+- Tool: Claude Code (Opus 5.5). Mode: Implementation, tests, documentation, and verification.
+- Exact prompt: `ok add the source column and go ahead`, following the student's request for
+  toasts and a notification panel backed by a notifications table and a paginated
+  `GET /notifications`, and a discussion of storing through a shared subscription, keying rows
+  by the source event id, and adding a `source` column.
+- Key response:
+  - notification-service: PostgreSQL `notifications` table (unique on source, event and user),
+    notification rules in one place, a shared `notification-store` subscription that stores
+    each event once with retries, `GET /notifications` (cursor paged), `GET
+    /notifications/unread-count`, `POST /notifications/read`, and live `notification` pushes.
+  - frontend: Nuxt proxy routes, a bell with unread badge and a panel of past notifications
+    (mark as read, load more), and toasts for live notifications.
+- Affected files: `notification-service/` (schema, migration, rules, store, API, subscription,
+  tests, README, Dockerfile, package files), `frontend-service/` (notification-service server
+  routes, client, types, components, composable, `app.vue`), `compose.yaml`, and this log.
+- Verification: notification-service tests (7/7) and the Nuxt typecheck passed. On the Pub/Sub
+  emulator the seeded order events were stored once per recipient, and in Chrome the badge,
+  panel (mobile and desktop), toast, and marking as read worked.
+- Author review: Pending.
+

@@ -19,6 +19,9 @@ SQL_INSTANCE="${SQL_INSTANCE:-foc-db}"
 SQL_TIER="${SQL_TIER:-db-f1-micro}"
 NETWORK="${NETWORK:-default}"
 SUBNET="${SUBNET:-default}"
+PUBSUB_TOPIC="${PUBSUB_TOPIC:-user-events}"
+PUBSUB_SUBSCRIPTION="${PUBSUB_SUBSCRIPTION:-user-events-worker}"
+PUBSUB_PUSH_SERVICE_ACCOUNT="${PUBSUB_PUSH_SERVICE_ACCOUNT:-user-event-push@${PROJECT_ID}.iam.gserviceaccount.com}"
 
 REGISTRY="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPOSITORY}"
 SQL_CONNECTION="${PROJECT_ID}:${REGION}:${SQL_INSTANCE}"
@@ -26,6 +29,38 @@ SQL_CONNECTION="${PROJECT_ID}:${REGION}:${SQL_INSTANCE}"
 run() { gcloud --project "$PROJECT_ID" "$@"; }
 
 secret_exists() { run secrets describe "$1" >/dev/null 2>&1; }
+
+ensure_pubsub() {
+  run services enable pubsub.googleapis.com
+  run beta services identity create --service pubsub.googleapis.com >/dev/null
+  if ! run pubsub topics describe "$PUBSUB_TOPIC" >/dev/null 2>&1; then
+    run pubsub topics create "$PUBSUB_TOPIC"
+  fi
+
+  local push_service_account_name
+  case "$PUBSUB_PUSH_SERVICE_ACCOUNT" in
+    *@${PROJECT_ID}.iam.gserviceaccount.com) ;;
+    *)
+      echo "PUBSUB_PUSH_SERVICE_ACCOUNT must belong to project $PROJECT_ID." >&2
+      return 1
+      ;;
+  esac
+  push_service_account_name="${PUBSUB_PUSH_SERVICE_ACCOUNT%@${PROJECT_ID}.iam.gserviceaccount.com}"
+  if ! run iam service-accounts describe "$PUBSUB_PUSH_SERVICE_ACCOUNT" >/dev/null 2>&1; then
+    run iam service-accounts create "$push_service_account_name" \
+      --display-name "Pub/Sub push invoker for user event worker"
+  fi
+
+  local project_number service_account
+  project_number="$(run projects describe "$PROJECT_ID" --format 'value(projectNumber)')"
+  service_account="${project_number}-compute@developer.gserviceaccount.com"
+  run projects add-iam-policy-binding "$PROJECT_ID" \
+    --member "serviceAccount:${service_account}" --role roles/pubsub.publisher \
+    --condition None >/dev/null
+  run iam service-accounts add-iam-policy-binding "$PUBSUB_PUSH_SERVICE_ACCOUNT" \
+    --member "serviceAccount:service-${project_number}@gcp-sa-pubsub.iam.gserviceaccount.com" \
+    --role roles/iam.serviceAccountTokenCreator --condition None >/dev/null
+}
 
 sql_private_ip() {
   run sql instances describe "$SQL_INSTANCE" \
@@ -58,6 +93,8 @@ create_database() {
 }
 
 setup() {
+  ensure_pubsub
+
   # Private Service Access, so Cloud SQL can have a private IP on the VPC.
   run services enable servicenetworking.googleapis.com
   if ! run compute addresses describe google-managed-services-default --global >/dev/null 2>&1; then
@@ -116,6 +153,8 @@ service_url() {
 }
 
 deploy() {
+  ensure_pubsub
+
   run_job supplier-migrate "${REGISTRY}/supplier-service-tooling:${TAG}" supplier-database-url \
     "${PRIVATE_DB_FLAGS[@]}" --command npm --args run,db:migrate
   run_job user-migrate "${REGISTRY}/user-service:${TAG}" user-database-url \
@@ -130,10 +169,34 @@ deploy() {
   run run deploy user-service --region "$REGION" --image "${REGISTRY}/user-service:${TAG}" \
     --port 3333 --ingress internal --allow-unauthenticated \
     --add-cloudsql-instances "$SQL_CONNECTION" \
-    --set-env-vars "JWT_ACCESS_TOKEN_TTL=900" \
+    --set-env-vars "JWT_ACCESS_TOKEN_TTL=900,PUBSUB_PROJECT_ID=${PROJECT_ID},PUBSUB_TOPIC=${PUBSUB_TOPIC}" \
     --set-secrets "$user_secrets"
   local user_url
   user_url="$(service_url user-service)"
+
+  run run deploy user-event-worker --region "$REGION" --image "${REGISTRY}/user-service:${TAG}" \
+    --command npm --args run,worker \
+    --port 3334 --no-allow-unauthenticated \
+    --add-cloudsql-instances "$SQL_CONNECTION" \
+    --set-env-vars "PUBSUB_PROJECT_ID=${PROJECT_ID},PUBSUB_TOPIC=${PUBSUB_TOPIC},PUBSUB_SUBSCRIPTION=${PUBSUB_SUBSCRIPTION}" \
+    --set-secrets "DATABASE_URL=user-database-url:latest"
+  local worker_url
+  worker_url="$(service_url user-event-worker)"
+  run run services add-iam-policy-binding user-event-worker --region "$REGION" \
+    --member "serviceAccount:${PUBSUB_PUSH_SERVICE_ACCOUNT}" --role roles/run.invoker >/dev/null
+
+  if run pubsub subscriptions describe "$PUBSUB_SUBSCRIPTION" >/dev/null 2>&1; then
+    run pubsub subscriptions update "$PUBSUB_SUBSCRIPTION" \
+      --push-endpoint "${worker_url}/pubsub/user-events" \
+      --push-auth-service-account "$PUBSUB_PUSH_SERVICE_ACCOUNT" \
+      --push-auth-token-audience "$worker_url"
+  else
+    run pubsub subscriptions create "$PUBSUB_SUBSCRIPTION" --topic "$PUBSUB_TOPIC" \
+      --push-endpoint "${worker_url}/pubsub/user-events" \
+      --push-auth-service-account "$PUBSUB_PUSH_SERVICE_ACCOUNT" \
+      --push-auth-token-audience "$worker_url" \
+      --enable-message-ordering
+  fi
 
   run run deploy supplier-service --region "$REGION" --image "${REGISTRY}/supplier-service:${TAG}" \
     --port 3000 --ingress internal --allow-unauthenticated \

@@ -1,7 +1,10 @@
 <!-- AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-28.
-Scope: Shared frontend shell. Author review: Done. -->
+Scope: Shared frontend shell. Author review: Done.
+Claude Code (Opus 5.5), 2026-10-17. Scope: Orders navigation link. Author review: Pending.
+Claude Code (Opus 5.5), 2026-10-17. Scope: Notification bell for signed-in users. Author review: Pending. -->
 <script setup lang="ts">
 import type { User } from "#shared/services/user-service/types";
+import NotificationCenter from "~/services/notification-service/components/NotificationCenter.vue";
 
 function isUnauthorized(error: unknown): boolean {
   if (typeof error !== "object" || error === null) return false;
@@ -45,16 +48,24 @@ const { data: user } = await useAsyncData<User | null>("navigation-user", async 
           <NuxtLink
             to="/profile"
             :aria-current="route.path === '/profile' ? 'page' : undefined"
-            class="rounded-lg px-5 py-2.5 text-sm font-medium transition-colors"
+            class="rounded-lg px-3 py-2.5 text-sm font-medium transition-colors md:px-5"
             :class="route.path === '/profile' ? 'bg-[#eef4fa] text-[#064784]' : 'text-[#5b6570] hover:bg-[#f7f9fc] hover:text-[#064784]'"
           >
             Profile
           </NuxtLink>
           <NuxtLink
+            to="/orders"
+            :aria-current="route.path.startsWith('/orders') ? 'page' : undefined"
+            class="rounded-lg px-3 py-2.5 text-sm font-medium transition-colors md:px-5"
+            :class="route.path.startsWith('/orders') ? 'bg-[#eef4fa] text-[#064784]' : 'text-[#5b6570] hover:bg-[#f7f9fc] hover:text-[#064784]'"
+          >
+            Orders
+          </NuxtLink>
+          <NuxtLink
             to="/suppliers"
             :aria-current="route.path === '/suppliers' ? 'page' : undefined"
-            class="rounded-lg px-5 py-2.5 text-sm font-medium transition-colors"
-            :class="route.path === 'suppliers' ? 'bg-[#eef4fa] text-[#064784]' : 'text-[#5b6570] hover:bg-[#f7f9fc] hover:text-[#064784]'"
+            class="rounded-lg px-3 py-2.5 text-sm font-medium transition-colors md:px-5"
+            :class="route.path === '/suppliers' ? 'bg-[#eef4fa] text-[#064784]' : 'text-[#5b6570] hover:bg-[#f7f9fc] hover:text-[#064784]'"
           >
             Suppliers
           </NuxtLink>
@@ -62,11 +73,12 @@ const { data: user } = await useAsyncData<User | null>("navigation-user", async 
             v-if="user?.role === 'admin'"
             to="/admin/users"
             :aria-current="route.path.startsWith('/admin/') ? 'page' : undefined"
-            class="rounded-lg px-5 py-2.5 text-sm font-medium transition-colors"
+            class="rounded-lg px-3 py-2.5 text-sm font-medium transition-colors md:px-5"
             :class="route.path.startsWith('/admin/') ? 'bg-[#eef4fa] text-[#064784]' : 'text-[#5b6570] hover:bg-[#f7f9fc] hover:text-[#064784]'"
           >
             Users
           </NuxtLink>
+          <NotificationCenter v-if="user" />
         </div>
       </div>
     </nav>
