@@ -31,6 +31,10 @@ services:
         condition: service_completed_successfully
       user-event-worker:
         condition: service_healthy
+      # Claude Code (Opus 5.5), 2026-10-17: order-service creates its user-events
+      # subscription at startup; earlier events would never reach it. Author review: Pending.
+      order-service:
+        condition: service_healthy
 
   user-event-worker:
     build:
@@ -177,6 +181,83 @@ services:
       timeout: 3s
       retries: 5
 
+  # AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-10-17.
+  # Scope: Order service, its PostgreSQL database and migrations, and a local ticker
+  # standing in for Cloud Scheduler. Author review: Pending.
+  order-db:
+    image: postgres:17
+    ports:
+      - "127.0.0.1:5435:5432"
+    environment:
+      POSTGRES_USER: order
+      POSTGRES_PASSWORD: order
+      POSTGRES_DB: orders
+    volumes:
+      - order-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U order -d orders"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  order-db-migrate:
+    build:
+      context: ./order-service
+      target: tooling
+    command: ["npm", "run", "db:migrate"]
+    environment:
+      DATABASE_URL: postgres://order:order@order-db:5432/orders
+    depends_on:
+      order-db:
+        condition: service_healthy
+
+  order-service:
+    build: ./order-service
+    environment:
+      PORT: "3000"
+      DATABASE_URL: postgres://order:order@order-db:5432/orders
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      # Local only: the emulator and the ticker cannot send Google OIDC tokens.
+      INTERNAL_SHARED_SECRET: ${ORDER_INTERNAL_SECRET:-local-only-order-internal-secret-0000}
+      PUBSUB_EMULATOR_HOST: pubsub-emulator:8085
+      PUBSUB_PROJECT_ID: foc-local
+      PUBSUB_PUSH_BASE_URL: http://order-service:3000
+    ports:
+      - "3002:3000"
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/health').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    depends_on:
+      order-db-migrate:
+        condition: service_completed_successfully
+      pubsub-emulator:
+        condition: service_healthy
+
+  # Runs the expiry sweep and the outbox relay every minute, as Cloud Scheduler does in GCP.
+  order-ticker:
+    image: curlimages/curl:8.11.1
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        while true; do
+          sleep 60
+          curl -fsS -X POST -H "x-internal-secret: $$SECRET" http://order-service:3000/internal/orders/expire-overdue
+          curl -fsS -X POST -H "x-internal-secret: $$SECRET" http://order-service:3000/internal/outbox/publish
+        done
+    environment:
+      SECRET: ${ORDER_INTERNAL_SECRET:-local-only-order-internal-secret-0000}
+    depends_on:
+      order-service:
+        condition: service_healthy
+
 volumes:
   supplier-db-data:
   user-db-data:
+  order-db-data:
