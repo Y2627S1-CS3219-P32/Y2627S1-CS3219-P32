@@ -3,6 +3,8 @@
  * Scope: Who is notified about which order event (shared by the live push and the stored
  * history), and a notification id derived from (source, event id, user id) so both paths
  * agree without coordinating. Author review: Pending.
+ * Claude Code (Opus 5.5), 2026-10-17: group orders (members hear what the requester hears,
+ * plus joins, placing and cancelling). Author review: Pending.
  */
 import { createHash } from "node:crypto";
 import type { Source } from "./db/schema.js";
@@ -14,13 +16,17 @@ export interface Notification {
   eventId: string;
   orderId: string | null;
   type: string;
-  payload: { title: string; creditReward: number };
+  payload: { title: string; creditReward: number; group: boolean; memberName?: string | null };
   createdAt: string;
 }
 
-// The requester hears about their order's progress; the courier about confirmation and
-// payment. Edits, creation and cancellation (only possible before a courier) notify nobody.
+// The requester (and, for group orders, every member) hears about the order's progress;
+// the courier about confirmation and payment. Creation, placing and cancelling are done by
+// the requester, so for normal orders they notify nobody; group members are told.
 const REQUESTER_EVENTS = new Set([
+  "order.member_joined",
+  "order.created",
+  "order.cancelled",
   "order.opened",
   "order.rejected",
   "order.aborted",
@@ -56,16 +62,28 @@ export function notificationsForOrderEvent(event: unknown): Notification[] {
   ) {
     return [];
   }
-  const { requesterId, courierId, title, creditReward } = order as Record<string, unknown>;
+  const { requesterId, courierId, title, creditReward, isGroupOrder, memberIds } = order as Record<string, unknown>;
 
-  const recipients: number[] = [];
+  const recipients = new Set<number>();
   const requester = positiveInteger(requesterId);
   const courier = positiveInteger(courierId);
-  if (requester && REQUESTER_EVENTS.has(type)) recipients.push(requester);
-  if (courier && COURIER_EVENTS.has(type)) recipients.push(courier);
+  if (REQUESTER_EVENTS.has(type)) {
+    if (requester) recipients.add(requester);
+    for (const id of Array.isArray(memberIds) ? memberIds : []) {
+      const member = positiveInteger(id);
+      if (member) recipients.add(member);
+    }
+  }
+  if (courier && COURIER_EVENTS.has(type)) recipients.add(courier);
+
+  // order.member_joined carries the new member in the order payload.
+  const joined = (order as Record<string, unknown>).member;
+  const memberName = type === "order.member_joined" && typeof joined === "object" && joined !== null
+    ? (joined as Record<string, unknown>).displayName
+    : undefined;
 
   const actor = positiveInteger(actorId);
-  return recipients
+  return [...recipients]
     .filter((userId) => userId !== actor) // nobody is told about their own action
     .map((userId) => ({
       id: notificationId("order", eventId.toLowerCase(), userId),
@@ -77,6 +95,8 @@ export function notificationsForOrderEvent(event: unknown): Notification[] {
       payload: {
         title: typeof title === "string" ? title : "Your order",
         creditReward: typeof creditReward === "number" ? creditReward : 0,
+        group: isGroupOrder === true,
+        ...(memberName === undefined ? {} : { memberName: typeof memberName === "string" ? memberName : null }),
       },
       createdAt: new Date(occurredAt).toISOString(),
     }));

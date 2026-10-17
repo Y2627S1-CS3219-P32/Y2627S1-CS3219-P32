@@ -5,6 +5,7 @@
  * Author review: Pending.
  * Claude Code (Opus 5.5), 2026-10-17: notification rules, storage, the notifications
  * API, and live notification pushes. Author review: Pending.
+ * Claude Code (Opus 5.5), 2026-10-17: group order recipients. Author review: Pending.
  */
 import assert from "node:assert/strict";
 import { createHmac, randomBytes } from "node:crypto";
@@ -206,7 +207,7 @@ test("rules: requesters hear about progress, couriers about payment, nobody abou
   const [again] = notificationsForOrderEvent(event);
   assert.equal(first.id, again.id);
   assert.match(first.id, /^[0-9a-f]{8}-[0-9a-f]{4}-8[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
-  assert.deepEqual(first.payload, { title: "Coffee", creditReward: 5 });
+  assert.deepEqual(first.payload, { title: "Coffee", creditReward: 5, group: false });
   assert.equal(first.source, "order");
 });
 
@@ -285,4 +286,28 @@ test("live: the requester gets a notification push when a courier accepts", asyn
 
   requester.socket.close();
   courier.socket.close();
+});
+
+test("rules: group members hear what the requester hears, plus joins, placing and cancelling", () => {
+  const group = (type, actorId, extraOrder = {}) => notificationsForOrderEvent({
+    ...orderEvent(type, { actorId, courierId: null }),
+    order: { ...orderEvent(type).order, courierId: null, isGroupOrder: true, memberIds: [10, 11, 12], ...extraOrder },
+  });
+  // As published by order-service: the member is in the order payload.
+  const joined = group("order.member_joined", 12, { member: { id: 12, displayName: "Sam" } });
+  assert.deepEqual(joined.map((n) => n.userId), [10, 11]);
+  assert.deepEqual(joined[0].payload, { title: "Coffee", creditReward: 5, group: true, memberName: "Sam" });
+  assert.deepEqual(group("order.created", 10).map((n) => n.userId), [11, 12]);
+  assert.deepEqual(group("order.cancelled", 10).map((n) => n.userId), [11, 12]);
+  assert.deepEqual(group("order.opened", null).map((n) => n.userId), [10, 11, 12]);
+  assert.deepEqual(group("order.group_started", 10).map((n) => n.userId), []);
+});
+
+test("live: group members' pages get order events", async () => {
+  const member = await connect(await ticketFor(701));
+  const event = { ...orderEvent("order.opened"), order: { ...orderEvent("order.opened").order, requesterId: 700, courierId: null, isGroupOrder: true, memberIds: [700, 701] } };
+  assert.deepEqual(routeOrderEvent(event), [701]);
+  assert.equal((await member.next()).type, "order.event");
+  assert.equal((await member.next()).type, "notification");
+  member.socket.close();
 });
