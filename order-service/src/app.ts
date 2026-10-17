@@ -4,6 +4,8 @@
  * GET /orders, GET /orders/me, state actions) and internal routes for Pub/Sub
  * push, the expiry sweep, and the outbox relay; error handling as in supplier-service.
  * Author review: Pending.
+ * Claude Code (Opus 5.5), 2026-10-17: GET /orders/:orderId, its event history, and
+ * PATCH /orders/:orderId for editing. Author review: Pending.
  */
 import express, { type ErrorRequestHandler, type Request, type Response } from "express";
 import { getUserId, requireInternal, requireUser } from "./auth.js";
@@ -11,9 +13,9 @@ import { applySupplierEvent, applyUserEvent, InvalidMessageError, parseSagaComma
 import { publishPendingEvents } from "./events/outbox.js";
 import { decodePushMessage } from "./events/pubsub.js";
 import { HttpError } from "./errors.js";
-import { parseListQuery, parseOrderInput, UUID_PATTERN } from "./orders/input.js";
-import { getOrder, listOrders } from "./orders/queries.js";
-import { createOrder, expireOverdueOrders, handleSagaCommand, performUserAction, USER_ACTIONS, type UserAction } from "./orders/write.js";
+import { parseListQuery, parseOrderEdit, parseOrderInput, UUID_PATTERN } from "./orders/input.js";
+import { getOrder, listOrderEvents, listOrders } from "./orders/queries.js";
+import { createOrder, editOrder, expireOverdueOrders, handleSagaCommand, performUserAction, USER_ACTIONS, type UserAction } from "./orders/write.js";
 
 export const app = express();
 app.use(express.json({ limit: "10kb" }));
@@ -49,6 +51,24 @@ app.get("/orders", requireUser, async (req, res) => {
 // FR10.2: the caller's own requests. Registered before /orders/:orderId routes.
 app.get("/orders/me", requireUser, async (req, res) => {
   res.json(await listOrders(parseListQuery(req.query), getUserId(res)));
+});
+
+app.get("/orders/:orderId", requireUser, async (req, res) => {
+  await sendOrder(res, getOrderIdParam(req));
+});
+
+// The order's history, oldest first, for the order details page.
+app.get("/orders/:orderId/events", requireUser, async (req, res) => {
+  const id = getOrderIdParam(req);
+  if (!await getOrder(id)) throw new HttpError(404, "Order not found");
+  res.json(await listOrderEvents(id));
+});
+
+// The requester can edit the title, description and delivery location while OPEN.
+app.patch("/orders/:orderId", requireUser, async (req, res) => {
+  const id = getOrderIdParam(req);
+  await editOrder(id, getUserId(res), parseOrderEdit(req.body));
+  await sendOrder(res, id);
 });
 
 for (const action of Object.keys(USER_ACTIONS) as UserAction[]) {
