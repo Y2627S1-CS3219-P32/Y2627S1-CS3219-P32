@@ -3,6 +3,7 @@
 // and labels, the action each viewer can take, history wording, and Singapore-time
 // formatting. order-service enforces the rules; these only decide what to show.
 // Author review: Pending.
+// Claude Code (Opus 5.5), 2026-10-17: group orders. Author review: Pending.
 // Claude Code (Opus 5.5), 2026-10-17: Mine tab (the viewer's own requests). Author review: Pending.
 import type { Order, OrderAction, OrderEvent, OrderState } from "#shared/services/order-service/types";
 
@@ -16,6 +17,7 @@ export const ORDER_TABS = [
 ] as const;
 
 const STATES: Record<OrderState, { label: string; accent: string }> = {
+  SYNCHRONISING: { label: "Group Draft", accent: "bg-[#7a5cc2]" },
   PENDING: { label: "Pending", accent: "bg-[#8a9099]" },
   OPEN: { label: "Open", accent: "bg-[#3b78c4]" },
   ACCEPTED: { label: "Accepted", accent: "bg-[#d4a03a]" },
@@ -35,8 +37,9 @@ export const stateAccent = (state: OrderState) => STATES[state].accent;
 // The grey status bar under a card.
 export function statusText(order: Order, viewerId: number | undefined): string {
   switch (order.state) {
+    case "SYNCHRONISING": return "The group is writing the order";
     case "PENDING": return "Reserving credits…";
-    case "OPEN": return order.requester.id === viewerId ? "You cannot accept your own order" : "Open";
+    case "OPEN": return isMember(order, viewerId) ? "You cannot accept your own order" : "Open";
     case "ACCEPTED":
     case "PICKED_UP": return "In Progress";
     case "DELIVERED": return order.requester.id === viewerId ? "Marked as Delivered" : "Awaiting Confirmation";
@@ -58,9 +61,12 @@ export function availableAction(order: Order, viewerId: number | undefined): Act
   const isRequester = order.requester.id === viewerId;
   const isCourier = order.courier?.id === viewerId;
   switch (order.state) {
-    case "OPEN": return isRequester
-      ? { action: "cancel", label: "Cancel Order", tone: "danger" }
-      : { action: "accept", label: "Accept", tone: "primary" };
+    case "SYNCHRONISING":
+    case "PENDING": return isRequester ? { action: "cancel", label: "Cancel Order", tone: "danger" } : null;
+    case "OPEN":
+      if (isRequester) return { action: "cancel", label: "Cancel Order", tone: "danger" };
+      // Group members are part of the request, so they cannot accept it.
+      return isMember(order, viewerId) ? null : { action: "accept", label: "Accept", tone: "primary" };
     case "ACCEPTED": return isCourier ? { action: "pickup", label: "Mark as Picked Up", tone: "primary" } : null;
     case "PICKED_UP": return isCourier ? { action: "deliver", label: "Mark as Delivered", tone: "primary" } : null;
     case "DELIVERED": return isRequester ? { action: "confirm", label: "Mark as Completed", tone: "primary" } : null;
@@ -71,13 +77,19 @@ export function availableAction(order: Order, viewerId: number | undefined): Act
 export const canEdit = (order: Order, viewerId: number | undefined) =>
   order.state === "OPEN" && order.requester.id === viewerId;
 
+export const isMember = (order: Order, viewerId: number | undefined) =>
+  viewerId !== undefined && (order.requester.id === viewerId || order.members.some(member => member.id === viewerId));
+
 export const personName = (person: { displayName: string | null } | null) => person?.displayName || "Unknown user";
 
 // "The order was accepted by" + actor name (bold in the UI).
 export function historyText(event: OrderEvent): { text: string; actor: string | null } {
   const by = (text: string) => ({ text: `${text} by`, actor: personName(event.actor) });
   switch (event.type) {
-    case "order.created": return { text: "The order was created", actor: null };
+    // A group order's order.created comes later, when the requester places it.
+    case "order.created": return event.sequence > 1 ? by("The group order was placed") : { text: "The order was created", actor: null };
+    case "order.group_started": return { text: "The group order was started", actor: null };
+    case "order.member_joined": return { text: "The group order was joined by", actor: personName(event.actor) };
     case "order.opened": return { text: "The order was opened to couriers", actor: null };
     case "order.rejected": return { text: "The order was rejected: not enough credits", actor: null };
     case "order.aborted": return { text: "The order could not be created", actor: null };
