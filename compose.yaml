@@ -247,10 +247,39 @@ services:
 
   # AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-10-17.
   # Scope: Notification service (WebSockets for order events). Author review: Pending.
+  # Claude Code (Opus 5.5), 2026-10-17: database and migrations for stored notifications. Author review: Pending.
+  notification-db:
+    image: postgres:17
+    ports:
+      - "127.0.0.1:5436:5432"
+    environment:
+      POSTGRES_USER: notification
+      POSTGRES_PASSWORD: notification
+      POSTGRES_DB: notifications
+    volumes:
+      - notification-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U notification -d notifications"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  notification-db-migrate:
+    build:
+      context: ./notification-service
+      target: tooling
+    command: ["npm", "run", "db:migrate"]
+    environment:
+      DATABASE_URL: postgres://notification:notification@notification-db:5432/notifications
+    depends_on:
+      notification-db:
+        condition: service_healthy
+
   notification-service:
     build: ./notification-service
     environment:
       PORT: "3000"
+      DATABASE_URL: postgres://notification:notification@notification-db:5432/notifications
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
       # Local only; in Cloud this is a Secret Manager secret shared by all instances.
       NOTIFICATION_TICKET_SECRET: ${NOTIFICATION_TICKET_SECRET:-local-only-notification-ticket-secret-00}
@@ -270,6 +299,8 @@ services:
       retries: 5
       start_period: 10s
     depends_on:
+      notification-db-migrate:
+        condition: service_completed_successfully
       pubsub-emulator:
         condition: service_healthy
 
@@ -294,3 +325,4 @@ volumes:
   supplier-db-data:
   user-db-data:
   order-db-data:
+  notification-db-data:
