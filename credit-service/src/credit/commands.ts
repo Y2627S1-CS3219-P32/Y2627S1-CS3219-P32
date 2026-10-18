@@ -1,7 +1,18 @@
 import { randomUUID } from "node:crypto";
-import type pg from "pg";
-import { transaction, lock } from "../db/index.js";
-import { canonical, CreditError, MAX, type Command, type Outcome } from "./types.js";
+import { eq, sql } from "drizzle-orm";
+import { db, lock, type Transaction } from "../db/index.js";
+import {
+  creditAccounts,
+  creditOrders,
+  creditTransactions,
+} from "../db/schema.js";
+import {
+  canonical,
+  CreditError,
+  MAX,
+  type Command,
+  type Outcome,
+} from "./types.js";
 import { readReservation } from "./queries.js";
 import { lockAccounts } from "./accounts.js";
 import { saveOrder } from "./orders.js";
@@ -14,23 +25,19 @@ export async function execute(command: Command): Promise<Outcome> {
     orderId: command.orderId.toLowerCase(),
     correlationId: command.correlationId.toLowerCase(),
   };
-  return transaction(async (client) => {
+  return db.transaction(async (client) => {
     await lock(client, "request", command.requestId);
-    const {
-      rows: [prior],
-    } = await client.query(
-      "SELECT kind,request_payload,result FROM credit_orders WHERE request_id=$1",
-      [command.requestId],
-    );
     const payload = canonical(command);
+    const [prior] = await client
+      .select({
+        kind: creditOrders.kind,
+        result: creditOrders.result,
+        same: sql<boolean>`${creditOrders.request_payload} = ${JSON.stringify(payload)}::jsonb`,
+      })
+      .from(creditOrders)
+      .where(eq(creditOrders.request_id, command.requestId));
     if (prior) {
-      const {
-        rows: [same],
-      } = await client.query(
-        "SELECT request_payload=$2::jsonb AS same FROM credit_orders WHERE request_id=$1",
-        [command.requestId, JSON.stringify(payload)],
-      );
-      if (prior.kind !== command.kind || !same.same)
+      if (prior.kind !== command.kind || !prior.same)
         throw new CreditError(409, "IDEMPOTENCY_CONFLICT");
       return prior.result;
     }
@@ -40,8 +47,7 @@ export async function execute(command: Command): Promise<Outcome> {
       throw new CreditError(503, "RESERVATION_NOT_READY");
     const requesterId =
       command.kind === "TRANSFER" ? state.requesterId! : command.requesterId;
-    const amount =
-      command.kind === "TRANSFER" ? state.amount! : command.amount;
+    const amount = command.kind === "TRANSFER" ? state.amount! : command.amount;
     const ids =
       command.kind === "TRANSFER"
         ? [requesterId, command.courierId]
@@ -69,7 +75,7 @@ export async function execute(command: Command): Promise<Outcome> {
       else if (state.reservationState === "NONE") {
         const account = accounts.get(requesterId)!;
         if (
-          BigInt(account.total_credits) - BigInt(account.reserved_credits) <
+          account.total_credits - account.reserved_credits <
           BigInt(amount)
         )
           code = "INSUFFICIENT_CREDITS";
@@ -99,7 +105,7 @@ export async function execute(command: Command): Promise<Outcome> {
       else if (state.reservationState === "HELD") {
         if (
           BigInt(amount) >
-          MAX - BigInt(accounts.get(command.courierId)!.total_credits)
+          MAX - accounts.get(command.courierId)!.total_credits
         )
           code = "BALANCE_LIMIT_EXCEEDED";
         else {
@@ -119,9 +125,7 @@ export async function execute(command: Command): Promise<Outcome> {
       transactionIds: applied ? [randomUUID()] : [],
       requesterId,
       amount,
-      ...(command.kind === "TRANSFER"
-        ? { courierId: command.courierId }
-        : {}),
+      ...(command.kind === "TRANSFER" ? { courierId: command.courierId } : {}),
       deltas: {
         requesterTotal: applied && command.kind === "TRANSFER" ? -amount : 0,
         requesterReserved: applied
@@ -155,7 +159,7 @@ export async function execute(command: Command): Promise<Outcome> {
 }
 
 async function move(
-  client: pg.PoolClient,
+  client: Transaction,
   command: Command,
   requesterId: number,
   amount: number,
@@ -163,25 +167,30 @@ async function move(
 ) {
   const total = command.kind === "TRANSFER" ? -amount : 0;
   const reserved = command.kind === "RESERVE" ? amount : -amount;
-  await client.query(
-    "UPDATE credit_accounts SET total_credits=total_credits+$2,reserved_credits=reserved_credits+$3,updated_at=now() WHERE user_id=$1",
-    [requesterId, total, reserved],
-  );
+  await client
+    .update(creditAccounts)
+    .set({
+      total_credits: sql`${creditAccounts.total_credits} + ${BigInt(total)}`,
+      reserved_credits: sql`${creditAccounts.reserved_credits} + ${BigInt(reserved)}`,
+      updated_at: sql`now()`,
+    })
+    .where(eq(creditAccounts.user_id, requesterId));
   if (command.kind === "TRANSFER")
-    await client.query(
-      "UPDATE credit_accounts SET total_credits=total_credits+$2,updated_at=now() WHERE user_id=$1",
-      [command.courierId, amount],
-    );
-  await client.query(
-    "INSERT INTO credit_transactions(transaction_id,credit_order_request_id,debit_user_id,credit_user_id,debit_bucket,credit_bucket,amount) VALUES($1,$2,$3,$4,$5,$6,$7)",
-    [
-      transactionId,
-      command.requestId,
-      requesterId,
+    await client
+      .update(creditAccounts)
+      .set({
+        total_credits: sql`${creditAccounts.total_credits} + ${BigInt(amount)}`,
+        updated_at: sql`now()`,
+      })
+      .where(eq(creditAccounts.user_id, command.courierId));
+  await client.insert(creditTransactions).values({
+    transaction_id: transactionId,
+    credit_order_request_id: command.requestId,
+    debit_user_id: requesterId,
+    credit_user_id:
       command.kind === "TRANSFER" ? command.courierId : requesterId,
-      command.kind === "RESERVE" ? "AVAILABLE" : "RESERVED",
-      command.kind === "RESERVE" ? "RESERVED" : "AVAILABLE",
-      amount,
-    ],
-  );
+    debit_bucket: command.kind === "RESERVE" ? "AVAILABLE" : "RESERVED",
+    credit_bucket: command.kind === "RESERVE" ? "RESERVED" : "AVAILABLE",
+    amount: BigInt(amount),
+  });
 }

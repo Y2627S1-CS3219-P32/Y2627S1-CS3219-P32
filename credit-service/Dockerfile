@@ -2,7 +2,7 @@ FROM node:22-alpine AS tooling
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci
-COPY tsconfig.json ./
+COPY tsconfig.json drizzle.config.ts ./
 COPY src ./src
 COPY migrations ./migrations
 RUN npm run build

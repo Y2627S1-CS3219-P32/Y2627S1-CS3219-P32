@@ -1,15 +1,35 @@
-import { readFile } from "node:fs/promises";
-import { pool, transaction } from "./index.js";
-try {
-  await transaction(async (client) => {
-    await client.query("SELECT pg_advisory_xact_lock(3219001)");
-    await client.query(
-      await readFile(
-        new URL("../../migrations/001_credit.sql", import.meta.url),
-        "utf8",
-      ),
-    );
-  });
-} finally {
-  await pool.end();
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { drizzle } from "drizzle-orm/node-postgres";
+import { migrate } from "drizzle-orm/node-postgres/migrator";
+import { sql } from "drizzle-orm";
+import { pool } from "./index.js";
+
+export async function migrateDatabase() {
+  const client = await pool.connect();
+  const db = drizzle(client);
+  try {
+    await db.execute(sql`SELECT pg_advisory_lock(3219001)`);
+    try {
+      await migrate(db, {
+        migrationsFolder: fileURLToPath(
+          new URL("../../migrations", import.meta.url),
+        ),
+      });
+    } finally {
+      await db.execute(sql`SELECT pg_advisory_unlock(3219001)`);
+    }
+  } finally {
+    client.release();
+  }
+}
+
+if (
+  process.argv[1] &&
+  import.meta.url === pathToFileURL(process.argv[1]).href
+) {
+  try {
+    await migrateDatabase();
+  } finally {
+    await pool.end();
+  }
 }

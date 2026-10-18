@@ -6,7 +6,7 @@ Credit owns four PostgreSQL tables. Commands commit the saved JSON result, movem
 
 `src/credit/commands.ts` owns reservation commands and their atomic transaction. `accounts.ts` handles account locks and user lifecycle events. `queries.ts` reads balances, operations, and reservation history. `orders.ts` stores operation results. `types.ts` defines Credit types and shared value helpers.
 
-`src/events/` owns outbox envelopes, publishing, Pub/Sub provisioning, and publisher health. `src/db/` owns connections, transactions, locks, and migration. The HTTP adapter, authentication, configuration, API startup, and backfill entry point stay at the source root.
+`src/events/` owns outbox envelopes, publishing, Pub/Sub provisioning, and publisher health. `src/db/schema.ts` defines the four Drizzle tables and their constraints. `src/db/` owns the PostgreSQL pool, Drizzle transactions, locks, and migration. The HTTP adapter, authentication, configuration, API startup, and backfill entry point stay at the source root.
 
 ## Local startup
 
@@ -22,6 +22,20 @@ docker compose up -d credit-service credit-publisher
 Credit exposes host port 3004 and PostgreSQL host port 5438. Credit’s PostgreSQL volume preserves data across restarts. `docker compose down -v` deletes that data.
 
 The API listens on port 3000 inside the container. `GET /health/live` checks the process. `GET /health/ready` checks PostgreSQL only. Broker outages leave committed results in the outbox. `node dist/events/publisher-health.js` checks the publisher’s database and broker dependencies. The publisher logs retry failures and processes stored envelopes in order under one database advisory lock. Every retry resumes the failed Pub/Sub ordering key. A crash after acknowledgment can deliver the same event ID again. Consumers deduplicate that ID.
+
+## Database migrations
+
+Credit uses Drizzle ORM with the existing PostgreSQL driver. Balances and movement amounts use `bigint` internally and convert to safe JSON numbers at the API boundary.
+
+Edit `src/db/schema.ts`, then generate and review a migration:
+
+```sh
+npm run db:generate
+npm run build
+npm run db:migrate
+```
+
+Commit the generated SQL and `migrations/meta/` together. The first migration retains the original idempotent table definitions so existing Credit databases can adopt Drizzle tracking without recreating financial data. Subsequent migrations run once through the Drizzle migration journal. The migration runner serializes concurrent startup jobs with a PostgreSQL advisory lock.
 
 ## Configuration
 

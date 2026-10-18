@@ -32,12 +32,8 @@ export function canonical(command: Command) {
   return payload;
 }
 
-export type Account = {
-  user_id: number;
-  total_credits: string;
-  reserved_credits: string;
-  deleted_at: Date | null;
-};
+export type Account =
+  typeof import("../db/schema.js").creditAccounts.$inferSelect;
 export type Outcome = {
   requestId: string;
   status: "SUCCEEDED" | "REJECTED";

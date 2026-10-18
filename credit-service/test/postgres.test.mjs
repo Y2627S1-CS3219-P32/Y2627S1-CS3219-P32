@@ -1,11 +1,11 @@
 import { test, before, after, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { migrateDatabase } from "../dist/db/migrate.js";
 import { pool } from "../dist/db/index.js";
 import { execute } from "../dist/credit/commands.js";
 import { userEvent } from "../dist/credit/accounts.js";
-import { balance, reservation } from "../dist/credit/queries.js";
+import { balance, reservation, lookup } from "../dist/credit/queries.js";
 const create = (id, eventId = randomUUID()) =>
   userEvent({
     type: "user.created",
@@ -24,14 +24,7 @@ const command = (kind, orderId = randomUUID(), extra = {}) => ({
 });
 const count = async (table) =>
   Number((await pool.query(`SELECT count(*) FROM ${table}`)).rows[0].count);
-before(async () => {
-  await pool.query(
-    await readFile(
-      new URL("../migrations/001_credit.sql", import.meta.url),
-      "utf8",
-    ),
-  );
-});
+before(migrateDatabase);
 beforeEach(async () => {
   await pool.query(
     "TRUNCATE credit_outbox,credit_transactions,credit_orders,credit_accounts CASCADE",
@@ -39,6 +32,48 @@ beforeEach(async () => {
 });
 after(async () => {
   await pool.end();
+});
+test("Drizzle adopts existing tables without changing financial history and migrates once", async () => {
+  const allocationId = randomUUID();
+  await create(1, allocationId);
+  const reserve = command("RESERVE");
+  await execute(reserve);
+  const snapshot = async () =>
+    Promise.all(
+      [
+        "credit_accounts",
+        "credit_orders",
+        "credit_transactions",
+        "credit_outbox",
+      ].map(
+        async (table) =>
+          (
+            await pool.query(
+              `SELECT jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text) AS data FROM ${table} t`,
+            )
+          ).rows[0].data,
+      ),
+    );
+  const before = await snapshot();
+  const allocation = await lookup(allocationId);
+  assert.equal(allocation.initial_grant, 1000);
+  assert.equal(allocation.request_id, allocationId);
+  assert.doesNotThrow(() => JSON.stringify(allocation));
+  await pool.query("DELETE FROM drizzle.__drizzle_migrations");
+  await Promise.all([migrateDatabase(), migrateDatabase()]);
+  await migrateDatabase();
+  assert.deepEqual(await snapshot(), before);
+  assert.deepEqual(
+    await execute(reserve),
+    await lookup(reserve.requestId).then((row) => row.result),
+  );
+  assert.equal(
+    Number(
+      (await pool.query("SELECT count(*) FROM drizzle.__drizzle_migrations"))
+        .rows[0].count,
+    ),
+    1,
+  );
 });
 test("concurrent creation and duplicate source events grant exactly once", async () => {
   await userEvent({
@@ -100,8 +135,7 @@ test("deletion before creation is permanent; provisioned deletion retains histor
   });
   await assert.rejects(balance(1), { code: "USER_INACTIVE" });
   assert.equal(
-    (await execute(command("RELEASE", reserve.orderId)))
-      .reservationState,
+    (await execute(command("RELEASE", reserve.orderId))).reservationState,
     "RELEASED",
   );
 });
@@ -237,7 +271,10 @@ test("failure between debit and credit rolls back every financial write", async 
   );
   const transfer = command("TRANSFER", reserve.orderId);
   try {
-    await assert.rejects(execute(transfer), /injected courier failure/);
+    await assert.rejects(
+      execute(transfer),
+      (error) => error.cause?.message === "injected courier failure",
+    );
   } finally {
     await pool.query("DROP TRIGGER credit_test_failure ON credit_accounts");
     await pool.query("DROP FUNCTION credit_test_fail()");
@@ -260,7 +297,10 @@ test("provisioning failure rolls back account, allocation, movement and outbox",
     "CREATE TRIGGER credit_test_failure BEFORE INSERT ON credit_outbox FOR EACH ROW EXECUTE FUNCTION credit_test_fail()",
   );
   try {
-    await assert.rejects(create(1), /injected outbox failure/);
+    await assert.rejects(
+      create(1),
+      (error) => error.cause?.message === "injected outbox failure",
+    );
   } finally {
     await pool.query("DROP TRIGGER credit_test_failure ON credit_outbox");
     await pool.query("DROP FUNCTION credit_test_fail()");
@@ -290,17 +330,11 @@ test("recipient overflow and self transfer reject atomically with exact safe JSO
     "BALANCE_LIMIT_EXCEEDED",
   );
   assert.equal(
-    (
-      await execute(
-        command("TRANSFER", reserve.orderId, { courierId: 1 }),
-      )
-    ).code,
+    (await execute(command("TRANSFER", reserve.orderId, { courierId: 1 })))
+      .code,
     "SELF_TRANSFER",
   );
-  assert.equal(
-    (await balance(2)).totalCredits,
-    Number.MAX_SAFE_INTEGER,
-  );
+  assert.equal((await balance(2)).totalCredits, Number.MAX_SAFE_INTEGER);
   assert.equal((await balance(1)).reservedCredits, 120);
 });
 
@@ -333,19 +367,12 @@ test("mismatched reservation participants and amounts reject without changing ho
   const reserve = command("RESERVE");
   await execute(reserve);
   assert.equal(
-    (
-      await execute(
-        command("RESERVE", reserve.orderId, { requesterId: 2 }),
-      )
-    ).code,
+    (await execute(command("RESERVE", reserve.orderId, { requesterId: 2 })))
+      .code,
     "RESERVATION_MISMATCH",
   );
   assert.equal(
-    (
-      await execute(
-        command("RELEASE", reserve.orderId, { amount: 121 }),
-      )
-    ).code,
+    (await execute(command("RELEASE", reserve.orderId, { amount: 121 }))).code,
     "RESERVATION_MISMATCH",
   );
   assert.equal((await balance(1)).reservedCredits, 120);

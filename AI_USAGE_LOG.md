@@ -1042,3 +1042,21 @@ for context, frontend-service is being set up. The frontend’s supplier screen 
   Screenshots and the verification script are in /tmp/credit-ui-proof and
   /tmp/credit-ui-check.cjs. The full order-to-credit workflow was not tested.
 - Author review: Pending.
+
+## 2026-10-18: Integrate Drizzle into Credit
+
+- Tool: Codex (GPT-6). Mode: Schema migration, implementation, and verification.
+- Exact prompt: `Integrate Drizzle ORM into the Credit service.`
+- Key response: Defined the four existing tables in Drizzle, derived account and
+  transaction types from the schema, and replaced direct PostgreSQL queries with
+  Drizzle builders and transactions. Preserved advisory locks, exact bigint arithmetic,
+  JSONB replay matching, and the publisher's dedicated connection. Adopted the original
+  idempotent SQL as the first tracked migration and added schema generation tooling.
+- Affected files: Credit schema, database access, migration metadata, Dockerfile,
+  dependencies, tests, README, and this log.
+- Verification: All 17 PostgreSQL and HTTP tests passed, including populated-schema
+  adoption, repeated and concurrent migration, financial rollback, and response
+  compatibility. Real Pub/Sub checks passed for push provisioning, credit operations,
+  broker outages, and stable-event redelivery after acknowledgment. The production
+  Docker image built and applied migrations twice to a fresh database.
+- Author review: Pending.

@@ -1,14 +1,15 @@
 import { randomUUID } from "node:crypto";
-import type pg from "pg";
+import type { Transaction } from "../db/index.js";
+import { creditOrders, creditOutbox } from "../db/schema.js";
 import type { Outcome } from "../credit/types.js";
 
 export async function enqueueOutcome(
-  client: pg.PoolClient,
-  kind: string,
+  client: Transaction,
+  kind: typeof creditOrders.$inferInsert.kind,
   correlationId: string,
   result: Outcome,
 ) {
-  const types: Record<string, string> = {
+  const types = {
     ALLOCATE: "credit.account_allocated",
     RESERVE: "credit.reserved",
     RELEASE: "credit.released",
@@ -32,8 +33,9 @@ export async function enqueueOutcome(
     ...(result.orderId ? { orderId: result.orderId } : {}),
     data: result,
   };
-  await client.query(
-    "INSERT INTO credit_outbox(event_id,request_id,payload) VALUES($1,$2,$3)",
-    [eventId, result.requestId, JSON.stringify(payload)],
-  );
+  await client.insert(creditOutbox).values({
+    event_id: eventId,
+    request_id: result.requestId,
+    payload,
+  });
 }

@@ -2,6 +2,9 @@ import { PubSub } from "@google-cloud/pubsub";
 import { pathToFileURL } from "node:url";
 import { config } from "../config.js";
 import { pool } from "../db/index.js";
+import { drizzle } from "drizzle-orm/node-postgres";
+import { asc, eq, isNull, sql } from "drizzle-orm";
+import { creditOutbox } from "../db/schema.js";
 export interface OrderedTopic {
   publishMessage(message: {
     data: Buffer;
@@ -15,21 +18,25 @@ export async function publishBatch(
   afterPublish?: () => Promise<void>,
 ) {
   const client = await pool.connect();
+  const db = drizzle(client);
   try {
     const {
       rows: [lock],
-    } = await client.query("SELECT pg_try_advisory_lock(982344) AS acquired");
-    if (!lock.acquired) return 0;
+    } = await db.execute<{ acquired: boolean }>(
+      sql`SELECT pg_try_advisory_lock(982344) AS acquired`,
+    );
+    if (!lock?.acquired) return 0;
     try {
-      const { rows } = await client.query(
-        "SELECT event_id,payload FROM credit_outbox WHERE published_at IS NULL ORDER BY created_at,event_id LIMIT 100",
-      );
+      const rows = await db
+        .select()
+        .from(creditOutbox)
+        .where(isNull(creditOutbox.published_at))
+        .orderBy(asc(creditOutbox.created_at), asc(creditOutbox.event_id))
+        .limit(100);
       let count = 0;
       for (const row of rows) {
         const payload = row.payload;
-        const key =
-          payload.orderId ??
-          String(payload.data.userId ?? payload.data.requesterId);
+        const key = payload.orderId ?? String(payload.data.requesterId);
         const attributes: Record<string, string> = { type: payload.type };
         if (payload.orderId) attributes.orderId = payload.orderId;
         try {
@@ -39,10 +46,10 @@ export async function publishBatch(
             orderingKey: key,
           });
           await afterPublish?.();
-          await client.query(
-            "UPDATE credit_outbox SET published_at=clock_timestamp() WHERE event_id=$1",
-            [row.event_id],
-          );
+          await db
+            .update(creditOutbox)
+            .set({ published_at: sql`clock_timestamp()` })
+            .where(eq(creditOutbox.event_id, row.event_id));
           count++;
         } catch (error) {
           topic.resumePublishing(key);
@@ -61,7 +68,7 @@ export async function publishBatch(
       }
       return count;
     } finally {
-      await client.query("SELECT pg_advisory_unlock(982344)");
+      await db.execute(sql`SELECT pg_advisory_unlock(982344)`);
     }
   } finally {
     client.release();

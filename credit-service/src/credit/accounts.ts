@@ -1,7 +1,18 @@
 import { randomUUID } from "node:crypto";
-import type pg from "pg";
-import { transaction, lock } from "../db/index.js";
-import { CreditError, MAX, money, type Account, type Outcome } from "./types.js";
+import { and, eq, sql } from "drizzle-orm";
+import { db, lock, type Transaction } from "../db/index.js";
+import {
+  creditAccounts,
+  creditOrders,
+  creditTransactions,
+} from "../db/schema.js";
+import {
+  CreditError,
+  MAX,
+  money,
+  type Account,
+  type Outcome,
+} from "./types.js";
 import { saveOrder } from "./orders.js";
 import { enqueueOutcome } from "../events/outbox.js";
 
@@ -11,29 +22,34 @@ export function validateInitialCredits(initialCredits: bigint) {
 }
 
 export async function lockAccounts(
-  client: pg.PoolClient,
+  client: Transaction,
   ids: number[],
   allowDeleted: boolean,
 ) {
   const accounts = new Map<number, Account>();
   for (const id of [...new Set(ids)].sort((a, b) => a - b)) {
     await lock(client, "account", id);
-    const {
-      rows: [account],
-    } = await client.query<Account>(
-      "SELECT * FROM credit_accounts WHERE user_id=$1 FOR UPDATE",
-      [id],
-    );
+    const [account] = await client
+      .select()
+      .from(creditAccounts)
+      .where(eq(creditAccounts.user_id, id))
+      .for("update");
     if (!account) throw new CreditError(503, "ACCOUNT_PENDING");
     if (account.deleted_at) {
       const allocated =
         allowDeleted &&
         (
-          await client.query(
-            "SELECT 1 FROM credit_orders WHERE user_id=$1 AND kind='ALLOCATE' AND status='SUCCEEDED'",
-            [id],
-          )
-        ).rowCount;
+          await client
+            .select({ user_id: creditOrders.user_id })
+            .from(creditOrders)
+            .where(
+              and(
+                eq(creditOrders.user_id, id),
+                eq(creditOrders.kind, "ALLOCATE"),
+                eq(creditOrders.status, "SUCCEEDED"),
+              ),
+            )
+        ).length;
       if (!allocated) throw new CreditError(403, "USER_INACTIVE");
     }
     accounts.set(id, account);
@@ -41,10 +57,7 @@ export async function lockAccounts(
   return accounts;
 }
 
-export async function userEvent(
-  event: unknown,
-  initialCredits = 1000n,
-) {
+export async function userEvent(event: unknown, initialCredits = 1000n) {
   validateInitialCredits(initialCredits);
   if (
     typeof event !== "object" ||
@@ -83,37 +96,50 @@ export async function userEvent(
     throw new CreditError(400, "INVALID_EVENT");
   if (event.type === "user.updated") return;
   const requestId = event.eventId.toLowerCase();
-  await transaction(async (client) => {
+  await db.transaction(async (client) => {
     await lock(client, "request", requestId);
     await lock(client, "account", id);
     if (event.type === "user.deleted") {
-      await client.query(
-        "INSERT INTO credit_accounts(user_id,total_credits,reserved_credits,deleted_at) VALUES($1,0,0,now()) ON CONFLICT(user_id) DO UPDATE SET deleted_at=COALESCE(credit_accounts.deleted_at,EXCLUDED.deleted_at),updated_at=CASE WHEN credit_accounts.deleted_at IS NULL THEN now() ELSE credit_accounts.updated_at END",
-        [id],
-      );
+      await client
+        .insert(creditAccounts)
+        .values({
+          user_id: id,
+          total_credits: 0n,
+          reserved_credits: 0n,
+          deleted_at: sql`now()`,
+        })
+        .onConflictDoUpdate({
+          target: creditAccounts.user_id,
+          set: {
+            deleted_at: sql`COALESCE(${creditAccounts.deleted_at}, EXCLUDED.deleted_at)`,
+            updated_at: sql`CASE WHEN ${creditAccounts.deleted_at} IS NULL THEN now() ELSE ${creditAccounts.updated_at} END`,
+          },
+        });
       return;
     }
     if (
       (
-        await client.query("SELECT 1 FROM credit_accounts WHERE user_id=$1", [
-          id,
-        ])
-      ).rowCount
+        await client
+          .select({ user_id: creditAccounts.user_id })
+          .from(creditAccounts)
+          .where(eq(creditAccounts.user_id, id))
+      ).length
     )
       return;
     if (
       (
-        await client.query(
-          "SELECT 1 FROM credit_orders WHERE request_id=$1",
-          [requestId],
-        )
-      ).rowCount
+        await client
+          .select({ request_id: creditOrders.request_id })
+          .from(creditOrders)
+          .where(eq(creditOrders.request_id, requestId))
+      ).length
     )
       throw new CreditError(409, "IDEMPOTENCY_CONFLICT");
-    await client.query(
-      "INSERT INTO credit_accounts(user_id,total_credits,reserved_credits) VALUES($1,$2,0)",
-      [id, initialCredits.toString()],
-    );
+    await client.insert(creditAccounts).values({
+      user_id: id,
+      total_credits: initialCredits,
+      reserved_credits: 0n,
+    });
     const transactionId = randomUUID(),
       amount = money(initialCredits);
     const result: Outcome = {
@@ -141,10 +167,14 @@ export async function userEvent(
       result,
       grant: initialCredits,
     });
-    await client.query(
-      "INSERT INTO credit_transactions(transaction_id,credit_order_request_id,credit_user_id,debit_bucket,credit_bucket,amount) VALUES($1,$2,$3,'ISSUANCE','AVAILABLE',$4)",
-      [transactionId, requestId, id, initialCredits.toString()],
-    );
+    await client.insert(creditTransactions).values({
+      transaction_id: transactionId,
+      credit_order_request_id: requestId,
+      credit_user_id: id,
+      debit_bucket: "ISSUANCE",
+      credit_bucket: "AVAILABLE",
+      amount: initialCredits,
+    });
     await enqueueOutcome(client, "ALLOCATE", requestId, result);
   });
 }

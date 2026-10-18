@@ -1,9 +1,10 @@
 import { PubSub } from "@google-cloud/pubsub";
 import { config } from "../config.js";
-import { pool } from "../db/index.js";
+import { db, pool } from "../db/index.js";
+import { sql } from "drizzle-orm";
 const pubsub = new PubSub({ projectId: config.projectId });
 try {
-  await pool.query("SELECT 1");
+  await db.execute(sql`SELECT 1`);
   await pubsub.topic(config.creditTopic).getMetadata({ timeout: 3000 });
 } catch {
   process.exitCode = 1;

@@ -2,7 +2,8 @@ import express from "express";
 import type { NextFunction, Request, Response } from "express";
 import { internal, userId } from "./auth.js";
 import { CreditError, type Command } from "./credit/types.js";
-import { pool } from "./db/index.js";
+import { db } from "./db/index.js";
+import { sql } from "drizzle-orm";
 import type { execute } from "./credit/commands.js";
 import type { userEvent } from "./credit/accounts.js";
 import type { balance, reservation, lookup } from "./credit/queries.js";
@@ -34,7 +35,7 @@ export function createApp(credit: CreditApi) {
   app.use(express.json({ limit: "64kb" }));
   app.get("/health/live", (_req, res) => res.json({ status: "ok" }));
   app.get("/health/ready", async (_req, res) => {
-    await pool.query("SELECT 1");
+    await db.execute(sql`SELECT 1`);
     res.json({ status: "ok" });
   });
   app.get("/api/v1/credits/me", async (req, res) =>

@@ -1,5 +1,7 @@
 import pg from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
+import { sql } from "drizzle-orm";
+import * as schema from "./schema.js";
 export const pool = new pg.Pool({
   connectionString: process.env.DATABASE_URL,
   connectionTimeoutMillis: 3000,
@@ -12,29 +14,16 @@ pool.on("error", (error) => {
     }),
   );
 });
-export const db = drizzle(pool);
-export async function transaction<T>(
-  run: (client: pg.PoolClient) => Promise<T>,
-): Promise<T> {
-  const client = await pool.connect();
-  try {
-    await client.query("BEGIN");
-    const result = await run(client);
-    await client.query("COMMIT");
-    return result;
-  } catch (error) {
-    await client.query("ROLLBACK");
-    throw error;
-  } finally {
-    client.release();
-  }
-}
+export const db = drizzle({ client: pool, schema });
+export type Database = typeof db;
+export type Transaction = Parameters<Parameters<Database["transaction"]>[0]>[0];
 export async function lock(
-  client: pg.PoolClient,
+  client: Transaction,
   namespace: string,
   key: string | number,
 ) {
-  await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))", [
-    `${namespace}:${typeof key === "string" ? key.toLowerCase() : key}`,
-  ]);
+  const name = `${namespace}:${typeof key === "string" ? key.toLowerCase() : key}`;
+  await client.execute(
+    sql`SELECT pg_advisory_xact_lock(hashtextextended(${name},0))`,
+  );
 }
