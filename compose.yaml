@@ -116,6 +116,10 @@ services:
       # subscription at startup; earlier events would never reach it. Author review: Pending.
       order-service:
         condition: service_healthy
+      # Claude Code (Opus 5.5), 2026-10-18: likewise for the supplier event worker.
+      # Author review: Pending.
+      supplier-event-worker:
+        condition: service_healthy
 
   user-event-worker:
     build:
@@ -215,11 +219,69 @@ services:
       - "3000:3000"
     environment:
       DATABASE_URL: postgres://supplier:supplier@supplier-db:5432/suppliers
-      # Claude Code (Opus 5.5), 2026-09-29: caller lookup via user-service GET /me. Author review: Completed.
-      USER_SERVICE_BASE_URL: http://user-service:3333
+      # Claude Code (Opus 5.5), 2026-10-18: tokens are verified locally and callers are
+      # looked up in the local user copy, in place of user-service GET /me. Author review: Pending.
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      # Claude Code (Opus 5.5), 2026-10-18: the API relays supplier-events from its outbox
+      # after each commit. Author review: Pending.
+      PUBSUB_EMULATOR_HOST: pubsub-emulator:8085
+      PUBSUB_PROJECT_ID: foc-local
+      SUPPLIER_EVENTS_TOPIC: supplier-events
     depends_on:
       supplier-db-migrate:
         condition: service_completed_successfully
+      # order-service creates its supplier-events subscription at startup; events
+      # published earlier would never reach it.
+      order-service:
+        condition: service_healthy
+
+  # AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-10-18.
+  # Scope: supplier-service Pub/Sub worker: copies user-events into the supplier database
+  # and sweeps the supplier-events outbox. Author review: Pending.
+  supplier-event-worker:
+    build: ./supplier-service
+    command: ["node", "dist/worker.js"]
+    environment:
+      PORT: "3004"
+      DATABASE_URL: postgres://supplier:supplier@supplier-db:5432/suppliers
+      PUBSUB_EMULATOR_HOST: pubsub-emulator:8085
+      PUBSUB_PROJECT_ID: foc-local
+      USER_EVENTS_TOPIC: user-events
+      PUBSUB_SUBSCRIPTION: supplier-service-user-events
+      PUBSUB_PUSH_ENDPOINT: http://supplier-event-worker:3004/pubsub/user-events
+      SUPPLIER_EVENTS_TOPIC: supplier-events
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3004/health').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    depends_on:
+      supplier-db-migrate:
+        condition: service_completed_successfully
+      pubsub-emulator:
+        condition: service_healthy
+      order-service:
+        condition: service_healthy
+
+  # Claude Code (Opus 5.5), 2026-10-18: publishes supplier-events the API's relay missed,
+  # every minute, as Cloud Scheduler does in GCP. Author review: Pending.
+  supplier-ticker:
+    image: curlimages/curl:8.11.1
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        while true; do
+          sleep 60
+          curl -fsS -X POST http://supplier-event-worker:3004/outbox/publish
+        done
+    depends_on:
+      supplier-event-worker:
+        condition: service_healthy
 
   supplier-db-tools:
     profiles: ["tools"]

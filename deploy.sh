@@ -2,6 +2,11 @@
 # AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-09-30.
 # Scope: Manual Cloud Run deployment commands (one-time setup, migrations, services, seed).
 # Author review: Done.
+# Claude Code (Opus 5.5), 2026-10-18: supplier event worker and its push subscription;
+# supplier-service verifies tokens with jwt-secret instead of calling user-service.
+# Author review: Pending.
+# Claude Code (Opus 5.5), 2026-10-18: supplier-events topic, supplier-service publishing, and a
+# Cloud Scheduler job for the worker's outbox sweep. Author review: Pending.
 # Claude Code (Opus 5.5), 2026-10-18. Scope: order, notification, credit and saga services:
 # databases, topics, push subscriptions, Cloud Scheduler jobs and frontend wiring.
 # Author review: Pending.
@@ -24,6 +29,8 @@ NETWORK="${NETWORK:-default}"
 SUBNET="${SUBNET:-default}"
 PUBSUB_TOPIC="${PUBSUB_TOPIC:-user-events}"
 PUBSUB_SUBSCRIPTION="${PUBSUB_SUBSCRIPTION:-user-events-worker}"
+SUPPLIER_USER_EVENTS_SUBSCRIPTION="${SUPPLIER_USER_EVENTS_SUBSCRIPTION:-supplier-service-user-events}"
+SUPPLIER_EVENTS_TOPIC="${SUPPLIER_EVENTS_TOPIC:-supplier-events}"
 PUBSUB_PUSH_SERVICE_ACCOUNT="${PUBSUB_PUSH_SERVICE_ACCOUNT:-user-event-push@${PROJECT_ID}.iam.gserviceaccount.com}"
 # Identity Cloud Scheduler uses to call the services' internal routes.
 SCHEDULER_SERVICE_ACCOUNT="${SCHEDULER_SERVICE_ACCOUNT:-foc-scheduler@${PROJECT_ID}.iam.gserviceaccount.com}"
@@ -42,6 +49,9 @@ ensure_pubsub() {
   run beta services identity create --service pubsub.googleapis.com >/dev/null
   if ! run pubsub topics describe "$PUBSUB_TOPIC" >/dev/null 2>&1; then
     run pubsub topics create "$PUBSUB_TOPIC"
+  fi
+  if ! run pubsub topics describe "$SUPPLIER_EVENTS_TOPIC" >/dev/null 2>&1; then
+    run pubsub topics create "$SUPPLIER_EVENTS_TOPIC"
   fi
 
   local push_service_account_name
@@ -118,8 +128,8 @@ setup() {
     run sql instances patch "$SQL_INSTANCE" --network "$NETWORK" --quiet
   fi
 
-  # supplier-service uses VPC egress (to reach user-service), which also carries its
-  # database traffic, so it connects over the private IP instead of the connector.
+  # supplier-service and its event worker use VPC egress, which also carries their
+  # database traffic, so they connect over the private IP instead of the connector.
   create_database private supplier_service suppliers supplier-database-url
   create_database socket user_service users user-database-url
 
@@ -351,14 +361,51 @@ deploy() {
       --enable-message-ordering
   fi
 
+  # Copies user-events into the supplier database, which supplier-service reads to authorize callers.
+  run run deploy supplier-event-worker --region "$REGION" --image "${REGISTRY}/supplier-service:${TAG}" \
+    --command node --args dist/worker.js \
+    --port 3004 --no-allow-unauthenticated \
+    --clear-cloudsql-instances \
+    --network "$NETWORK" --subnet "$SUBNET" --vpc-egress private-ranges-only \
+    --set-env-vars "PUBSUB_PROJECT_ID=${PROJECT_ID},USER_EVENTS_TOPIC=${PUBSUB_TOPIC},PUBSUB_SUBSCRIPTION=${SUPPLIER_USER_EVENTS_SUBSCRIPTION},SUPPLIER_EVENTS_TOPIC=${SUPPLIER_EVENTS_TOPIC}" \
+    --set-secrets "DATABASE_URL=supplier-database-url:latest"
+  local supplier_worker_url
+  supplier_worker_url="$(service_url supplier-event-worker)"
+  run run services add-iam-policy-binding supplier-event-worker --region "$REGION" \
+    --member "serviceAccount:${PUBSUB_PUSH_SERVICE_ACCOUNT}" --role roles/run.invoker >/dev/null
+
+  if run pubsub subscriptions describe "$SUPPLIER_USER_EVENTS_SUBSCRIPTION" >/dev/null 2>&1; then
+    run pubsub subscriptions update "$SUPPLIER_USER_EVENTS_SUBSCRIPTION" \
+      --push-endpoint "${supplier_worker_url}/pubsub/user-events" \
+      --push-auth-service-account "$PUBSUB_PUSH_SERVICE_ACCOUNT" \
+      --push-auth-token-audience "$supplier_worker_url"
+  else
+    run pubsub subscriptions create "$SUPPLIER_USER_EVENTS_SUBSCRIPTION" --topic "$PUBSUB_TOPIC" \
+      --push-endpoint "${supplier_worker_url}/pubsub/user-events" \
+      --push-auth-service-account "$PUBSUB_PUSH_SERVICE_ACCOUNT" \
+      --push-auth-token-audience "$supplier_worker_url" \
+      --enable-message-ordering
+  fi
+
   run run deploy supplier-service --region "$REGION" --image "${REGISTRY}/supplier-service:${TAG}" \
     --port 3000 --ingress internal --allow-unauthenticated \
     --clear-cloudsql-instances \
     --network "$NETWORK" --subnet "$SUBNET" --vpc-egress all-traffic \
-    --set-env-vars "USER_SERVICE_BASE_URL=${user_url}" \
-    --set-secrets "DATABASE_URL=supplier-database-url:latest"
+    --set-env-vars "PUBSUB_PROJECT_ID=${PROJECT_ID},SUPPLIER_EVENTS_TOPIC=${SUPPLIER_EVENTS_TOPIC}" \
+    --set-secrets "DATABASE_URL=supplier-database-url:latest,JWT_SECRET=jwt-secret:latest"
   local supplier_url
   supplier_url="$(service_url supplier-service)"
+
+  # Publishes supplier-events the API's relay missed (for example after a Pub/Sub error).
+  run services enable cloudscheduler.googleapis.com
+  local sweep_flags=(--location "$REGION" --schedule "* * * * *"
+    --uri "${supplier_worker_url}/outbox/publish" --http-method POST
+    --oidc-service-account-email "$PUBSUB_PUSH_SERVICE_ACCOUNT" --oidc-token-audience "$supplier_worker_url")
+  if run scheduler jobs describe supplier-outbox-sweep --location "$REGION" >/dev/null 2>&1; then
+    run scheduler jobs update http supplier-outbox-sweep "${sweep_flags[@]}"
+  else
+    run scheduler jobs create http supplier-outbox-sweep "${sweep_flags[@]}"
+  fi
 
   deploy_event_services
   local notification_url

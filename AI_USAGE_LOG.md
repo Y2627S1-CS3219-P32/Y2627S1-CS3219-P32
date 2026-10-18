@@ -1137,6 +1137,79 @@ for context, frontend-service is being set up. The frontend’s supplier screen 
   returned the delayed reserve and the release cancelled out, leaving the balance unchanged.
 - Author review: Pending.
 
+## 2026-10-18: Supplier-service local user copy and event worker
+
+- Tool: Claude Code (Opus 5.5). Mode: Implementation, refactoring, tests, documentation, and verification.
+- Exact prompt: `this prompt is only for the supplier service. we're switching to using a copy of
+  the users database (usersTable). we already have the user service pubsub set up but we're still
+  on the old implementation where the supplier service talks to the user service directly.
+  create a worker, listen to user.created, user.updated, and user.deleted. on the event, update
+  your local copy of users. we currently have some operations that is dependent on user
+  authentication, and those are to be refactored to keep in line with the local copy.`
+  When asked which columns to keep, the student chose to mirror order-service (id, displayName,
+  role, version, deletedAt; no password hash).
+- Key response:
+  - supplier-service: `users` table and migration, a separate push worker (`src/worker.ts`) that
+    applies user events with a version guard and deletion tombstones, and authentication that
+    verifies JWTs locally with `JWT_SECRET` and reads the caller's role from the local copy
+    (401 for deleted users, retryable 503 before the user has replicated) instead of calling
+    user-service `GET /me`.
+  - Compose and `deploy.sh`: the worker service and its push subscription; supplier-service gets
+    `JWT_SECRET` in place of `USER_SERVICE_BASE_URL`.
+- Affected files: `supplier-service/` (`src/auth.ts`, `src/worker.ts`, `src/user-events.ts`,
+  `src/errors.ts`, `src/index.ts`, `src/db/schema.ts`, `drizzle/0001_local_users.sql` and meta,
+  tests, README, package files), `compose.yaml`, `compose.dev.yaml`, `deploy.sh`, and this log.
+- Verification: supplier-service tests (42/42) and the strict TypeScript typecheck passed. On
+  Docker Compose with the Pub/Sub emulator, a newly registered user reached the local copy, could
+  list suppliers (200) but not create types (403), and a display-name change was applied as
+  `user.updated`. Cloud deployment was not run.
+- Author review: Pending.
+
+## 2026-10-18: Frontend handling of supplier-service local authorization
+
+- Tool: Claude Code (Opus 5.5). Mode: Implementation, documentation, and verification.
+- Exact prompt: `okay. make the changes to the frontend service (supplier) as well. note the auth
+  changes`, following the supplier-service switch to a local user copy (earlier prompt: `just to
+  clarify, the supplier service will also be emitting events. perhaps you should change the name
+  of the service ...`, which renamed the worker to `supplier-event-worker`).
+- Key response: the Nuxt supplier client forwards supplier-service's 503 (account not yet in the
+  local user copy) with its message instead of turning it into a 502; the supplier directory shows
+  an account-setup state and retries every 2 seconds (up to 5 times), and the delete action reports
+  it. 401 (now also for deleted users) still redirects to login.
+- Affected files: `frontend-service/server/services/supplier-service/client.ts`,
+  `frontend-service/app/services/supplier-service/components/SupplierDirectory.vue`,
+  `frontend-service/README.md`, and this log.
+- Verification: the Nuxt typecheck passed. On Docker Compose, a validly signed token for a user not
+  in the supplier copy returned 503 with the setup message through `/api/supplier-service/suppliers`,
+  and an expired token returned 401. The directory's retry behaviour was not checked in a browser.
+- Author review: Pending.
+
+## 2026-10-18: Supplier events (transactional outbox)
+
+- Tool: Claude Code (Opus 5.5). Mode: Implementation, tests, documentation, and verification.
+- Exact prompt: `okay. next, emit events when there is any modification to the supplier service.
+  here's the shape of the payload. send it to the event bus accordingly with the expected name`,
+  with the student's `SupplierSnapshot`, `SupplierEventPayload`, and `SupplierEvent` types. When
+  asked how events should be delivered, the student chose a transactional outbox (over publishing
+  directly after commit).
+- Key response:
+  - supplier-service: `supplier_event_sequence` and a `supplier_events` outbox table; POST, PUT, and
+    DELETE /suppliers, type/building renames (one `supplier.updated` per affected supplier), and the
+    seed write events in the same transaction as the change. The API relays unpublished rows to the
+    `supplier-events` topic after each commit (ordering key and `supplierId` attribute = supplier
+    id, `type` attribute), and the event worker's `POST /outbox/publish` sweep retries anything left.
+  - Compose: API Pub/Sub settings, a `supplier-ticker` for the sweep, and startup after
+    order-service (whose `supplier-events` subscription must exist first). `deploy.sh`: the topic,
+    API settings, and a Cloud Scheduler job for the sweep.
+- Affected files: `supplier-service/` (`src/supplier-events.ts`, `src/index.ts`,
+  `src/reference-routes.ts`, `src/worker.ts`, `src/db/schema.ts`, `src/db/seed.ts`,
+  `drizzle/0002_supplier_events.sql` and meta, tests, README, package.json), `compose.yaml`,
+  `deploy.sh`, and this log.
+- Verification: supplier-service tests (50/50) and the strict TypeScript typecheck passed. On Docker
+  Compose with the Pub/Sub emulator, creating, editing, and deleting a supplier published versions
+  1-3 and order-service stored them in `supplier_versions` (ending in a tombstone); the test
+  supplier and type were removed afterwards. Cloud deployment was not run.
+
 # AI usage log (Deployment)
 
 ## 2026-10-18: Deploying the order, notification, credit and saga services
