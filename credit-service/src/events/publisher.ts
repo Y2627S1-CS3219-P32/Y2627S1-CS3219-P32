@@ -1,3 +1,4 @@
+import { createServer } from "node:http";
 import { PubSub } from "@google-cloud/pubsub";
 import { pathToFileURL } from "node:url";
 import { config } from "../config.js";
@@ -75,6 +76,12 @@ export async function publishBatch(
   }
 }
 async function main() {
+  // Cloud Run services must answer HTTP on PORT; locally (no PORT) none is started.
+  // (Claude Code (Opus 5.5), 2026-10-18; author review: Pending.)
+  const health = process.env.PORT
+    ? createServer((_req, res) => res.writeHead(200, { "content-type": "application/json" }).end('{"status":"ok"}'))
+        .listen(Number(process.env.PORT))
+    : undefined;
   const pubsub = new PubSub({ projectId: config.projectId });
   const topic = pubsub.topic(config.creditTopic, {
     messageOrdering: true,
@@ -100,6 +107,7 @@ async function main() {
   }
   await pubsub.close();
   await pool.end();
+  health?.close();
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href)
   main().catch((error) => {
