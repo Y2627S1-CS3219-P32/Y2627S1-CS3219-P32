@@ -104,3 +104,16 @@ services:
           target: /app/src
         - action: rebuild
           path: ./credit-service/package.json
+
+  # Claude Code (Opus 5.5), 2026-10-18: saga-orchestrator hot reloading. Author review: Pending.
+  saga-orchestrator:
+    build:
+      target: tooling
+    command: ["npx", "tsx", "watch", "src/index.ts"]
+    develop:
+      watch:
+        - action: sync
+          path: ./saga-orchestrator/src
+          target: /app/src
+        - action: rebuild
+          path: ./saga-orchestrator/package.json
