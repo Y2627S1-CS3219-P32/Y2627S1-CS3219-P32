@@ -140,13 +140,22 @@ services:
       # Claude Code (Opus 5.5), 2026-10-18: tokens are verified locally and callers are
       # looked up in the local user copy, in place of user-service GET /me. Author review: Pending.
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      # Claude Code (Opus 5.5), 2026-10-18: the API relays supplier-events from its outbox
+      # after each commit. Author review: Pending.
+      PUBSUB_EMULATOR_HOST: pubsub-emulator:8085
+      PUBSUB_PROJECT_ID: foc-local
+      SUPPLIER_EVENTS_TOPIC: supplier-events
     depends_on:
       supplier-db-migrate:
         condition: service_completed_successfully
+      # order-service creates its supplier-events subscription at startup; events
+      # published earlier would never reach it.
+      order-service:
+        condition: service_healthy
 
   # AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-10-18.
-  # Scope: supplier-service Pub/Sub worker (currently copies user-events into the supplier
-  # database). Author review: Pending.
+  # Scope: supplier-service Pub/Sub worker: copies user-events into the supplier database
+  # and sweeps the supplier-events outbox. Author review: Pending.
   supplier-event-worker:
     build: ./supplier-service
     command: ["node", "dist/worker.js"]
@@ -158,6 +167,7 @@ services:
       USER_EVENTS_TOPIC: user-events
       PUBSUB_SUBSCRIPTION: supplier-service-user-events
       PUBSUB_PUSH_ENDPOINT: http://supplier-event-worker:3004/pubsub/user-events
+      SUPPLIER_EVENTS_TOPIC: supplier-events
     healthcheck:
       test:
         - CMD
@@ -172,6 +182,23 @@ services:
       supplier-db-migrate:
         condition: service_completed_successfully
       pubsub-emulator:
+        condition: service_healthy
+      order-service:
+        condition: service_healthy
+
+  # Claude Code (Opus 5.5), 2026-10-18: publishes supplier-events the API's relay missed,
+  # every minute, as Cloud Scheduler does in GCP. Author review: Pending.
+  supplier-ticker:
+    image: curlimages/curl:8.11.1
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        while true; do
+          sleep 60
+          curl -fsS -X POST http://supplier-event-worker:3004/outbox/publish
+        done
+    depends_on:
+      supplier-event-worker:
         condition: service_healthy
 
   supplier-db-tools:

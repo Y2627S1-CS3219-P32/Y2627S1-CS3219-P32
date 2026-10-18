@@ -5,6 +5,8 @@
 # Claude Code (Opus 5.5), 2026-10-18: supplier event worker and its push subscription;
 # supplier-service verifies tokens with jwt-secret instead of calling user-service.
 # Author review: Pending.
+# Claude Code (Opus 5.5), 2026-10-18: supplier-events topic, supplier-service publishing, and a
+# Cloud Scheduler job for the worker's outbox sweep. Author review: Pending.
 #
 # Usage (from the repository root, after `gcloud builds submit --config cloudbuild.yaml`):
 #   ./deploy.sh setup   # one-time: Cloud SQL, databases, secrets, IAM, networking
@@ -25,6 +27,7 @@ SUBNET="${SUBNET:-default}"
 PUBSUB_TOPIC="${PUBSUB_TOPIC:-user-events}"
 PUBSUB_SUBSCRIPTION="${PUBSUB_SUBSCRIPTION:-user-events-worker}"
 SUPPLIER_USER_EVENTS_SUBSCRIPTION="${SUPPLIER_USER_EVENTS_SUBSCRIPTION:-supplier-service-user-events}"
+SUPPLIER_EVENTS_TOPIC="${SUPPLIER_EVENTS_TOPIC:-supplier-events}"
 PUBSUB_PUSH_SERVICE_ACCOUNT="${PUBSUB_PUSH_SERVICE_ACCOUNT:-user-event-push@${PROJECT_ID}.iam.gserviceaccount.com}"
 
 REGISTRY="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPOSITORY}"
@@ -39,6 +42,9 @@ ensure_pubsub() {
   run beta services identity create --service pubsub.googleapis.com >/dev/null
   if ! run pubsub topics describe "$PUBSUB_TOPIC" >/dev/null 2>&1; then
     run pubsub topics create "$PUBSUB_TOPIC"
+  fi
+  if ! run pubsub topics describe "$SUPPLIER_EVENTS_TOPIC" >/dev/null 2>&1; then
+    run pubsub topics create "$SUPPLIER_EVENTS_TOPIC"
   fi
 
   local push_service_account_name
@@ -208,7 +214,7 @@ deploy() {
     --port 3004 --no-allow-unauthenticated \
     --clear-cloudsql-instances \
     --network "$NETWORK" --subnet "$SUBNET" --vpc-egress private-ranges-only \
-    --set-env-vars "PUBSUB_PROJECT_ID=${PROJECT_ID},USER_EVENTS_TOPIC=${PUBSUB_TOPIC},PUBSUB_SUBSCRIPTION=${SUPPLIER_USER_EVENTS_SUBSCRIPTION}" \
+    --set-env-vars "PUBSUB_PROJECT_ID=${PROJECT_ID},USER_EVENTS_TOPIC=${PUBSUB_TOPIC},PUBSUB_SUBSCRIPTION=${SUPPLIER_USER_EVENTS_SUBSCRIPTION},SUPPLIER_EVENTS_TOPIC=${SUPPLIER_EVENTS_TOPIC}" \
     --set-secrets "DATABASE_URL=supplier-database-url:latest"
   local supplier_worker_url
   supplier_worker_url="$(service_url supplier-event-worker)"
@@ -232,10 +238,21 @@ deploy() {
     --port 3000 --ingress internal --allow-unauthenticated \
     --clear-cloudsql-instances \
     --network "$NETWORK" --subnet "$SUBNET" --vpc-egress all-traffic \
-    --remove-env-vars USER_SERVICE_BASE_URL \
+    --set-env-vars "PUBSUB_PROJECT_ID=${PROJECT_ID},SUPPLIER_EVENTS_TOPIC=${SUPPLIER_EVENTS_TOPIC}" \
     --set-secrets "DATABASE_URL=supplier-database-url:latest,JWT_SECRET=jwt-secret:latest"
   local supplier_url
   supplier_url="$(service_url supplier-service)"
+
+  # Publishes supplier-events the API's relay missed (for example after a Pub/Sub error).
+  run services enable cloudscheduler.googleapis.com
+  local sweep_flags=(--location "$REGION" --schedule "* * * * *"
+    --uri "${supplier_worker_url}/outbox/publish" --http-method POST
+    --oidc-service-account-email "$PUBSUB_PUSH_SERVICE_ACCOUNT" --oidc-token-audience "$supplier_worker_url")
+  if run scheduler jobs describe supplier-outbox-sweep --location "$REGION" >/dev/null 2>&1; then
+    run scheduler jobs update http supplier-outbox-sweep "${sweep_flags[@]}"
+  else
+    run scheduler jobs create http supplier-outbox-sweep "${sweep_flags[@]}"
+  fi
 
   run run deploy frontend-service --region "$REGION" --image "${REGISTRY}/frontend-service:${TAG}" \
     --port 3000 --ingress all --allow-unauthenticated \

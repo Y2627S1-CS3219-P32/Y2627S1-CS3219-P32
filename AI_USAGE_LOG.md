@@ -950,3 +950,30 @@ for context, frontend-service is being set up. The frontend’s supplier screen 
   in the supplier copy returned 503 with the setup message through `/api/supplier-service/suppliers`,
   and an expired token returned 401. The directory's retry behaviour was not checked in a browser.
 - Author review: Pending.
+
+## 2026-10-18: Supplier events (transactional outbox)
+
+- Tool: Claude Code (Opus 5.5). Mode: Implementation, tests, documentation, and verification.
+- Exact prompt: `okay. next, emit events when there is any modification to the supplier service.
+  here's the shape of the payload. send it to the event bus accordingly with the expected name`,
+  with the student's `SupplierSnapshot`, `SupplierEventPayload`, and `SupplierEvent` types. When
+  asked how events should be delivered, the student chose a transactional outbox (over publishing
+  directly after commit).
+- Key response:
+  - supplier-service: `supplier_event_sequence` and a `supplier_events` outbox table; POST, PUT, and
+    DELETE /suppliers, type/building renames (one `supplier.updated` per affected supplier), and the
+    seed write events in the same transaction as the change. The API relays unpublished rows to the
+    `supplier-events` topic after each commit (ordering key and `supplierId` attribute = supplier
+    id, `type` attribute), and the event worker's `POST /outbox/publish` sweep retries anything left.
+  - Compose: API Pub/Sub settings, a `supplier-ticker` for the sweep, and startup after
+    order-service (whose `supplier-events` subscription must exist first). `deploy.sh`: the topic,
+    API settings, and a Cloud Scheduler job for the sweep.
+- Affected files: `supplier-service/` (`src/supplier-events.ts`, `src/index.ts`,
+  `src/reference-routes.ts`, `src/worker.ts`, `src/db/schema.ts`, `src/db/seed.ts`,
+  `drizzle/0002_supplier_events.sql` and meta, tests, README, package.json), `compose.yaml`,
+  `deploy.sh`, and this log.
+- Verification: supplier-service tests (50/50) and the strict TypeScript typecheck passed. On Docker
+  Compose with the Pub/Sub emulator, creating, editing, and deleting a supplier published versions
+  1-3 and order-service stored them in `supplier_versions` (ending in a tombstone); the test
+  supplier and type were removed afterwards. Cloud deployment was not run.
+- Author review: Pending.
