@@ -1,0 +1,82 @@
+# AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-10-18.
+# Scope: GitHub Actions workflow that builds images with Cloud Build and deploys with deploy.sh.
+# Author review: Pending.
+#
+# Runs on every push to main, or manually from the Actions tab (optionally also seeding).
+# Authenticates through Workload Identity Federation, set up once with `./deploy.sh github`,
+# which prints the repository variables below (Settings > Secrets and variables > Actions >
+# Variables). `./deploy.sh setup` must also have been run once.
+name: Deploy to Google Cloud
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      seed:
+        description: Also run the supplier seed job
+        type: boolean
+        default: false
+
+# One deployment at a time; a newer push waits for the running one instead of cancelling it.
+concurrency:
+  group: deploy-gcp
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+  REGION: asia-southeast1
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          install_components: beta
+
+      # Submitted asynchronously and polled: the build logs to Cloud Logging only, which
+      # `gcloud builds submit` cannot stream without extra permissions.
+      - name: Build and push images
+        id: build
+        run: |
+          build_id="$(gcloud builds submit --config cloudbuild.yaml --region "$REGION" --async --format 'value(id)')"
+          echo "Cloud Build: https://console.cloud.google.com/cloud-build/builds;region=${REGION}/${build_id}?project=${PROJECT_ID}"
+          while :; do
+            status="$(gcloud builds describe "$build_id" --region "$REGION" --format 'value(status)')"
+            case "$status" in
+              SUCCESS) break ;;
+              QUEUED|PENDING|WORKING) sleep 15 ;;
+              *)
+                gcloud builds log "$build_id" --region "$REGION" || true
+                echo "::error::Cloud Build $build_id finished with status $status"
+                exit 1
+                ;;
+            esac
+          done
+          echo "tag=$build_id" >> "$GITHUB_OUTPUT"
+
+      # Images are tagged with the build ID, so every service gets a new revision.
+      - name: Deploy to Cloud Run
+        run: ./deploy.sh
+        env:
+          TAG: ${{ steps.build.outputs.tag }}
+
+      - name: Seed supplier data
+        if: inputs.seed
+        run: ./deploy.sh seed
+        env:
+          TAG: ${{ steps.build.outputs.tag }}

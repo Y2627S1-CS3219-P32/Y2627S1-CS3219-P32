@@ -1227,3 +1227,16 @@ for context, frontend-service is being set up. The frontend’s supplier screen 
 - Affected files: `cloudbuild.yaml`, `deploy.sh`, `credit-service/src/events/publisher.ts`, and this log.
 - Verification: `bash -n deploy.sh`, Cloud Build YAML parsing, and a credit-service typecheck.
 - Author review: Pending.
+
+## 2026-10-18: Automatic deployment with GitHub Actions
+
+- Tool: Claude Code (Opus 5.5). Mode: Boilerplate generation (deployment config).
+- Exact prompt: `create github actions to automatically deploy this to google cloud.`
+- Key response: A workflow that, on every push to `main` (or a manual run, optionally seeding),
+  signs in to Google Cloud through Workload Identity Federation, submits `cloudbuild.yaml` and
+  waits for it, then runs `deploy.sh` with the build ID as the image tag. `./deploy.sh github`
+  creates the deployer service account and its roles, and an identity pool whose provider only
+  accepts this repository's `main` branch, and prints the repository variables to add.
+- Affected files: `.github/workflows/deploy.yml`, `deploy.sh`, `README.md`, and this log.
+- Verification: `bash -n deploy.sh` and workflow YAML parsing. Not yet run against GCP or GitHub.
+- Author review: Pending.
