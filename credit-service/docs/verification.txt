@@ -1,0 +1,205 @@
+Credit verification recorded 18 October 2026.
+Scope. Credit implementation and local Compose wiring only. Four tables and saved JSON result retained.
+Commands. npm test with DATABASE_URL=postgres://credit:credit@127.0.0.1:5437/credits. npm run typecheck. npm run pubsub:provision and npm run test:pubsub with the isolated Credit verification subscription on the local emulator.
+Container proof. docker compose -f compose.yaml -f /tmp/credit-evidence/emulator-port.yaml up -d --build credit-service credit-publisher. The temporary override has the same loopback mapping as credit-service/compose.verify.yaml. Database recreation used up -d --force-recreate --no-deps credit-db. The API-container scripts test/compose.mjs and test/outbox.mjs produced the rows below.
+Limits. Pub/Sub uses the emulator. The publish-before-mark failure is injected after an actual broker acknowledgment. A separate deployed-worker test pauses and resumes the actual emulator container. Production Google IAM was not exercised.
+
+Typecheck
+
+> credit-service@1.0.0 typecheck
+> tsc --noEmit
+
+
+PostgreSQL and transport regression suite
+
+> credit-service@1.0.0 test
+> npm run build && node --test test/*.test.mjs
+
+
+> credit-service@1.0.0 build
+> tsc
+
+TAP version 13
+# Subtest: concurrent creation and duplicate source events grant exactly once
+ok 1 - concurrent creation and duplicate source events grant exactly once
+  ---
+  duration_ms: 1693.10125
+  ...
+# Subtest: deletion before creation is permanent; provisioned deletion retains history and allows release
+ok 2 - deletion before creation is permanent; provisioned deletion retains history and allows release
+  ---
+  duration_ms: 910.643292
+  ...
+# Subtest: missing accounts never provision; transfer before reserve remains retryable
+ok 3 - missing accounts never provision; transfer before reserve remains retryable
+  ---
+  duration_ms: 173.852916
+  ...
+# Subtest: concurrent reservations cannot overspend and rejected request replays original JSON
+ok 4 - concurrent reservations cannot overspend and rejected request replays original JSON
+  ---
+  duration_ms: 391.432208
+  ...
+# Subtest: same-ID success replays historical result and fresh-ID repeats create no movements
+ok 5 - same-ID success replays historical result and fresh-ID repeats create no movements
+  ---
+  duration_ms: 199.070083
+  ...
+# Subtest: cancellation without movement survives outbox archival and blocks delayed commands
+ok 6 - cancellation without movement survives outbox archival and blocks delayed commands
+  ---
+  duration_ms: 127.41525
+  ...
+# Subtest: both reserve/release arrival orders and concurrent transfer/release serialize
+ok 7 - both reserve/release arrival orders and concurrent transfer/release serialize
+  ---
+  duration_ms: 1347.863791
+  ...
+# Subtest: failure between debit and credit rolls back every financial write
+ok 8 - failure between debit and credit rolls back every financial write
+  ---
+  duration_ms: 116.59975
+  ...
+# Subtest: provisioning failure rolls back account, allocation, movement and outbox
+ok 9 - provisioning failure rolls back account, allocation, movement and outbox
+  ---
+  duration_ms: 51.332458
+  ...
+# Subtest: recipient overflow and self transfer reject atomically with exact safe JSON balances
+ok 10 - recipient overflow and self transfer reject atomically with exact safe JSON balances
+  ---
+  duration_ms: 406.713208
+  ...
+# Subtest: simultaneous reserve and release settle once and history agrees with reserved balances
+ok 11 - simultaneous reserve and release settle once and history agrees with reserved balances
+  ---
+  duration_ms: 1914.86525
+  ...
+# Subtest: mismatched reservation participants and amounts reject without changing hold
+ok 12 - mismatched reservation participants and amounts reject without changing hold
+  ---
+  duration_ms: 105.421833
+  ...
+# Subtest: concurrent identical command retries store one result and reject malformed creation envelopes
+ok 13 - concurrent identical command retries store one result and reject malformed creation envelopes
+  ---
+  duration_ms: 232.073709
+  ...
+# Subtest: mixed-case UUIDs serialize one errand and replay one request
+ok 14 - mixed-case UUIDs serialize one errand and replay one request
+  ---
+  duration_ms: 190.061333
+  ...
+# Subtest: JWT validates signature, header, expiry and integer string subject
+ok 15 - JWT validates signature, header, expiry and integer string subject
+  ---
+  duration_ms: 4.049959
+  ...
+# Subtest: HTTP rejects unauthenticated mutations and forged event delivery
+ok 16 - HTTP rejects unauthenticated mutations and forged event delivery
+  ---
+  duration_ms: 457.443916
+  ...
+1..16
+# tests 16
+# suites 0
+# pass 16
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 11902.440709
+
+Pub/Sub durable provisioning
+
+> credit-service@1.0.0 pubsub:provision
+> node dist/provision.js
+
+(node:62648) MetadataLookupWarning: received unexpected error = All promises were rejected code = EADDRNOTAVAIL, ENOTFOUND
+(Use `node --trace-warnings ...` to show where the warning was created)
+pubsub_provision_retry Total timeout of API google.pubsub.v1.Publisher exceeded 60000 milliseconds retrying error Error: 14 UNAVAILABLE: No connection established. Last error: Failed to connect (2026-10-18T07:17:58.927Z). Resolution note:   before any response was received. : Previous errors : [{message: 14 UNAVAILABLE: No connection established. Last error: Error: connect ECONNREFUSED 127.0.0.1:8085. Resolution note: , code: 14, details: , note: },{message: 14 UNAVAILABLE: No connection established. Last error: Error: connect ECONNREFUSED 127.0.0.1:8085. Resolution note: , code: 14, details: , note: },{message: 14 UNAVAILABLE: No connection established. Last error: Error: connect ECONNREFUSED 127.0.0.1:8085. Resolution note: , code: 14, details: , note: },{message: 14 UNAVAILABLE: No connection established. Last error: Error: connect ECONNREFUSED 127.0.0.1:8085. Resolution note: , code: 14, details: , note: },{message: 14 UNAVAILABLE: No connection established. Last error: Error: connect ECONNREFUSED 127.0.0.1:8085. Resolution note: , code: 14, details: , note: },{message: 14 UNAVAILABLE: No connection established. Last error: Error: connect ECONNREFUSED 127.0.0.1:8085. Resolution note: , code: 14, details: , note: },{message: 14 UNAVAILABLE: No connection established. Last error: Error: connect ECONNREFUSED 127.0.0.1:8085. Resolution note: , code: 14, details: , note: },{message: 14 UNAVAILABLE: No connection established. Last error: Error: connect ECONNREFUSED 127.0.0.1:8085. Resolution note: , code: 14, details: , note: },{message: 14 UNAVAILABLE: No connection established. Last error: Error: connect ECONNREFUSED 127.0.0.1:8085. Resolution note: , code: 14, details: , note: },{message: 14 UNAVAILABLE: No connection established. Last error: Error: connect ECONNREFUSED 127.0.0.1:8085. Resolution note: , code: 14, details: , note: },{message: 14 UNAVAILABLE: No connection established. Last error: Error: connect ECONNREFUSED 127.0.0.1:8085. Resolution note: , code: 14, details: , note: },{message: 14 UNAVAILABLE: No connection established. Last error: Error: connect ECONNREFUSED 127.0.0.1:8085. Resolution note: , code: 14, details: , note: },{message: 14 UNAVAILABLE: No connection established. Last error: Error: connect ECONNREFUSED 127.0.0.1:8085. Resolution note: , code: 14, details: , note: },{message: 14 UNAVAILABLE: No connection established. Last error: Error: connect ECONNREFUSED 127.0.0.1:8085. Resolution note: , code: 14, details: , note: },{message: 14 UNAVAILABLE: No connection established. Last error: Error: connect ECONNREFUSED 127.0.0.1:8085. Resolution note: , code: 14, details: , note: },{message: 14 UNAVAILABLE: No connection established. Last error: Error: connect ECONNREFUSED 127.0.0.1:8085. Resolution note: , code: 14, details: , note: },{message: 14 UNAVAILABLE: No connection established. Last error: Error: connect ECONNREFUSED 127.0.0.1:8085. Resolution note: , code: 14, details: , note: },{message: 14 UNAVAILABLE: No connection established. Last error: Error: connect ECONNREFUSED 127.0.0.1:8085. Resolution note: , code: 14, details: , note: },{message: 14 UNAVAILABLE: No connection established. Last error: Error: connect ECONNREFUSED 127.0.0.1:8085. Resolution note: , code: 14, details: , note: },{message: 14 UNAVAILABLE: No connection established. Last error: Error: connect ECONNREFUSED 127.0.0.1:8085. Resolution note: , code: 14, details: , note: },{message: 14 UNAVAILABLE: No connection established. Last error: Error: connect ECONNREFUSED 127.0.0.1:8085. Resolution note: , code: 14, details: , note: },{message: 14 UNAVAILABLE: No connection established. Last error: Failed to connect (2026-10-18T07:17:58.927Z). Resolution note: , code: 14, details: , note: }]
+{"topic":"user-events","subscription":"credit-verification-user-events","pushEndpoint":"http://host.docker.internal:3014/internal/pubsub/user-events","status":"ready"}
+
+Pub/Sub and authenticated HTTP proof
+
+> credit-service@1.0.0 test:pubsub
+> npm run build && node test/pubsub.mjs
+
+
+> credit-service@1.0.0 build
+> tsc
+
+(node:65129) MetadataLookupWarning: received unexpected error = All promises were rejected code = EADDRNOTAVAIL, ENOTFOUND
+(Use `node --trace-warnings ...` to show where the warning was created)
+PASS durable subscription exists with authenticated push endpoint
+PASS Pub/Sub push provisioned account 980470591 with 1000 credits
+{"requestId":"174bc3ec-d7aa-4a94-96ba-1982cf7c7bd4","orderId":"95219c9d-760d-4cfe-9984-4c65a9c0be69","correlationId":"9dcd210f-9e68-4077-aad6-f4f90eec5b7e","outcome":"SUCCEEDED","code":"OK"}
+{"requestId":"174bc3ec-d7aa-4a94-96ba-1982cf7c7bd4","orderId":"95219c9d-760d-4cfe-9984-4c65a9c0be69","correlationId":"9dcd210f-9e68-4077-aad6-f4f90eec5b7e","outcome":"SUCCEEDED","code":"OK"}
+{"requestId":"3eca495b-f6c4-4100-af7b-365d2ba09218","orderId":"8af73969-b48d-4b5c-982d-9195133596d7","correlationId":"9dcd210f-9e68-4077-aad6-f4f90eec5b7e","outcome":"REJECTED","code":"INSUFFICIENT_CREDITS"}
+{"requestId":"dc68e9a2-685e-4cbf-81f1-2900ca86fa27","orderId":"95219c9d-760d-4cfe-9984-4c65a9c0be69","correlationId":"0e429f9e-a8c9-4353-bb70-7ad08a607fe3","outcome":"REJECTED","code":"SELF_TRANSFER"}
+{"requestId":"87210a19-7b9b-4a1d-a9ae-4c90e87d6f08","orderId":"95219c9d-760d-4cfe-9984-4c65a9c0be69","correlationId":"0e429f9e-a8c9-4353-bb70-7ad08a607fe3","outcome":"SUCCEEDED","code":"OK"}
+{"requestId":"d3b6766c-1b06-48f4-8f14-f6eece592a4f","orderId":"d882bc8a-b320-442c-9038-7082e8a071e0","correlationId":"9dcd210f-9e68-4077-aad6-f4f90eec5b7e","outcome":"SUCCEEDED","code":"OK"}
+{"requestId":"cee173da-aabe-4bcc-81bf-f71569014cb2","orderId":"d882bc8a-b320-442c-9038-7082e8a071e0","correlationId":"7e0d9bf4-85e6-4afa-89db-99d280b3878f","outcome":"SUCCEEDED","code":"OK"}
+PASS HTTP owner balance, reserve, replay, rejection, transfer, release, lookups, amount/auth checks; requester=880 courier=1120
+{"eventId":"76d1a7cc-0736-4f57-b3f0-6df2d8a3daa9","requestId":"f366a188-a1ed-460f-9743-5974e3bc1c85","orderId":"53aeca9e-a612-43d9-9a35-270d7b60feab","correlationId":"7685e06f-e72b-41a9-8cae-4c0cf77dafb6","outcome":"retry","reason":"14 UNAVAILABLE: No connection established. Last error: Error: connect ECONNREFUSED 127.0.0.1:1. Resolution note: "}
+PASS broker outage retained committed reservation and unpublished outbox
+{"eventId":"76d1a7cc-0736-4f57-b3f0-6df2d8a3daa9","requestId":"f366a188-a1ed-460f-9743-5974e3bc1c85","orderId":"53aeca9e-a612-43d9-9a35-270d7b60feab","correlationId":"7685e06f-e72b-41a9-8cae-4c0cf77dafb6","outcome":"retry","reason":"simulated crash after broker acknowledgment"}
+PASS publish-before-mark recovery redelivered stable eventId 76d1a7cc-0736-4f57-b3f0-6df2d8a3daa9
+PASS later same-key outcome stayed behind failed publication and replay
+PASS stored outcome envelopes contain no version fields
+
+Persistence before recreation
+{"check":"verify","userId":1900000002,"balance":{"totalCredits":1000,"reservedCredits":120,"availableCredits":880},"orders":2,"movements":2,"result":"PASS"}
+
+Database container recreation
+ Container y2627s1-cs3219-p32-credit-db-1  Recreate
+ Container y2627s1-cs3219-p32-credit-db-1  Recreated
+ Container y2627s1-cs3219-p32-credit-db-1  Starting
+ Container y2627s1-cs3219-p32-credit-db-1  Started
+
+Persistence and process recovery after recreation
+{"check":"verify","userId":1900000002,"balance":{"totalCredits":1000,"reservedCredits":120,"availableCredits":880},"orders":2,"movements":2,"result":"PASS"}
+API status=running restartCount=0
+NAME                                    IMAGE                                 COMMAND                  SERVICE            CREATED          STATUS                    PORTS
+y2627s1-cs3219-p32-credit-db-1          postgres:17                           "docker-entrypoint.s…"   credit-db          13 seconds ago   Up 11 seconds (healthy)   127.0.0.1:5438->5432/tcp
+y2627s1-cs3219-p32-credit-publisher-1   y2627s1-cs3219-p32-credit-publisher   "docker-entrypoint.s…"   credit-publisher   51 seconds ago   Up 48 seconds (healthy)   3000/tcp
+y2627s1-cs3219-p32-credit-service-1     y2627s1-cs3219-p32-credit-service     "docker-entrypoint.s…"   credit-service     51 seconds ago   Up 48 seconds (healthy)   0.0.0.0:3004->3000/tcp
+
+Deployed worker broker outage and recovery
+{"check":"prepare","userId":1900000003,"balance":{"totalCredits":1000,"reservedCredits":120,"availableCredits":880},"orders":2,"movements":2,"result":"PASS"}
+y2627s1-cs3219-p32-pubsub-emulator-1
+{"check":"release","userId":1900000003,"eventId":"fc933b7d-69c6-4b5d-ad2a-5d9574655568","publishedAt":null,"result":"PASS"}
+API readiness during broker outage=200
+{"check":"pending","userId":1900000003,"eventId":"fc933b7d-69c6-4b5d-ad2a-5d9574655568","publishedAt":null,"result":"PASS"}
+credit-publisher-1  | {"eventId":"b76ab762-3362-479b-a4a9-1c19b75a2e3f","requestId":"2c8b003d-51dc-45f8-a45f-74860b15ea00","correlationId":"2c8b003d-51dc-45f8-a45f-74860b15ea00","outcome":"retry","reason":"4 DEADLINE_EXCEEDED: Deadline exceeded after 3.002s,Waiting for LB pick"}
+credit-publisher-1  | {"eventId":"b76ab762-3362-479b-a4a9-1c19b75a2e3f","requestId":"2c8b003d-51dc-45f8-a45f-74860b15ea00","correlationId":"2c8b003d-51dc-45f8-a45f-74860b15ea00","outcome":"retry","reason":"4 DEADLINE_EXCEEDED: Deadline exceeded after 3.000s,metadata filters: 0.001s,Waiting for LB pick"}
+credit-publisher-1  | {"eventId":"b76ab762-3362-479b-a4a9-1c19b75a2e3f","requestId":"2c8b003d-51dc-45f8-a45f-74860b15ea00","correlationId":"2c8b003d-51dc-45f8-a45f-74860b15ea00","outcome":"retry","reason":"4 DEADLINE_EXCEEDED: Deadline exceeded after 3.001s,metadata filters: 0.011s,Waiting for LB pick"}
+credit-publisher-1  | {"eventId":"b76ab762-3362-479b-a4a9-1c19b75a2e3f","requestId":"2c8b003d-51dc-45f8-a45f-74860b15ea00","correlationId":"2c8b003d-51dc-45f8-a45f-74860b15ea00","outcome":"retry","reason":"4 DEADLINE_EXCEEDED: Deadline exceeded after 3.003s,metadata filters: 0.001s,Waiting for LB pick"}
+credit-publisher-1  | {"eventId":"b76ab762-3362-479b-a4a9-1c19b75a2e3f","requestId":"2c8b003d-51dc-45f8-a45f-74860b15ea00","correlationId":"2c8b003d-51dc-45f8-a45f-74860b15ea00","outcome":"retry","reason":"4 DEADLINE_EXCEEDED: Deadline exceeded after 3.003s,metadata filters: 0.003s,Waiting for LB pick"}
+credit-publisher-1  | {"eventId":"b76ab762-3362-479b-a4a9-1c19b75a2e3f","requestId":"2c8b003d-51dc-45f8-a45f-74860b15ea00","correlationId":"2c8b003d-51dc-45f8-a45f-74860b15ea00","outcome":"retry","reason":"4 DEADLINE_EXCEEDED: Deadline exceeded after 3.001s,metadata filters: 0.001s,time to current attempt start: 0.001s,Waiting for LB pick"}
+y2627s1-cs3219-p32-pubsub-emulator-1
+{"check":"published","userId":1900000003,"eventId":"fc933b7d-69c6-4b5d-ad2a-5d9574655568","publishedAt":"2026-10-18T07:26:30.892Z","result":"PASS"}
+
+Pre-fix UUID race reproduction
+{
+  "results": [
+    {
+      "state": "HELD",
+      "applied": true
+    },
+    {
+      "state": "CANCELLED",
+      "applied": false
+    }
+  ],
+  "balance": {
+    "totalCredits": 1000,
+    "reservedCredits": 120,
+    "availableCredits": 880
+  },
+  "derived": {
+    "reservationState": "RELEASED",
+    "requesterId": 1900000001,
+    "amount": 120
+  }
+}

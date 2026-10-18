@@ -1,6 +1,85 @@
 # AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-30.
 # Scope: User PostgreSQL wiring and optional bootstrap secret. Author review: Done.
 services:
+  credit-db:
+    image: postgres:17
+    ports:
+      - "127.0.0.1:5438:5432"
+    environment:
+      POSTGRES_USER: credit
+      POSTGRES_PASSWORD: credit
+      POSTGRES_DB: credits
+    volumes:
+      - credit-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U credit -d credits"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  credit-db-migrate:
+    build: ./credit-service
+    command: ["npm", "run", "db:migrate"]
+    environment:
+      DATABASE_URL: postgres://credit:credit@credit-db:5432/credits
+    depends_on:
+      credit-db:
+        condition: service_healthy
+
+  credit-pubsub-provision:
+    build: ./credit-service
+    command: ["npm", "run", "pubsub:provision"]
+    environment: &credit-environment
+      PORT: "3000"
+      DATABASE_URL: postgres://credit:credit@credit-db:5432/credits
+      INITIAL_CREDITS: ${INITIAL_CREDITS:-1000}
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      INTERNAL_SHARED_SECRET: ${CREDIT_INTERNAL_SECRET:-local-only-credit-internal-secret-0000}
+      PUBSUB_PROJECT_ID: foc-local
+      PUBSUB_EMULATOR_HOST: pubsub-emulator:8085
+      PUBSUB_PUSH_BASE_URL: http://credit-service:3000
+      USER_EVENTS_TOPIC: user-events
+      USER_EVENTS_SUBSCRIPTION: credit-service-user-events
+      CREDIT_EVENTS_TOPIC: credit-events
+    depends_on:
+      pubsub-emulator:
+        condition: service_healthy
+
+  credit-service:
+    build: ./credit-service
+    restart: unless-stopped
+    environment: *credit-environment
+    ports:
+      - "3004:3000"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/health/ready').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    depends_on:
+      credit-db-migrate:
+        condition: service_completed_successfully
+      credit-pubsub-provision:
+        condition: service_completed_successfully
+
+  credit-publisher:
+    build: ./credit-service
+    command: ["npm", "run", "publisher"]
+    environment: *credit-environment
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "dist/events/publisher-health.js"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    depends_on:
+      credit-db-migrate:
+        condition: service_completed_successfully
+      credit-pubsub-provision:
+        condition: service_completed_successfully
+
   user-service:
     build:
       context: ./user-service
@@ -91,6 +170,7 @@ services:
       NITRO_PORT: "3000"
       NUXT_USER_SERVICE_BASE_URL: http://user-service:3333
       NUXT_SUPPLIER_SERVICE_BASE_URL: http://supplier-service:3000
+      NUXT_CREDIT_SERVICE_BASE_URL: http://credit-service:3000
       # Claude Code (Opus 5.5), 2026-10-17. Author review: Pending.
       NUXT_ORDER_SERVICE_BASE_URL: http://order-service:3000
       # Claude Code (Opus 5.5), 2026-10-17. Author review: Pending.
@@ -326,3 +406,4 @@ volumes:
   user-db-data:
   order-db-data:
   notification-db-data:
+  credit-db-data:

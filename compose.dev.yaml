@@ -80,3 +80,27 @@ services:
           target: /app/src
         - action: rebuild
           path: ./notification-service/package.json
+
+  credit-service:
+    build:
+      target: tooling
+    command: ["npx", "tsx", "watch", "src/index.ts"]
+    develop:
+      watch:
+        - action: sync
+          path: ./credit-service/src
+          target: /app/src
+        - action: rebuild
+          path: ./credit-service/package.json
+
+  credit-publisher:
+    build:
+      target: tooling
+    command: ["npx", "tsx", "watch", "src/events/publisher.ts"]
+    develop:
+      watch:
+        - action: sync
+          path: ./credit-service/src
+          target: /app/src
+        - action: rebuild
+          path: ./credit-service/package.json
