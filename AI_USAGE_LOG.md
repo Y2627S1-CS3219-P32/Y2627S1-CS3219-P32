@@ -931,3 +931,22 @@ for context, frontend-service is being set up. The frontend’s supplier screen 
   list suppliers (200) but not create types (403), and a display-name change was applied as
   `user.updated`. Cloud deployment was not run.
 - Author review: Pending.
+
+## 2026-10-18: Frontend handling of supplier-service local authorization
+
+- Tool: Claude Code (Opus 5.5). Mode: Implementation, documentation, and verification.
+- Exact prompt: `okay. make the changes to the frontend service (supplier) as well. note the auth
+  changes`, following the supplier-service switch to a local user copy (earlier prompt: `just to
+  clarify, the supplier service will also be emitting events. perhaps you should change the name
+  of the service ...`, which renamed the worker to `supplier-event-worker`).
+- Key response: the Nuxt supplier client forwards supplier-service's 503 (account not yet in the
+  local user copy) with its message instead of turning it into a 502; the supplier directory shows
+  an account-setup state and retries every 2 seconds (up to 5 times), and the delete action reports
+  it. 401 (now also for deleted users) still redirects to login.
+- Affected files: `frontend-service/server/services/supplier-service/client.ts`,
+  `frontend-service/app/services/supplier-service/components/SupplierDirectory.vue`,
+  `frontend-service/README.md`, and this log.
+- Verification: the Nuxt typecheck passed. On Docker Compose, a validly signed token for a user not
+  in the supplier copy returned 503 with the setup message through `/api/supplier-service/suppliers`,
+  and an expired token returned 401. The directory's retry behaviour was not checked in a browser.
+- Author review: Pending.
