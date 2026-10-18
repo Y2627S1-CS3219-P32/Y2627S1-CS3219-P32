@@ -240,13 +240,13 @@ deploy_event_services() {
 
   # Internal ingress: reached by the frontend over the VPC, and by Pub/Sub push and Cloud
   # Scheduler (same project). Internal routes check the caller's Google OIDC token.
-  # (`^@^` makes @ the separator, since the invoker list contains commas.)
+  # (`^|^` makes | the separator, since the invoker list contains commas and @.)
   local order_url
   order_url="$(run_url order-service)"
   run run deploy order-service --region "$REGION" --image "${REGISTRY}/order-service:${TAG}" \
     --port 3000 --ingress internal --allow-unauthenticated \
     --add-cloudsql-instances "$SQL_CONNECTION" \
-    --set-env-vars "^@^PUBSUB_PROJECT_ID=${PROJECT_ID}@INTERNAL_AUDIENCE=${order_url}@INTERNAL_INVOKER_EMAILS=${invokers}" \
+    --set-env-vars "^|^PUBSUB_PROJECT_ID=${PROJECT_ID}|INTERNAL_AUDIENCE=${order_url}|INTERNAL_INVOKER_EMAILS=${invokers}" \
     --set-secrets "DATABASE_URL=order-database-url:latest,JWT_SECRET=jwt-secret:latest"
   ensure_push_subscription order-service-user-events user-events "${order_url}/internal/pubsub/user-events" "$order_url" --enable-message-ordering
   ensure_push_subscription order-service-supplier-events supplier-events "${order_url}/internal/pubsub/supplier-events" "$order_url" --enable-message-ordering
@@ -255,8 +255,8 @@ deploy_event_services() {
   # credit-service creates its own push subscriptions (credit-provision).
   local credit_url credit_env
   credit_url="$(run_url credit-service)"
-  credit_env="^@^PUBSUB_PROJECT_ID=${PROJECT_ID}@INTERNAL_AUDIENCE=${credit_url}@INTERNAL_INVOKER_EMAILS=${invokers}"
-  credit_env="${credit_env}@PUBSUB_PUSH_SERVICE_ACCOUNT=${PUBSUB_PUSH_SERVICE_ACCOUNT}@PUBSUB_PUSH_BASE_URL=${credit_url}@INITIAL_CREDITS=${INITIAL_CREDITS}"
+  credit_env="^|^PUBSUB_PROJECT_ID=${PROJECT_ID}|INTERNAL_AUDIENCE=${credit_url}|INTERNAL_INVOKER_EMAILS=${invokers}"
+  credit_env="${credit_env}|PUBSUB_PUSH_SERVICE_ACCOUNT=${PUBSUB_PUSH_SERVICE_ACCOUNT}|PUBSUB_PUSH_BASE_URL=${credit_url}|INITIAL_CREDITS=${INITIAL_CREDITS}"
   run run deploy credit-service --region "$REGION" --image "${REGISTRY}/credit-service:${TAG}" \
     --port 3000 --ingress internal --allow-unauthenticated \
     --add-cloudsql-instances "$SQL_CONNECTION" \
@@ -278,7 +278,7 @@ deploy_event_services() {
   run run deploy saga-orchestrator --region "$REGION" --image "${REGISTRY}/saga-orchestrator:${TAG}" \
     --port 3000 --ingress internal --allow-unauthenticated \
     --add-cloudsql-instances "$SQL_CONNECTION" \
-    --set-env-vars "^@^PUBSUB_PROJECT_ID=${PROJECT_ID}@INTERNAL_AUDIENCE=${saga_url}@INTERNAL_INVOKER_EMAILS=${invokers}@RESERVE_TIMEOUT_SECONDS=${RESERVE_TIMEOUT_SECONDS}" \
+    --set-env-vars "^|^PUBSUB_PROJECT_ID=${PROJECT_ID}|INTERNAL_AUDIENCE=${saga_url}|INTERNAL_INVOKER_EMAILS=${invokers}|RESERVE_TIMEOUT_SECONDS=${RESERVE_TIMEOUT_SECONDS}" \
     --set-secrets "DATABASE_URL=saga-database-url:latest"
   ensure_push_subscription saga-orchestrator-order-events order-events "${saga_url}/internal/pubsub/order-events" "$saga_url" \
     --enable-message-ordering \
@@ -296,7 +296,7 @@ deploy_event_services() {
     --port 3000 --ingress all --allow-unauthenticated \
     --min-instances 1 --no-cpu-throttling --timeout 3600 \
     --add-cloudsql-instances "$SQL_CONNECTION" \
-    --set-env-vars "^@^PUBSUB_PROJECT_ID=${PROJECT_ID}@ALLOWED_ORIGINS=${origins}" \
+    --set-env-vars "^|^PUBSUB_PROJECT_ID=${PROJECT_ID}|ALLOWED_ORIGINS=${origins}" \
     --set-secrets "DATABASE_URL=notification-database-url:latest,JWT_SECRET=jwt-secret:latest,NOTIFICATION_TICKET_SECRET=notification-ticket-secret:latest"
 
   ensure_scheduler_job order-expire-overdue "${order_url}/internal/orders/expire-overdue" "$order_url"
