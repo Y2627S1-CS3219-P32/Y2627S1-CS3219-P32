@@ -57,26 +57,6 @@ npm run test:pubsub
 
 Set `DATABASE_URL` to a disposable migrated PostgreSQL database for integration tests. Pub/Sub verification additionally needs the emulator, a provisioned durable subscription, and `PUBSUB_PUSH_BASE_URL` reachable from the emulator. For a Docker emulator calling an API on the host, use `http://host.docker.internal:3004` and `PORT=3004`. The test provisions through real push delivery, publishes through the emulator, attempts delivery to an unavailable broker, then simulates a crash after broker acknowledgment and verifies repeated delivery with the same event ID.
 
-For host-side verification, expose the emulator on loopback with the Credit override. Use this same override for subsequent Compose commands during the run.
-
-```sh
-docker compose -f compose.yaml -f credit-service/compose.verify.yaml up -d pubsub-emulator
-docker run -d --name credit-test-db -e POSTGRES_USER=credit -e POSTGRES_PASSWORD=credit -e POSTGRES_DB=credits -p 127.0.0.1:5437:5432 postgres:17
-cd credit-service
-export DATABASE_URL=postgres://credit:credit@127.0.0.1:5437/credits
-export JWT_SECRET=replace-with-a-local-test-secret
-export INTERNAL_SHARED_SECRET=replace-with-a-local-internal-secret
-export PUBSUB_EMULATOR_HOST=127.0.0.1:8085
-export PUBSUB_PROJECT_ID=foc-local
-export USER_EVENTS_SUBSCRIPTION=credit-verification-user-events
-export PUBSUB_PUSH_BASE_URL=http://host.docker.internal:3014
-export PORT=3014
-npm ci
-npm test
-npm run pubsub:provision
-npm run test:pubsub
-```
-
 The PostgreSQL test suite truncates Credit tables. Use the disposable test database, never a database containing work you need. Run the database suite before the Pub/Sub proof, because they share that test database. The Pub/Sub proof uses a separate subscription from the container API. It demonstrates an unavailable broker endpoint and injects failure immediately after broker acknowledgment. It asserts stable event IDs and same-key publication order.
 
 `test/compose.mjs` runs inside the deployed API container through standard input. Set a new `CREDIT_PROOF_USER_ID` for `prepare`, then use the same ID for `verify` after recreating `credit-db`. It checks the real HTTP balance and retained command and movement counts. `test/outbox.mjs` uses `release`, `pending`, and `published` to verify the deployed publisher while the emulator is paused and after it resumes. These proof scripts create demo financial history.
@@ -86,7 +66,3 @@ docker compose exec -T -e CREDIT_PROOF_USER_ID=1900000010 credit-service node --
 docker compose up -d --force-recreate --no-deps credit-db
 docker compose exec -T -e CREDIT_PROOF_USER_ID=1900000010 credit-service node --input-type=module - verify < credit-service/test/compose.mjs
 ```
-
-Use the two `-f` options above when running these commands during host-side emulator verification. The recorded results are in [verification.txt](docs/verification.txt).
-
-The behavior-preserving source reorganization was checked against the original implementation. See [reorganization verification](docs/reorganization-verification.txt) for the comparison and rerun results.
