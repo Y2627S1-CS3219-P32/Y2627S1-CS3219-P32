@@ -403,9 +403,87 @@ services:
       order-service:
         condition: service_healthy
 
+  # AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-10-18.
+  # Scope: Saga orchestrator, its database and migrations, and a ticker standing in for
+  # Cloud Scheduler. Internal only, so no host port. Author review: Pending.
+  saga-db:
+    image: postgres:17
+    ports:
+      - "127.0.0.1:5439:5432"
+    environment:
+      POSTGRES_USER: saga
+      POSTGRES_PASSWORD: saga
+      POSTGRES_DB: sagas
+    volumes:
+      - saga-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U saga -d sagas"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  saga-db-migrate:
+    build:
+      context: ./saga-orchestrator
+      target: tooling
+    command: ["npm", "run", "db:migrate"]
+    environment:
+      DATABASE_URL: postgres://saga:saga@saga-db:5432/sagas
+    depends_on:
+      saga-db:
+        condition: service_healthy
+
+  saga-orchestrator:
+    build: ./saga-orchestrator
+    environment:
+      PORT: "3000"
+      DATABASE_URL: postgres://saga:saga@saga-db:5432/sagas
+      RESERVE_TIMEOUT_SECONDS: ${RESERVE_TIMEOUT_SECONDS:-60}
+      # Local only: the emulator and the ticker cannot send Google OIDC tokens.
+      INTERNAL_SHARED_SECRET: ${SAGA_INTERNAL_SECRET:-local-only-saga-internal-secret-000000}
+      PUBSUB_EMULATOR_HOST: pubsub-emulator:8085
+      PUBSUB_PROJECT_ID: foc-local
+      PUBSUB_PUSH_BASE_URL: http://saga-orchestrator:3000
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/health').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    depends_on:
+      saga-db-migrate:
+        condition: service_completed_successfully
+      # Its commands need someone subscribed on both sides.
+      order-service:
+        condition: service_healthy
+      credit-pubsub-provision:
+        condition: service_completed_successfully
+
+  # Aborts reservations credit has not answered and republishes leftover commands every minute.
+  saga-ticker:
+    image: curlimages/curl:8.11.1
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        while true; do
+          sleep 60
+          curl -fsS -X POST -H "x-internal-secret: $$SECRET" http://saga-orchestrator:3000/internal/sagas/abort-overdue
+          curl -fsS -X POST -H "x-internal-secret: $$SECRET" http://saga-orchestrator:3000/internal/outbox/publish
+        done
+    environment:
+      SECRET: ${SAGA_INTERNAL_SECRET:-local-only-saga-internal-secret-000000}
+    depends_on:
+      saga-orchestrator:
+        condition: service_healthy
+
 volumes:
   supplier-db-data:
   user-db-data:
   order-db-data:
   notification-db-data:
   credit-db-data:
+  saga-db-data:
