@@ -1209,4 +1209,21 @@ for context, frontend-service is being set up. The frontend’s supplier screen 
   Compose with the Pub/Sub emulator, creating, editing, and deleting a supplier published versions
   1-3 and order-service stored them in `supplier_versions` (ending in a tombstone); the test
   supplier and type were removed afterwards. Cloud deployment was not run.
+
+# AI usage log (Deployment)
+
+## 2026-10-18: Deploying the order, notification, credit and saga services
+
+- Tool: Claude Code (Opus 5.5). Mode: Boilerplate generation (deployment config) and implementation.
+- Exact prompt: `Uh, let's do the deployment.`
+- Key response: Cloud Build images for the order, notification, credit and saga services (with
+  tooling images for Drizzle migrations); `deploy.sh` creates their databases, secrets, topics,
+  a Cloud Scheduler identity and Pub/Sub permissions, runs migrations and credit's
+  subscription setup, deploys the services (internal ingress with OIDC-checked internal routes;
+  notification-service public with CPU always on for WebSockets; one always-on credit
+  publisher), creates push subscriptions and every-minute Cloud Scheduler jobs, and gives the
+  frontend the new URLs. credit-service's outbox publisher answers health checks when `PORT` is
+  set, so it can run on Cloud Run.
+- Affected files: `cloudbuild.yaml`, `deploy.sh`, `credit-service/src/events/publisher.ts`, and this log.
+- Verification: `bash -n deploy.sh`, Cloud Build YAML parsing, and a credit-service typecheck.
 - Author review: Pending.
