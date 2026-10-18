@@ -1113,3 +1113,26 @@ for context, frontend-service is being set up. The frontend’s supplier screen 
   confirmed that its snapshot matches the tracked snapshot. Reviewed callers
   and the diff. Tests were not run for this cleanup.
 - Author review: Pending.
+
+# AI usage log (Saga Orchestrator)
+
+## 2026-10-18: Saga orchestrator
+
+- Tool: Claude Code (Opus 5.5). Mode: Implementation, tests, documentation, and verification.
+- Exact prompt: `ignore the sync service for now, you can go ahead and build the orchestrator,
+  branch off of credti service branch`, after the student had designed the orchestrated saga
+  (order.created → reserve → OpenOrder/RejectOrder, timeout → AbortOrder and release,
+  order.completed → transfer → SettleOrder) and the credit service had moved to commands over
+  Pub/Sub (`credit-commands`) with results on `credit-events`.
+- Key response: new `saga-orchestrator` service: a saga row per order, credit results matched by
+  request id, idempotent handling of redelivered events, a transactional outbox for commands,
+  releases on timeout, cancellation and expiry, transfer and settlement on completion, and a
+  timeout sweep; Compose services and a ticker.
+- Affected files: `saga-orchestrator/` (all files), `compose.yaml`, `compose.dev.yaml`, and this log.
+- Verification: 8 integration tests passed. On the Pub/Sub emulator with the real user, order and
+  credit services: orders opened after reservation, a 900-credit order was rejected with
+  `INSUFFICIENT_CREDITS`, a cancelled order released its credits, a completed order transferred
+  12 credits to the courier and settled, and balances matched (988/260 and 1012/140). With
+  credit-service stopped, the order was aborted after the timeout, and once credit-service
+  returned the delayed reserve and the release cancelled out, leaving the balance unchanged.
+- Author review: Pending.
