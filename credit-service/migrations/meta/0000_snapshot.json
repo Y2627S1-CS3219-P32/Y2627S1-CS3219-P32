@@ -1,0 +1,464 @@
+{
+  "id": "d12a8a57-ee60-4420-80cf-f7552919f077",
+  "prevId": "00000000-0000-0000-0000-000000000000",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.credit_accounts": {
+      "name": "credit_accounts",
+      "schema": "",
+      "columns": {
+        "user_id": {
+          "name": "user_id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "total_credits": {
+          "name": "total_credits",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reserved_credits": {
+          "name": "reserved_credits",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "deleted_at": {
+          "name": "deleted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "credit_accounts_user_id_check": {
+          "name": "credit_accounts_user_id_check",
+          "value": "\"credit_accounts\".\"user_id\" > 0"
+        },
+        "credit_accounts_total_credits_check": {
+          "name": "credit_accounts_total_credits_check",
+          "value": "\"credit_accounts\".\"total_credits\" BETWEEN 0 AND 9007199254740991"
+        },
+        "credit_accounts_check": {
+          "name": "credit_accounts_check",
+          "value": "\"credit_accounts\".\"reserved_credits\" BETWEEN 0 AND \"credit_accounts\".\"total_credits\""
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.credit_orders": {
+      "name": "credit_orders",
+      "schema": "",
+      "columns": {
+        "request_id": {
+          "name": "request_id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "initial_grant": {
+          "name": "initial_grant",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "request_payload": {
+          "name": "request_payload",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "order_id": {
+          "name": "order_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "result": {
+          "name": "result",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "correlation_id": {
+          "name": "correlation_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "credit_one_allocation": {
+          "name": "credit_one_allocation",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"credit_orders\".\"kind\" = 'ALLOCATE' AND \"credit_orders\".\"status\" = 'SUCCEEDED'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "credit_one_movement": {
+          "name": "credit_one_movement",
+          "columns": [
+            {
+              "expression": "order_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "kind",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"credit_orders\".\"status\" = 'SUCCEEDED' AND \"credit_orders\".\"result\"->>'applied' = 'true'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "credit_history": {
+          "name": "credit_history",
+          "columns": [
+            {
+              "expression": "order_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "kind",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "credit_orders_user_id_fkey": {
+          "name": "credit_orders_user_id_fkey",
+          "tableFrom": "credit_orders",
+          "tableTo": "credit_accounts",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "user_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "credit_orders_kind_check": {
+          "name": "credit_orders_kind_check",
+          "value": "\"credit_orders\".\"kind\" IN ('ALLOCATE','RESERVE','TRANSFER','RELEASE')"
+        },
+        "credit_orders_initial_grant_check": {
+          "name": "credit_orders_initial_grant_check",
+          "value": "\"credit_orders\".\"initial_grant\" BETWEEN 1 AND 9007199254740991"
+        },
+        "credit_orders_status_check": {
+          "name": "credit_orders_status_check",
+          "value": "\"credit_orders\".\"status\" IN ('SUCCEEDED','REJECTED')"
+        },
+        "credit_orders_check": {
+          "name": "credit_orders_check",
+          "value": "(\"credit_orders\".\"kind\" = 'ALLOCATE' AND \"credit_orders\".\"initial_grant\" IS NOT NULL AND \"credit_orders\".\"order_id\" IS NULL) OR (\"credit_orders\".\"kind\" <> 'ALLOCATE' AND \"credit_orders\".\"initial_grant\" IS NULL AND \"credit_orders\".\"order_id\" IS NOT NULL)"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.credit_outbox": {
+      "name": "credit_outbox",
+      "schema": "",
+      "columns": {
+        "event_id": {
+          "name": "event_id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "request_id": {
+          "name": "request_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "payload": {
+          "name": "payload",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "clock_timestamp()"
+        },
+        "published_at": {
+          "name": "published_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "credit_unpublished": {
+          "name": "credit_unpublished",
+          "columns": [
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"credit_outbox\".\"published_at\" IS NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "credit_outbox_request_id_fkey": {
+          "name": "credit_outbox_request_id_fkey",
+          "tableFrom": "credit_outbox",
+          "tableTo": "credit_orders",
+          "columnsFrom": [
+            "request_id"
+          ],
+          "columnsTo": [
+            "request_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "credit_outbox_request_id_key": {
+          "name": "credit_outbox_request_id_key",
+          "nullsNotDistinct": false,
+          "columns": [
+            "request_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.credit_transactions": {
+      "name": "credit_transactions",
+      "schema": "",
+      "columns": {
+        "transaction_id": {
+          "name": "transaction_id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "credit_order_request_id": {
+          "name": "credit_order_request_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "debit_user_id": {
+          "name": "debit_user_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "credit_user_id": {
+          "name": "credit_user_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "debit_bucket": {
+          "name": "debit_bucket",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "credit_bucket": {
+          "name": "credit_bucket",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "amount": {
+          "name": "amount",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "credit_transactions_credit_order_request_id_fkey": {
+          "name": "credit_transactions_credit_order_request_id_fkey",
+          "tableFrom": "credit_transactions",
+          "tableTo": "credit_orders",
+          "columnsFrom": [
+            "credit_order_request_id"
+          ],
+          "columnsTo": [
+            "request_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "credit_transactions_debit_user_id_fkey": {
+          "name": "credit_transactions_debit_user_id_fkey",
+          "tableFrom": "credit_transactions",
+          "tableTo": "credit_accounts",
+          "columnsFrom": [
+            "debit_user_id"
+          ],
+          "columnsTo": [
+            "user_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "credit_transactions_credit_user_id_fkey": {
+          "name": "credit_transactions_credit_user_id_fkey",
+          "tableFrom": "credit_transactions",
+          "tableTo": "credit_accounts",
+          "columnsFrom": [
+            "credit_user_id"
+          ],
+          "columnsTo": [
+            "user_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "credit_transactions_credit_order_request_id_key": {
+          "name": "credit_transactions_credit_order_request_id_key",
+          "nullsNotDistinct": false,
+          "columns": [
+            "credit_order_request_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "credit_transactions_debit_bucket_check": {
+          "name": "credit_transactions_debit_bucket_check",
+          "value": "\"credit_transactions\".\"debit_bucket\" IN ('AVAILABLE','RESERVED','ISSUANCE')"
+        },
+        "credit_transactions_credit_bucket_check": {
+          "name": "credit_transactions_credit_bucket_check",
+          "value": "\"credit_transactions\".\"credit_bucket\" IN ('AVAILABLE','RESERVED')"
+        },
+        "credit_transactions_amount_check": {
+          "name": "credit_transactions_amount_check",
+          "value": "\"credit_transactions\".\"amount\" BETWEEN 1 AND 9007199254740991"
+        },
+        "credit_transactions_check": {
+          "name": "credit_transactions_check",
+          "value": "(\"credit_transactions\".\"debit_user_id\" IS NULL) = (\"credit_transactions\".\"debit_bucket\" = 'ISSUANCE')"
+        }
+      },
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {},
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}
