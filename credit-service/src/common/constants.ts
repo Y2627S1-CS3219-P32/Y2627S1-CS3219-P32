@@ -1,4 +1,4 @@
-export const COMMAND_KIND = {
+export const OPERATION_KIND = {
   RESERVE: "RESERVE",
   RELEASE: "RELEASE",
   TRANSFER: "TRANSFER",
@@ -10,10 +10,4 @@ export const RESERVATION_STATE = {
   RELEASED: "RELEASED",
   CANCELLED: "CANCELLED",
   TRANSFERRED: "TRANSFERRED",
-} as const;
-
-export const COMMAND_TYPES = {
-  RESERVE: "credit.reserve",
-  RELEASE: "credit.release",
-  TRANSFER: "credit.transfer",
 } as const;

@@ -1,8 +1,8 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import type { Request } from "express";
 import { OAuth2Client } from "google-auth-library";
-import { config } from "./config.js";
-import { CreditError } from "./credit/types.js";
+import { config } from "../config.js";
+import { CreditError } from "../common/types.js";
 const google = new OAuth2Client();
 function equal(a: string, b: string) {
   const left = Buffer.from(a);
@@ -64,10 +64,18 @@ export function verifyAccessToken(
 export function userId(req: Request) {
   const token = req.header("authorization")?.match(/^Bearer (\S+)$/i)?.[1];
   const id = token ? verifyAccessToken(token) : undefined;
-  if (id === undefined) throw new CreditError(401, "UNAUTHORIZED");
+  if (id === undefined) throw new CreditError("UNAUTHORIZED");
   return id;
 }
-export async function internal(req: Request, push = false) {
+export function requireInternalCaller(req: Request) {
+  return requireCaller(req, false);
+}
+
+export function requirePubSubCaller(req: Request) {
+  return requireCaller(req, true);
+}
+
+async function requireCaller(req: Request, push: boolean) {
   const supplied =
     req.header("x-internal-secret") ??
     (push && typeof req.query.token === "string" ? req.query.token : undefined);
@@ -91,5 +99,5 @@ export async function internal(req: Request, push = false) {
       if (p?.email_verified && p.email && allowed.includes(p.email)) return;
     } catch {}
   }
-  throw new CreditError(401, "UNAUTHORIZED");
+  throw new CreditError("UNAUTHORIZED");
 }

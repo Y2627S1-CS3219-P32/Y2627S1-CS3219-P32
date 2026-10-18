@@ -71,7 +71,7 @@ services:
     environment: *credit-environment
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "node", "dist/events/publisher-health.js"]
+      test: ["CMD", "node", "dist/outbox-publisher/publisher-health.js"]
       interval: 10s
       timeout: 5s
       retries: 5

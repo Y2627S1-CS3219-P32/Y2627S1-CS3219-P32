@@ -4,9 +4,25 @@ Credit owns four PostgreSQL tables. Commands commit the saved JSON result, movem
 
 ## Source layout
 
-`src/credit/commands.ts` coordinates the atomic transaction and contains private reserve, release, and transfer decision handlers. `constants.ts` defines shared command kinds, message types, and reservation states. `accounts.ts` handles account locks and user lifecycle events. `queries.ts` reads balances, operations, and reservation history. `orders.ts` stores operation results. `types.ts` defines Credit types and shared value helpers.
+| Location | Responsibility |
+|---|---|
+| `src/index.ts` | Validate configuration and start the API. |
+| `src/app.ts` | Configure Express, mount routes, and register error handling. |
+| `src/http-handler/` | HTTP read and health handlers, caller authentication, and error responses. |
+| `src/event-handler/` | Incoming message handlers, Pub/Sub envelope decoding, and payload validation. |
+| `src/services/` | Credit operations, account lifecycle, eligibility, reads, and outcome construction. |
+| `src/repositories/` | Account, operation, ledger, outbox, and readiness SQL. |
+| `src/outbox-publisher/` | Publish saved outbox messages and check publisher dependencies. |
+| `src/scripts/` | Pub/Sub provisioning and command publishing tools. |
+| `src/db/` | Connection, transaction and lock primitives, schema, and migrations. |
+| `src/common/types.ts`, `src/common/constants.ts` | Shared business types and operation names. |
+| `src/common/validation.ts` | Shared UUID and positive-integer validation rules. |
 
-`src/events/` owns outbox envelopes, publishing, Pub/Sub provisioning, and publisher health. `src/db/schema.ts` defines the four Drizzle tables and their constraints. `src/db/` owns the PostgreSQL pool, Drizzle transactions, locks, and migration. The HTTP adapter, authentication, configuration, and API startup stay at the source root.
+`createApp()` mounts the HTTP and event routers, without injected services. Each handler module defines its own routes. Event handlers authenticate the delivery, decode and validate its message, then map the external payload to business inputs. Both handler boundaries call business functions directly: `initializeAccount`, `deactivateAccount`, `reserveCredits`, `releaseCredits`, and `transferCredits`. The user-event adapter maps event IDs to request IDs; business functions accept operation inputs without knowing which transport delivered them. Account initialization creates the account and grants initial credits in one transaction. Services pass the transaction client to repositories so balances, operation results, movements, and outbox entries commit together. Repositories do not choose business errors or open independent financial transactions.
+
+Credit services check recorded reserve, release, and transfer facts rather than branching on reservation states. They describe financial movements once. Read services interpret history and format the existing reservation-state responses. Business errors carry codes; HTTP middleware maps them to statuses. The persisted outcome's existing `httpStatus` field remains compatibility data, produced by the outcome serializer.
+
+The publisher holds one database session lock across loading pending outbox entries, publishing, and marking acknowledgments. Repository functions own that SQL; the publisher owns network delivery and retry behavior.
 
 ## Local startup
 
@@ -21,7 +37,7 @@ docker compose up -d credit-service credit-publisher
 
 Credit exposes host port 3004 and PostgreSQL host port 5438. Credit’s PostgreSQL volume preserves data across restarts. `docker compose down -v` deletes that data.
 
-The API listens on port 3000 inside the container. `GET /health/live` checks the process. `GET /health/ready` checks PostgreSQL only. Broker outages leave committed results in the outbox. `node dist/events/publisher-health.js` checks the publisher’s database and broker dependencies. The publisher logs retry failures and processes stored envelopes in order under one database advisory lock. Every retry resumes the failed Pub/Sub ordering key. A crash after acknowledgment can deliver the same event ID again. Consumers deduplicate that ID.
+The API listens on port 3000 inside the container. `GET /health/live` checks the process. `GET /health/ready` checks PostgreSQL only. Broker outages leave committed results in the outbox. `node dist/outbox-publisher/publisher-health.js` checks the publisher’s database and broker dependencies. The publisher logs retry failures and processes stored envelopes in order under one database advisory lock. Every retry resumes the failed Pub/Sub ordering key. A crash after acknowledgment can deliver the same event ID again. Consumers deduplicate that ID.
 
 ## Database migrations
 
@@ -85,7 +101,7 @@ npm run command:publish -- command.json
 For the running Compose stack, pass that file to the container:
 
 ```sh
-docker compose exec -T credit-service node dist/events/send-command.js /dev/stdin < command.json
+docker compose exec -T credit-service node dist/scripts/send-command.js /dev/stdin < command.json
 ```
 
 The CLI validates the envelope and uses `orderId` as the ordering key. Its output confirms broker acceptance only. Observe the result on `credit-events` or use authenticated `GET /internal/v1/credit-orders/{requestId}`. `GET /internal/v1/credit-reservations/{orderId}` returns derived reservation state.
@@ -104,7 +120,7 @@ npm run test:pubsub
 
 Set `DATABASE_URL` to a disposable migrated PostgreSQL database for integration tests. Pub/Sub verification additionally needs the emulator, provisioned durable user and command subscriptions, and `PUBSUB_PUSH_BASE_URL` reachable from the emulator. For a Docker emulator calling an API on the host, use `http://host.docker.internal:3004` and `PORT=3004`. The test provisions users and executes commands through real push delivery, publishes outcomes through the emulator, attempts delivery to an unavailable broker, then simulates a crash after broker acknowledgment and verifies repeated delivery with the same event ID.
 
-The PostgreSQL test suite truncates Credit tables. Use the disposable test database, never a database containing work you need. Run the database suite before the Pub/Sub proof, because they share that test database. The Pub/Sub proof uses a separate subscription from the container API. It demonstrates an unavailable broker endpoint and injects failure immediately after broker acknowledgment. It asserts stable event IDs and same-key publication order.
+The PostgreSQL and HTTP tests use a disposable database and run serially through `npm test` because they truncate Credit tables. Use the disposable test database, never a database containing work you need. Run that suite before the Pub/Sub proof, because they share that test database. The Pub/Sub proof uses a separate subscription from the container API. It demonstrates an unavailable broker endpoint and simulates failure immediately after broker acknowledgment at the broker-client boundary. It asserts stable event IDs and same-key publication order. The architecture test keeps ORM access inside repositories and database modules and prevents business services from importing transport handlers, message parsers, or an aggregate service contract.
 
 `test/compose.mjs` runs inside the deployed API container through standard input. Set a new `CREDIT_PROOF_USER_ID` for `prepare`, then use the same ID for `verify` after recreating `credit-db`. It checks the real HTTP balance and retained command and movement counts. `test/outbox.mjs` uses `release`, `pending`, and `published` to verify publisher recovery. Pause the publisher first, deliver `release` while the broker is available, then pause the emulator and resume the publisher. Check `pending`, resume the emulator, and check `published`. Input commands cannot arrive while the broker is unavailable. These proof scripts create demo financial history.
 

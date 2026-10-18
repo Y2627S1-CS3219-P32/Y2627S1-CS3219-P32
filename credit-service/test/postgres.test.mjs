@@ -3,16 +3,20 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { migrateDatabase } from "../dist/db/migrate.js";
 import { pool } from "../dist/db/index.js";
-import { execute } from "../dist/credit/commands.js";
-import { userEvent } from "../dist/credit/accounts.js";
-import { balance, reservation, lookup } from "../dist/credit/queries.js";
-const create = (id, eventId = randomUUID()) =>
-  userEvent({
-    type: "user.created",
-    eventId,
-    user: { id },
-    version: 77,
-  });
+import { reserveCredits, releaseCredits, transferCredits } from "../dist/services/credits.js";
+import { initializeAccount, deactivateAccount } from "../dist/services/accounts.js";
+import { getBalance as balance, getReservation as reservation, getCreditOperation as lookup } from "../dist/services/reads.js";
+import { config } from "../dist/config.js";
+const create = (userId, requestId = randomUUID()) =>
+  initializeAccount({ requestId, userId });
+const runOperation = ({ kind, ...input }) => {
+  switch (kind) {
+    case "RESERVE": return reserveCredits(input);
+    case "RELEASE": return releaseCredits(input);
+    case "TRANSFER": return transferCredits(input);
+    default: throw new Error(`Unknown operation ${kind}`);
+  }
+};
 const command = (kind, orderId = randomUUID(), extra = {}) => ({
   kind,
   requestId: randomUUID(),
@@ -37,7 +41,7 @@ test("Repeated and concurrent migrations preserve financial history and run once
   const allocationId = randomUUID();
   await create(1, allocationId);
   const reserve = command("RESERVE");
-  await execute(reserve);
+  await runOperation(reserve);
   const snapshot = async () =>
     Promise.all(
       [
@@ -63,7 +67,7 @@ test("Repeated and concurrent migrations preserve financial history and run once
   await migrateDatabase();
   assert.deepEqual(await snapshot(), before);
   assert.deepEqual(
-    await execute(reserve),
+    await runOperation(reserve),
     await lookup(reserve.requestId).then((row) => row.result),
   );
   assert.equal(
@@ -74,12 +78,7 @@ test("Repeated and concurrent migrations preserve financial history and run once
     1,
   );
 });
-test("concurrent creation and duplicate source events grant exactly once", async () => {
-  await userEvent({
-    type: "user.updated",
-    eventId: randomUUID(),
-    user: { id: 1 },
-  });
+test("concurrent initialization and duplicate requests grant exactly once", async () => {
   const event = randomUUID();
   await Promise.all([
     create(1, event),
@@ -100,54 +99,42 @@ test("concurrent creation and duplicate source events grant exactly once", async
     assert.equal(await count(table), 1);
 });
 test("deletion before creation is permanent; provisioned deletion retains history and allows release", async () => {
-  await userEvent({
-    type: "user.deleted",
-    eventId: randomUUID(),
-    userId: 9,
-  });
+  await deactivateAccount({ requestId: randomUUID(), userId: 9 });
   await create(9);
   assert.equal(await count("credit_orders"), 0);
   const first = (
     await pool.query("SELECT deleted_at FROM credit_accounts WHERE user_id=9")
   ).rows[0].deleted_at;
-  await userEvent({
-    type: "user.deleted",
-    eventId: randomUUID(),
-    userId: 9,
-  });
+  await deactivateAccount({ requestId: randomUUID(), userId: 9 });
   assert.deepEqual(
     (await pool.query("SELECT deleted_at FROM credit_accounts WHERE user_id=9"))
       .rows[0].deleted_at,
     first,
   );
   const inactive = command("RELEASE", randomUUID(), { requesterId: 9 });
-  const rejection = await execute(inactive);
+  const rejection = await runOperation(inactive);
   assert.equal(rejection.code, "USER_INACTIVE");
   assert.equal(rejection.status, "REJECTED");
-  assert.deepEqual(await execute(inactive), rejection);
+  assert.deepEqual(await runOperation(inactive), rejection);
   assert.deepEqual((await lookup(inactive.requestId)).result, rejection);
   assert.equal(await count("credit_transactions"), 0);
   assert.equal(await count("credit_outbox"), 1);
   await create(1);
   const reserve = command("RESERVE");
-  await execute(reserve);
-  await userEvent({
-    type: "user.deleted",
-    eventId: randomUUID(),
-    userId: 1,
-  });
+  await runOperation(reserve);
+  await deactivateAccount({ requestId: randomUUID(), userId: 1 });
   await assert.rejects(balance(1), { code: "USER_INACTIVE" });
   assert.equal(
-    (await execute(command("RELEASE", reserve.orderId))).reservationState,
+    (await runOperation(command("RELEASE", reserve.orderId))).reservationState,
     "RELEASED",
   );
 });
 test("missing accounts never provision; transfer before reserve remains retryable", async () => {
   await assert.rejects(balance(1), { code: "ACCOUNT_PENDING" });
-  await assert.rejects(execute(command("RESERVE")), {
+  await assert.rejects(runOperation(command("RESERVE")), {
     code: "ACCOUNT_PENDING",
   });
-  await assert.rejects(execute(command("TRANSFER")), {
+  await assert.rejects(runOperation(command("TRANSFER")), {
     code: "RESERVATION_NOT_READY",
   });
   assert.equal(await count("credit_accounts"), 0);
@@ -157,7 +144,7 @@ test("concurrent reservations cannot overspend and rejected request replays orig
   await create(1);
   const a = command("RESERVE", randomUUID(), { amount: 700 }),
     b = command("RESERVE", randomUUID(), { amount: 700 });
-  const results = await Promise.all([execute(a), execute(b)]);
+  const results = await Promise.all([runOperation(a), runOperation(b)]);
   assert.equal(results.filter((x) => x.applied).length, 1);
   assert.equal(
     results.filter((x) => x.code === "INSUFFICIENT_CREDITS").length,
@@ -165,10 +152,10 @@ test("concurrent reservations cannot overspend and rejected request replays orig
   );
   const loser = results[0].applied ? b : a,
     winner = results[0].applied ? a : b;
-  const rejected = await execute(loser);
-  await execute(command("RELEASE", winner.orderId, { amount: 700 }));
-  assert.deepEqual(await execute(loser), rejected);
-  await assert.rejects(execute({ ...loser, amount: 1 }), {
+  const rejected = await runOperation(loser);
+  await runOperation(command("RELEASE", winner.orderId, { amount: 700 }));
+  assert.deepEqual(await runOperation(loser), rejected);
+  await assert.rejects(runOperation({ ...loser, amount: 1 }), {
     code: "IDEMPOTENCY_CONFLICT",
   });
   assert.equal((await balance(1)).reservedCredits, 0);
@@ -176,18 +163,18 @@ test("concurrent reservations cannot overspend and rejected request replays orig
 test("same-ID success replays historical result and fresh-ID repeats create no movements", async () => {
   await Promise.all([create(1), create(2)]);
   const reserve = command("RESERVE");
-  const original = await execute(reserve);
+  const original = await runOperation(reserve);
   assert.equal(
-    (await execute(command("RESERVE", reserve.orderId))).applied,
+    (await runOperation(command("RESERVE", reserve.orderId))).applied,
     false,
   );
   const transfer = command("TRANSFER", reserve.orderId);
-  assert.equal((await execute(transfer)).applied, true);
+  assert.equal((await runOperation(transfer)).applied, true);
   assert.equal(
-    (await execute(command("TRANSFER", reserve.orderId))).applied,
+    (await runOperation(command("TRANSFER", reserve.orderId))).applied,
     false,
   );
-  assert.deepEqual(await execute(reserve), original);
+  assert.deepEqual(await runOperation(reserve), original);
   assert.equal(
     (await reservation(reserve.orderId)).reservationState,
     "TRANSFERRED",
@@ -203,7 +190,7 @@ test("same-ID success replays historical result and fresh-ID repeats create no m
 test("cancellation without movement survives outbox archival and blocks delayed commands", async () => {
   await Promise.all([create(1), create(2)]);
   const release = command("RELEASE");
-  const result = await execute(release);
+  const result = await runOperation(release);
   assert.equal(result.reservationState, "CANCELLED");
   assert.equal(result.applied, false);
   await pool.query("DELETE FROM credit_outbox");
@@ -212,15 +199,15 @@ test("cancellation without movement survives outbox archival and blocks delayed 
     "CANCELLED",
   );
   assert.equal(
-    (await execute(command("RESERVE", release.orderId))).code,
+    (await runOperation(command("RESERVE", release.orderId))).code,
     "RESERVATION_CANCELLED",
   );
   assert.equal(
-    (await execute(command("TRANSFER", release.orderId))).code,
+    (await runOperation(command("TRANSFER", release.orderId))).code,
     "RESERVATION_CANCELLED",
   );
   assert.equal(
-    (await execute(command("RELEASE", release.orderId))).applied,
+    (await runOperation(command("RELEASE", release.orderId))).applied,
     false,
   );
   assert.equal(await count("credit_transactions"), 2);
@@ -231,8 +218,8 @@ test("both reserve/release arrival orders and concurrent transfer/release serial
     const id = randomUUID();
     const reserve = command("RESERVE", id),
       release = command("RELEASE", id);
-    await execute(releaseFirst ? release : reserve);
-    await execute(releaseFirst ? reserve : release);
+    await runOperation(releaseFirst ? release : reserve);
+    await runOperation(releaseFirst ? reserve : release);
     assert.equal(
       (await reservation(id)).reservationState,
       releaseFirst ? "CANCELLED" : "RELEASED",
@@ -240,10 +227,10 @@ test("both reserve/release arrival orders and concurrent transfer/release serial
   }
   for (let i = 0; i < 12; i++) {
     const id = randomUUID();
-    await execute(command("RESERVE", id, { amount: 10 }));
+    await runOperation(command("RESERVE", id, { amount: 10 }));
     const results = await Promise.all([
-      execute(command("TRANSFER", id)),
-      execute(command("RELEASE", id, { amount: 10 })),
+      runOperation(command("TRANSFER", id)),
+      runOperation(command("RELEASE", id, { amount: 10 })),
     ]);
     assert.equal(results.filter((x) => x.applied).length, 1);
   }
@@ -262,7 +249,7 @@ test("both reserve/release arrival orders and concurrent transfer/release serial
 test("failure between debit and credit rolls back every financial write", async () => {
   await Promise.all([create(1), create(2)]);
   const reserve = command("RESERVE");
-  await execute(reserve);
+  await runOperation(reserve);
   const counts = await Promise.all(
     ["credit_orders", "credit_transactions", "credit_outbox"].map(count),
   );
@@ -275,7 +262,7 @@ test("failure between debit and credit rolls back every financial write", async 
   const transfer = command("TRANSFER", reserve.orderId);
   try {
     await assert.rejects(
-      execute(transfer),
+      runOperation(transfer),
       (error) => error.cause?.message === "injected courier failure",
     );
   } finally {
@@ -290,7 +277,7 @@ test("failure between debit and credit rolls back every financial write", async 
   );
   assert.equal((await balance(1)).reservedCredits, 120);
   assert.equal((await balance(2)).totalCredits, 1000);
-  assert.equal((await execute(transfer)).applied, true);
+  assert.equal((await runOperation(transfer)).applied, true);
 });
 test("provisioning failure rolls back account, allocation, movement and outbox", async () => {
   await pool.query(
@@ -318,22 +305,21 @@ test("provisioning failure rolls back account, allocation, movement and outbox",
 });
 test("recipient overflow and self transfer reject atomically with exact safe JSON balances", async () => {
   await create(1);
-  await userEvent(
-    {
-      type: "user.created",
-      eventId: randomUUID(),
-      user: { id: 2 },
-    },
-    9007199254740991n,
-  );
+  const originalGrant = config.initialCredits;
+  try {
+    config.initialCredits = 9007199254740991n;
+    await create(2);
+  } finally {
+    config.initialCredits = originalGrant;
+  }
   const reserve = command("RESERVE");
-  await execute(reserve);
+  await runOperation(reserve);
   assert.equal(
-    (await execute(command("TRANSFER", reserve.orderId))).code,
+    (await runOperation(command("TRANSFER", reserve.orderId))).code,
     "BALANCE_LIMIT_EXCEEDED",
   );
   assert.equal(
-    (await execute(command("TRANSFER", reserve.orderId, { courierId: 1 })))
+    (await runOperation(command("TRANSFER", reserve.orderId, { courierId: 1 })))
       .code,
     "SELF_TRANSFER",
   );
@@ -346,8 +332,8 @@ test("simultaneous reserve and release settle once and history agrees with reser
   for (let i = 0; i < 20; i++) {
     const id = randomUUID();
     await Promise.all([
-      execute(command("RESERVE", id)),
-      execute(command("RELEASE", id)),
+      runOperation(command("RESERVE", id)),
+      runOperation(command("RELEASE", id)),
     ]);
     assert.ok(
       ["RELEASED", "CANCELLED"].includes(
@@ -368,34 +354,23 @@ test("simultaneous reserve and release settle once and history agrees with reser
 test("mismatched reservation participants and amounts reject without changing hold", async () => {
   await Promise.all([create(1), create(2)]);
   const reserve = command("RESERVE");
-  await execute(reserve);
+  await runOperation(reserve);
   assert.equal(
-    (await execute(command("RESERVE", reserve.orderId, { requesterId: 2 })))
+    (await runOperation(command("RESERVE", reserve.orderId, { requesterId: 2 })))
       .code,
     "RESERVATION_MISMATCH",
   );
   assert.equal(
-    (await execute(command("RELEASE", reserve.orderId, { amount: 121 }))).code,
+    (await runOperation(command("RELEASE", reserve.orderId, { amount: 121 }))).code,
     "RESERVATION_MISMATCH",
   );
   assert.equal((await balance(1)).reservedCredits, 120);
 });
-test("concurrent identical command retries store one result and reject malformed creation envelopes", async () => {
-  await assert.rejects(
-    userEvent({
-      type: "user.created",
-      eventId: randomUUID(),
-      userId: 1,
-    }),
-    { code: "INVALID_EVENT" },
-  );
-  await assert.rejects(userEvent({ type: "user.updated" }), {
-    code: "INVALID_EVENT",
-  });
+test("concurrent identical command retries store one result", async () => {
   await create(1);
   const reserve = command("RESERVE");
   const results = await Promise.all(
-    Array.from({ length: 12 }, () => execute(reserve)),
+    Array.from({ length: 12 }, () => runOperation(reserve)),
   );
   for (const result of results) assert.deepEqual(result, results[0]);
   assert.equal(await count("credit_orders"), 2);
@@ -426,9 +401,9 @@ test("mixed-case UUIDs serialize one errand and replay one request", async () =>
     "SELECT pg_advisory_xact_lock(hashtextextended('account:1',0))",
   );
   try {
-    reserveResult = execute(reserve);
+    reserveResult = runOperation(reserve);
     await waiting(1);
-    releaseResult = execute(command("RELEASE", orderId.toUpperCase()));
+    releaseResult = runOperation(command("RELEASE", orderId.toUpperCase()));
     await waiting(2);
   } finally {
     await blocker.query("ROLLBACK");
@@ -438,7 +413,7 @@ test("mixed-case UUIDs serialize one errand and replay one request", async () =>
   assert.equal(results[1].reservationState, "RELEASED");
   assert.equal((await balance(1)).reservedCredits, 0);
   assert.deepEqual(
-    await execute({
+    await runOperation({
       ...reserve,
       requestId: reserve.requestId.toUpperCase(),
       orderId: orderId.toUpperCase(),
@@ -450,14 +425,14 @@ test("mixed-case UUIDs serialize one errand and replay one request", async () =>
 test("missing transfer recipient retries; deleted recipient rejects durably without moving credit", async () => {
   await create(1);
   const reserve = command("RESERVE");
-  await execute(reserve);
+  await runOperation(reserve);
   const transfer = command("TRANSFER", reserve.orderId);
-  await assert.rejects(execute(transfer), { code: "ACCOUNT_PENDING" });
+  await assert.rejects(runOperation(transfer), { code: "ACCOUNT_PENDING" });
   await assert.rejects(lookup(transfer.requestId), {
     code: "OPERATION_NOT_FOUND",
   });
-  await userEvent({ type: "user.deleted", eventId: randomUUID(), userId: 2 });
-  const rejected = await execute(transfer);
+  await deactivateAccount({ requestId: randomUUID(), userId: 2 });
+  const rejected = await runOperation(transfer);
   assert.equal(rejected.status, "REJECTED");
   assert.equal(rejected.code, "USER_INACTIVE");
   assert.equal(rejected.applied, false);
@@ -467,7 +442,7 @@ test("missing transfer recipient retries; deleted recipient rejects durably with
     requesterReserved: 0,
     courierTotal: 0,
   });
-  assert.deepEqual(await execute(transfer), rejected);
+  assert.deepEqual(await runOperation(transfer), rejected);
   assert.deepEqual(await balance(1), {
     totalCredits: 1000,
     reservedCredits: 120,
@@ -475,4 +450,115 @@ test("missing transfer recipient retries; deleted recipient rejects durably with
   });
   assert.equal(await count("credit_transactions"), 2);
   assert.equal(await count("credit_outbox"), 3);
+});
+
+for (const [initial, kind, code, next, deltas] of [
+  ["NONE", "RESERVE", "OK", "HELD", [0, 120, 0]],
+  ["NONE", "RELEASE", "OK", "CANCELLED"],
+  ["NONE", "TRANSFER", "RESERVATION_NOT_READY", "NONE"],
+  ["HELD", "RESERVE", "OK", "HELD"],
+  ["HELD", "RELEASE", "OK", "RELEASED", [0, -120, 0]],
+  ["HELD", "TRANSFER", "OK", "TRANSFERRED", [-120, -120, 120]],
+  ["CANCELLED", "RESERVE", "RESERVATION_CANCELLED", "CANCELLED"],
+  ["CANCELLED", "RELEASE", "OK", "CANCELLED"],
+  ["CANCELLED", "TRANSFER", "RESERVATION_CANCELLED", "CANCELLED"],
+  ["RELEASED", "RESERVE", "RESERVATION_SETTLED", "RELEASED"],
+  ["RELEASED", "RELEASE", "OK", "RELEASED"],
+  ["RELEASED", "TRANSFER", "RESERVATION_SETTLED", "RELEASED"],
+  ["TRANSFERRED", "RESERVE", "RESERVATION_SETTLED", "TRANSFERRED"],
+  ["TRANSFERRED", "RELEASE", "RESERVATION_SETTLED", "TRANSFERRED"],
+  ["TRANSFERRED", "TRANSFER", "OK", "TRANSFERRED"],
+]) {
+  test(`${kind} against ${initial} preserves its outcome and financial effects`, async () => {
+    await Promise.all([create(1), create(2)]);
+    const orderId = randomUUID();
+    if (["HELD", "RELEASED", "TRANSFERRED"].includes(initial))
+      await runOperation(command("RESERVE", orderId));
+    if (["CANCELLED", "RELEASED"].includes(initial))
+      await runOperation(command("RELEASE", orderId));
+    if (initial === "TRANSFERRED")
+      await runOperation(command("TRANSFER", orderId));
+    const before = await Promise.all([balance(1), balance(2)]);
+    const movements = await count("credit_transactions");
+    const request = command(kind, orderId);
+    if (code === "RESERVATION_NOT_READY") {
+      await assert.rejects(runOperation(request), { code });
+      await assert.rejects(lookup(request.requestId), {
+        code: "OPERATION_NOT_FOUND",
+      });
+      await assert.rejects(reservation(orderId), {
+        code: "RESERVATION_NOT_FOUND",
+      });
+    } else {
+      const result = await runOperation(request);
+      assert.equal(result.code, code);
+      assert.equal(result.status, code === "OK" ? "SUCCEEDED" : "REJECTED");
+      assert.equal(result.httpStatus, code === "OK" ? 200 : 409);
+      assert.equal(result.reservationState, next);
+      assert.equal(result.applied, Boolean(deltas));
+      assert.equal(result.transactionIds.length, deltas ? 1 : 0);
+      assert.deepEqual(result.deltas, {
+        requesterTotal: deltas?.[0] ?? 0,
+        requesterReserved: deltas?.[1] ?? 0,
+        courierTotal: deltas?.[2] ?? 0,
+      });
+      assert.deepEqual((await lookup(request.requestId)).result, result);
+      assert.deepEqual(await runOperation(request), result);
+      assert.equal((await reservation(orderId)).reservationState, next);
+      const { rows: entries } = await pool.query(
+        "SELECT debit_user_id, credit_user_id, debit_bucket, credit_bucket, amount FROM credit_transactions WHERE credit_order_request_id=$1",
+        [request.requestId],
+      );
+      const [debit, credit, recipient] = {
+        RESERVE: ["AVAILABLE", "RESERVED", 1],
+        RELEASE: ["RESERVED", "AVAILABLE", 1],
+        TRANSFER: ["RESERVED", "AVAILABLE", 2],
+      }[kind];
+      assert.deepEqual(entries, deltas ? [{
+        debit_user_id: 1,
+        credit_user_id: recipient,
+        debit_bucket: debit,
+        credit_bucket: credit,
+        amount: "120",
+      }] : []);
+      const { rows: events } = await pool.query(
+        "SELECT payload FROM credit_outbox WHERE request_id=$1",
+        [request.requestId],
+      );
+      assert.deepEqual(events[0].payload.data, result);
+    }
+    const [requester, courier] = await Promise.all([balance(1), balance(2)]);
+    assert.equal(requester.totalCredits, before[0].totalCredits + (deltas?.[0] ?? 0));
+    assert.equal(requester.reservedCredits, before[0].reservedCredits + (deltas?.[1] ?? 0));
+    assert.equal(courier.totalCredits, before[1].totalCredits + (deltas?.[2] ?? 0));
+    assert.equal(await count("credit_transactions"), movements + (deltas ? 1 : 0));
+  });
+}
+
+test("account and participant guards precede settlement checks while historical replay survives deletion", async () => {
+  await Promise.all([create(1), create(2)]);
+  const cancelled = command("RELEASE");
+  await runOperation(cancelled);
+  const reserve = command("RESERVE");
+  const original = await runOperation(reserve);
+  await runOperation(command("TRANSFER", reserve.orderId));
+  for (const orderId of [cancelled.orderId, reserve.orderId]) {
+    const missingCourier = command("TRANSFER", orderId, { courierId: 3 });
+    await assert.rejects(runOperation(missingCourier), { code: "ACCOUNT_PENDING" });
+    await assert.rejects(lookup(missingCourier.requestId), {
+      code: "OPERATION_NOT_FOUND",
+    });
+  }
+  assert.equal(
+    (await runOperation(command("TRANSFER", cancelled.orderId, { courierId: 1 }))).code,
+    "SELF_TRANSFER",
+  );
+  await deactivateAccount({ requestId: randomUUID(), userId: 2 });
+  const inactive = command("RESERVE", cancelled.orderId, { requesterId: 2 });
+  const rejected = await runOperation(inactive);
+  assert.equal(rejected.code, "USER_INACTIVE");
+  assert.deepEqual((await lookup(inactive.requestId)).result, rejected);
+  await deactivateAccount({ requestId: randomUUID(), userId: 1 });
+  assert.deepEqual(await runOperation(reserve), original);
+  assert.equal((await reservation(reserve.orderId)).reservationState, "TRANSFERRED");
 });
