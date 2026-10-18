@@ -202,7 +202,7 @@ For user.deleted, take the same account-key lock. Set deleted_at if not already 
 
 These rules replace lifecycle counters because account creation is one-time and deletion is irreversible. They do not support undelete or ID reuse. Concurrent creation/deletion serialize by user ID. Duplicate deletion changes nothing. Acknowledge after commit; transient processing/database failure returns an error for Pub/Sub retry.
 
-Create the subscription before registration traffic and before backfill. Existing users need retained creation-event replay or a trusted current-user export through a Credit-owned offline tool invoking the same handler with stable source IDs. The importer never clears deletion tombstones. No public arbitrary-user allocation endpoint is provided.
+Create the subscription before registration traffic. Credit provisions accounts through user.created events and never clears deletion tombstones. No public arbitrary-user allocation endpoint is provided.
 
 ### Release before reserve
 
@@ -365,7 +365,7 @@ D3 evidence includes balances, command outcomes, order/ledger rows, duplicate co
 |---|---|
 | Can a rejected pending errand try again after its balance changes? | Same requestId replays rejection. A new request is a new attempt, but errand eligibility is the order owner's policy. |
 | What are the reversal limits? | Core RELEASE releases the full hold. Partial release or reversing a completed transfer would need additional policy; neither is assumed. |
-| What remains for initial allocation? | Confirm the grant amount and prepare existing-user backfill. Authenticated user.created delivery is the provisioning source; Credit owns retries through its durable subscription. |
+| What remains for initial allocation? | Confirm the grant amount and establish the subscription before registration traffic. Authenticated user.created delivery is the provisioning source; Credit owns retries through its durable subscription. |
 | What remains to confirm in the Credit contract? | Command publisher and push identity permissions, and whether to replace the existing JSON result with structured outcome fields. Keep result until that decision is made. Whole-credit JSON numbers and safe-integer balance bounds are selected. Integer user IDs, UUID errand/request IDs, Pub/Sub, and Order-style event field mapping are selected. |
 
 CANCELLED is derived from a successful RELEASE with no reserve movement; no reservation record is needed. Other services and their recovery workflows are outside this implementation.

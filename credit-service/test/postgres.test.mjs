@@ -33,7 +33,7 @@ beforeEach(async () => {
 after(async () => {
   await pool.end();
 });
-test("Drizzle adopts existing tables without changing financial history and migrates once", async () => {
+test("Repeated and concurrent migrations preserve financial history and run once", async () => {
   const allocationId = randomUUID();
   await create(1, allocationId);
   const reserve = command("RESERVE");
@@ -59,7 +59,6 @@ test("Drizzle adopts existing tables without changing financial history and migr
   assert.equal(allocation.initial_grant, 1000);
   assert.equal(allocation.request_id, allocationId);
   assert.doesNotThrow(() => JSON.stringify(allocation));
-  await pool.query("DELETE FROM drizzle.__drizzle_migrations");
   await Promise.all([migrateDatabase(), migrateDatabase()]);
   await migrateDatabase();
   assert.deepEqual(await snapshot(), before);

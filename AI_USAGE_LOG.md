@@ -1097,3 +1097,19 @@ for context, frontend-service is being set up. The frontend’s supplier screen 
   outcomes, prerequisite retries, cancellation, authentication, broker outage,
   and outbox recovery. Independent review found no behavioral regressions.
 - Author review: Pending.
+
+## 2026-10-18: Remove predeployment compatibility tooling
+
+- Tool: Codex (GPT-6). Mode: Cleanup.
+- Exact prompt: `Remove unnecessary backfill and database-adoption support because Credit has not been deployed. Assess whether the credit module should be named core.`
+- Key response: Removed the offline user backfill tool and npm command. Replaced
+  the initial SQL with Drizzle-generated schema creation and removed the test step
+  that erased the migration journal to simulate database adoption. Updated the
+  README, PRD, and technical design. Retained the credit domain name and normal
+  migration tracking and serialization.
+- Affected files: Credit backfill entry point, npm scripts, initial migration,
+  migration test, README, design documents, and this log.
+- Verification: Generated the initial migration from the current schema and
+  confirmed that its snapshot matches the tracked snapshot. Reviewed callers
+  and the diff. Tests were not run for this cleanup.
+- Author review: Pending.

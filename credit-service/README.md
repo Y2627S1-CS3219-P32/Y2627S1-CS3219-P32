@@ -6,7 +6,7 @@ Credit owns four PostgreSQL tables. Commands commit the saved JSON result, movem
 
 `src/credit/commands.ts` coordinates the atomic transaction and contains private reserve, release, and transfer decision handlers. `constants.ts` defines shared command kinds, message types, and reservation states. `accounts.ts` handles account locks and user lifecycle events. `queries.ts` reads balances, operations, and reservation history. `orders.ts` stores operation results. `types.ts` defines Credit types and shared value helpers.
 
-`src/events/` owns outbox envelopes, publishing, Pub/Sub provisioning, and publisher health. `src/db/schema.ts` defines the four Drizzle tables and their constraints. `src/db/` owns the PostgreSQL pool, Drizzle transactions, locks, and migration. The HTTP adapter, authentication, configuration, API startup, and backfill entry point stay at the source root.
+`src/events/` owns outbox envelopes, publishing, Pub/Sub provisioning, and publisher health. `src/db/schema.ts` defines the four Drizzle tables and their constraints. `src/db/` owns the PostgreSQL pool, Drizzle transactions, locks, and migration. The HTTP adapter, authentication, configuration, and API startup stay at the source root.
 
 ## Local startup
 
@@ -35,7 +35,7 @@ npm run build
 npm run db:migrate
 ```
 
-Commit the generated SQL and `migrations/meta/` together. The first migration retains the original idempotent table definitions so existing Credit databases can adopt Drizzle tracking without recreating financial data. Subsequent migrations run once through the Drizzle migration journal. The migration runner serializes concurrent startup jobs with a PostgreSQL advisory lock.
+Commit the generated SQL and `migrations/meta/` together. The initial migration creates the Credit schema. Each migration runs once through the Drizzle migration journal. The migration runner serializes concurrent startup jobs with a PostgreSQL advisory lock.
 
 ## Configuration
 
@@ -43,11 +43,11 @@ Set `DATABASE_URL`, `JWT_SECRET`, and `INITIAL_CREDITS` (default 1000). Set `POR
 
 Cloud internal callers require `INTERNAL_AUDIENCE` and comma-separated `INTERNAL_INVOKER_EMAILS`. Set `PUBSUB_PUSH_SERVICE_ACCOUNT` to the dedicated push identity. Only that identity may ingest user events and credit commands. Grant it Pub/Sub token-creation and service invocation permissions in deployment. Local `INTERNAL_SHARED_SECRET` works only when `PUBSUB_EMULATOR_HOST` is set. Internal reads accept `x-internal-secret`. Local push subscriptions use a token query parameter.
 
-Set `PUBSUB_PROJECT_ID` (default foc-local), `PUBSUB_EMULATOR_HOST`, and `PUBSUB_PUSH_BASE_URL`. Topic defaults are `USER_EVENTS_TOPIC=user-events`, `CREDIT_COMMANDS_TOPIC=credit-commands`, and `CREDIT_EVENTS_TOPIC=credit-events`. Subscription defaults are `USER_EVENTS_SUBSCRIPTION=credit-service-user-events` and `CREDIT_COMMANDS_SUBSCRIPTION=credit-service-commands`. Provisioning creates both subscriptions with seven-day retention and retry backoff. Repeated provisioning updates push configuration without replacing subscriptions. In Cloud, configure a dead-letter topic, grant forwarding permissions to the Pub/Sub service agent, and alert on undelivered messages and oldest unacknowledged age. Repair failed events before retention expires. The emulator is development infrastructure, not an existing-user recovery store.
+Set `PUBSUB_PROJECT_ID` (default foc-local), `PUBSUB_EMULATOR_HOST`, and `PUBSUB_PUSH_BASE_URL`. Topic defaults are `USER_EVENTS_TOPIC=user-events`, `CREDIT_COMMANDS_TOPIC=credit-commands`, and `CREDIT_EVENTS_TOPIC=credit-events`. Subscription defaults are `USER_EVENTS_SUBSCRIPTION=credit-service-user-events` and `CREDIT_COMMANDS_SUBSCRIPTION=credit-service-commands`. Provisioning creates both subscriptions with seven-day retention and retry backoff. Repeated provisioning updates push configuration without replacing subscriptions. In Cloud, configure a dead-letter topic, grant forwarding permissions to the Pub/Sub service agent, and alert on undelivered messages and oldest unacknowledged age. Repair failed events before retention expires. The emulator is development infrastructure.
 
 ## Operations
 
-`POST /internal/pubsub/user-events` accepts the standard Pub/Sub wrapper containing base64 JSON. Creation uses `{eventId,type:"user.created",user:{id:1}}`. Deletion uses `{eventId,type:"user.deleted",userId:1}`. Upstream version fields are ignored. Trusted backfill invokes the same handler with stable source event IDs and cannot reactivate deleted accounts. Run `npm run backfill -- trusted-user-created.jsonl` against a trusted JSONL export of user.created envelopes. Establish the durable subscription before backfill and live traffic. The importer accepts creation events only and preserves tombstones.
+`POST /internal/pubsub/user-events` accepts the standard Pub/Sub wrapper containing base64 JSON. Creation uses `{eventId,type:"user.created",user:{id:1}}`. Deletion uses `{eventId,type:"user.deleted",userId:1}`. Upstream version fields are ignored. Establish the durable subscription before registration traffic. Creation events provision new accounts; delayed creation events cannot reactivate deleted accounts.
 
 `GET /api/v1/credits/me` returns `totalCredits`, `reservedCredits`, and `availableCredits` for the bearer JWT owner.
 

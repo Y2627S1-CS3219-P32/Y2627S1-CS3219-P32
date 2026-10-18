@@ -82,7 +82,7 @@ User IDs follow User Service’s positive integer IDs; Credit does not generate 
 | C8 | Resolve uncertain credit outcomes | After uncertain delivery, the publisher can query or redeliver the command and recover its committed result. Events eventually expose committed outcomes after a broker outage. |
 | C9 | Publish credit results reliably | Every committed result is saved in the transactional outbox with its business effects and published to the credit event queue after commit. A publisher restart may repeat delivery; the consumer recognizes the stable event ID. |
 | C10 | Protect the closed economy | No purchase, withdrawal, cash exchange, arbitrary balance-edit, or general peer-to-peer transfer endpoint. Transfer uses the amount in the reservation. |
-| C11 | Recover delayed initial allocation | Successful registration remains valid while Credit is unavailable. Credit’s durable subscription retries uncommitted creation events; meanwhile reads and commands needing an absent account return retryable ACCOUNT_PENDING. Existing users receive a one-time trusted backfill through the same provisioning handler. |
+| C11 | Recover delayed initial allocation | Successful registration remains valid while Credit is unavailable. Credit’s durable subscription retries uncommitted creation events; meanwhile reads and commands needing an absent account return retryable ACCOUNT_PENDING. |
 | C12 | Preserve movement evidence | Each balance-changing credit order links to its committed transaction. Rejections and successful no-ops have no movement; compensation creates new evidence rather than rewriting history. |
 | C13 | Handle user deletion safely | Store deletion on the account, inserting a zero-balance tombstone if creation has not arrived; delayed creation cannot allocate to it. Retain balances and ledger history, deny deleted-user balance access and new reserve/transfer, and allow existing holds to be released. |
 
@@ -96,7 +96,7 @@ User Service acknowledges registration after Pub/Sub accepts `user.created`; its
 
 Credit provisions the account and initial grant in one transaction and acknowledges the event after commit. If processing fails, Pub/Sub retries. Duplicate creation events never issue additional credits. No balance read, reserve, transfer, JWT, or supplied user ID creates an account. Pending reads and commands return 503 ACCOUNT_PENDING and may retry once the creation event has been processed.
 
-Credit stores permanent deletion state on the account without version counters. A deletion arriving first creates a zero-balance deleted account; later creation cannot allocate or reactivate it. Deletion after creation preserves the grant and financial history. Profile updates do not provision or regrant. This assumes user IDs are never reused and undelete is unsupported. For existing users, establish the subscription before live traffic/backfill, then replay retained creation events or import a trusted current-user export through the same Credit-owned handler.
+Credit stores permanent deletion state on the account without version counters. A deletion arriving first creates a zero-balance deleted account; later creation cannot allocate or reactivate it. Deletion after creation preserves the grant and financial history. Profile updates do not provision or regrant. This assumes user IDs are never reused and undelete is unsupported. Establish the durable subscription before registration traffic.
 
 The suggested 1,000-credit default permits ten 100-credit example errands before any earnings. This is a product assumption, not a prescribed reward price. The team must agree on reward sizing and the allocation together.
 
@@ -149,7 +149,7 @@ The `command:publish` CLI can validate the contract before Order Service is read
 
 1. Use the Credit-owned flat command contracts in the TD for integration. Requester and amount are read from the successful reserve history, not supplied by the transfer caller.
 2. Confirm command-topic publisher IAM and Pub/Sub delivery permissions. User lifecycle events supply requester/courier identity state. Pub/Sub and the Order-style event mapping are selected; see the TD for Credit event types.
-3. Confirm the initial allocation and reward units, and obtain the existing-user backfill source. Credit owns user-event retry handling; lazy initialisation is removed.
+3. Confirm the initial allocation and reward units. Credit owns user-event retry handling.
 4. External order states and stalled-saga recovery belong to other owners and are deferred; Credit supplies durable outcomes and lookup.
 5. Decide whether a rejected pending errand can make a new reserve attempt after its balance changes.
 6. Full release and CANCELLED-before-reserve handling are selected. Partial release and reversal of completed transfers remain outside scope; original reserve evidence is derived from command/movement history when present.

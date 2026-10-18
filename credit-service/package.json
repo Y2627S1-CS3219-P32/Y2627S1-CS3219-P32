@@ -13,7 +13,6 @@
     "test": "npm run build && node --test test/*.test.mjs",
     "pubsub:provision": "node dist/events/provision.js",
     "test:pubsub": "npm run build && node test/pubsub.mjs",
-    "backfill": "node dist/backfill.js",
     "db:generate": "drizzle-kit generate"
   },
   "dependencies": {
