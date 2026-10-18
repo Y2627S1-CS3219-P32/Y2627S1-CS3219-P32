@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import pg from "pg";
+import { PubSub } from "@google-cloud/pubsub";
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
+const pubsub = new PubSub({ projectId: process.env.PUBSUB_PROJECT_ID });
 const userId = Number(process.env.CREDIT_PROOF_USER_ID);
 const mode = process.argv[2];
 try {
@@ -13,25 +15,34 @@ try {
       [userId],
     );
     assert.ok(reserve);
-    const response = await fetch(
-      `http://127.0.0.1:${process.env.PORT ?? 3000}/internal/v1/credit-reservations/${reserve.order_id}/release`,
-      {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "x-internal-secret": process.env.INTERNAL_SHARED_SECRET,
-        },
-        body: JSON.stringify({
-          requestId: randomUUID(),
-          correlationId: randomUUID(),
-          requesterId: userId,
-          amount: reserve.request_payload.amount,
-          reason: "broker outage proof",
-        }),
-      },
-    );
-    assert.equal(response.status, 200);
-    assert.equal((await response.json()).applied, true);
+    const command = {
+      type: "credit.release",
+      requestId: randomUUID(),
+      correlationId: randomUUID(),
+      orderId: reserve.order_id,
+      requesterId: userId,
+      amount: reserve.request_payload.amount,
+      reason: "broker outage proof",
+    };
+    await pubsub
+      .topic(process.env.CREDIT_COMMANDS_TOPIC ?? "credit-commands")
+      .publishMessage({
+        json: command,
+        orderingKey: command.orderId,
+        attributes: { type: command.type },
+      });
+    let result;
+    for (let attempt = 0; attempt < 100; attempt++) {
+      result = (
+        await pool.query(
+          "SELECT result FROM credit_orders WHERE request_id=$1",
+          [command.requestId],
+        )
+      ).rows[0]?.result;
+      if (result) break;
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    }
+    assert.equal(result?.applied, true);
   } else assert.ok(["pending", "published"].includes(mode));
   const {
     rows: [row],
@@ -52,5 +63,6 @@ try {
     }),
   );
 } finally {
+  await pubsub.close();
   await pool.end();
 }

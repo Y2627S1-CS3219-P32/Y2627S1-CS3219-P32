@@ -3,52 +3,66 @@ import { config } from "../config.js";
 export async function provision() {
   const pubsub = new PubSub({ projectId: config.projectId });
   try {
-    for (const name of [config.userTopic, config.creditTopic]) {
+    for (const name of [
+      config.userTopic,
+      config.creditTopic,
+      config.commandTopic,
+    ]) {
       try {
         await pubsub.createTopic(name);
       } catch (error) {
         if ((error as { code?: number }).code !== 6) throw error;
       }
     }
-    const endpoint = new URL(
-      "/internal/pubsub/user-events",
-      config.pushBaseUrl,
-    );
-    if (config.internalSharedSecret)
-      endpoint.searchParams.set("token", config.internalSharedSecret);
-    const pushConfig = {
-      pushEndpoint: endpoint.toString(),
-      ...(config.pushInvokerEmail
-        ? {
-            oidcToken: {
-              serviceAccountEmail: config.pushInvokerEmail,
-              audience: config.internalAudience,
-            },
-          }
-        : {}),
-    };
-    const subscription = pubsub.subscription(config.subscription);
-    if (!(await subscription.exists())[0]) {
-      await pubsub
-        .topic(config.userTopic)
-        .createSubscription(config.subscription, {
-          pushConfig,
-          ackDeadlineSeconds: 30,
-          messageRetentionDuration: { seconds: 604800 },
-          retryPolicy: {
-            minimumBackoff: { seconds: 1 },
-            maximumBackoff: { seconds: 30 },
-          },
-        });
-    } else await subscription.setMetadata({ pushConfig });
-    console.log(
-      JSON.stringify({
+    for (const descriptor of [
+      {
         topic: config.userTopic,
         subscription: config.subscription,
-        pushEndpoint: endpoint.origin + endpoint.pathname,
-        status: "ready",
-      }),
-    );
+        path: "/internal/pubsub/user-events",
+      },
+      {
+        topic: config.commandTopic,
+        subscription: config.commandSubscription,
+        path: "/internal/pubsub/credit-commands",
+      },
+    ]) {
+      const endpoint = new URL(descriptor.path, config.pushBaseUrl);
+      if (config.internalSharedSecret)
+        endpoint.searchParams.set("token", config.internalSharedSecret);
+      const pushConfig = {
+        pushEndpoint: endpoint.toString(),
+        ...(config.pushInvokerEmail
+          ? {
+              oidcToken: {
+                serviceAccountEmail: config.pushInvokerEmail,
+                audience: config.internalAudience,
+              },
+            }
+          : {}),
+      };
+      const subscription = pubsub.subscription(descriptor.subscription);
+      if (!(await subscription.exists())[0]) {
+        await pubsub
+          .topic(descriptor.topic)
+          .createSubscription(descriptor.subscription, {
+            pushConfig,
+            ackDeadlineSeconds: 30,
+            messageRetentionDuration: { seconds: 604800 },
+            retryPolicy: {
+              minimumBackoff: { seconds: 1 },
+              maximumBackoff: { seconds: 30 },
+            },
+          });
+      } else await subscription.setMetadata({ pushConfig });
+      console.log(
+        JSON.stringify({
+          topic: descriptor.topic,
+          subscription: descriptor.subscription,
+          pushEndpoint: endpoint.origin + endpoint.pathname,
+          status: "ready",
+        }),
+      );
+    }
   } finally {
     await pubsub.close();
   }

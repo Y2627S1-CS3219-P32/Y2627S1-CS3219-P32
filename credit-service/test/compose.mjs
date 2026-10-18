@@ -41,22 +41,34 @@ try {
       await new Promise((resolve) => setTimeout(resolve, 200));
     }
     assert.ok(ready, "Pub/Sub provisioned Compose account");
-    const response = await fetch(`${base}/internal/v1/credit-reservations`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-internal-secret": process.env.INTERNAL_SHARED_SECRET,
-      },
-      body: JSON.stringify({
-        requestId: randomUUID(),
-        correlationId: randomUUID(),
-        orderId: randomUUID(),
-        requesterId: userId,
-        amount: 120,
-      }),
-    });
-    assert.equal(response.status, 200);
-    assert.equal((await response.json()).applied, true);
+    const requestId = randomUUID();
+    const command = {
+      type: "credit.reserve",
+      requestId,
+      correlationId: randomUUID(),
+      orderId: randomUUID(),
+      requesterId: userId,
+      amount: 120,
+    };
+    await pubsub
+      .topic(process.env.CREDIT_COMMANDS_TOPIC ?? "credit-commands")
+      .publishMessage({
+        json: command,
+        orderingKey: command.orderId,
+        attributes: { type: command.type },
+      });
+    let result;
+    for (let attempt = 0; attempt < 100; attempt++) {
+      result = (
+        await pool.query(
+          "SELECT result FROM credit_orders WHERE request_id=$1",
+          [requestId],
+        )
+      ).rows[0]?.result;
+      if (result) break;
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    }
+    assert.equal(result?.applied, true);
   } else assert.equal(mode, "verify");
   const actual = await balance();
   assert.equal(actual.status, 200);

@@ -5,13 +5,13 @@ Author review: Pending. -->
 
 Draft for D3, updated 18 October 2026. Implementation owner: credit-service developer. Companion: [Technical design](credit-service-tech-design.md).
 
-The Credit Service manages FoC credits so students can request errands, earn credits by delivering them, and recover reserved credits when an errand fails. Its balances must remain correct under concurrent requests, retries, and service failures. Build and verify Credit independently through its authenticated API and Pub/Sub outcomes. Orchestrator implementation and changes to other services are deferred.
+The Credit Service manages FoC credits so students can request errands, earn credits by delivering them, and recover reserved credits when an errand fails. Its balances must remain correct under concurrent requests, retries, and service failures. Build and verify Credit independently through authenticated balance reads, Pub/Sub commands, and Pub/Sub outcomes. Orchestrator implementation and changes to other services are deferred.
 
 ## Scope and decisions
 
-The team has selected saga orchestration: the orchestrator decides which credit operation to request and how the order proceeds. The current implementation covers only the Credit Service, its database, APIs, user-event consumer, result events, publisher worker, tests, and container setup. Order lifecycle logic, the saga orchestrator, and its event consumer belong to other team members.
+The team has selected saga orchestration: the orchestrator decides which credit operation to request and how the order proceeds. The current implementation covers only the Credit Service, its database, read APIs, user-event and command consumers, result events, publisher worker, tests, and container setup. Order lifecycle logic, the saga orchestrator, and its event consumer belong to other team members.
 
-Credit executes each received command in one database transaction and publishes its outcome after commit. The saga advances by consuming credit events. Whether its caller waits for the HTTP response does not change credit execution. There is no persisted PENDING CreditOrder or background command-execution queue in the agreed design.
+Credit executes each received command in one database transaction and publishes its outcome after commit. The saga advances by consuming credit events. Reserve, release, and transfer arrive on `credit-commands` through Credit's durable subscription. Credit owns their contract. The future saga publishes these commands and consumes `credit-events`. There is no persisted PENDING CreditOrder or separate database command queue.
 
 The selected four tables are credit_accounts, credit_orders, credit_transactions, and credit_outbox. Accounts hold balances and permanent deletion state. Current per-errand credit state is derived from immutable CreditOrders and movements. Outbox events commit with the credit result and are published afterward with retries.
 
@@ -28,14 +28,14 @@ The selected four tables are credit_accounts, credit_orders, credit_transactions
 | Version removal | No lifecycle, reservation, or event version fields; permanent deletion, unique identities, request locks, and per-errand locks protect correctness |
 | Saved command result | Keep the existing JSON result; structured outcome replacement remains undecided |
 | Account storage and movement logic | One account row per user, two logical buckets; shared internal movement logic with business-specific handlers |
-| Google Pub/Sub for credit events | Selected to match existing services; reuse the local emulator |
+| Google Pub/Sub for commands and credit outcomes | Selected; `credit-commands` and `credit-events` reuse the local emulator |
 | User IDs and errand references | Positive integer user IDs; UUID errand IDs exposed as orderId |
 | Shared event field mapping | Follow Order: eventId, type, orderId, occurredAt; type/orderId Pub/Sub attributes |
 | Credit amounts | Whole-credit JSON numbers; command reward limit matches Order; balances stay within JavaScript’s safe integer range |
 | Operation lookup | Explicitly authorized internal callers; no per-originating-service ownership rule |
-| Credit receives commands from the orchestrator rather than independently reacting to order lifecycle events | Proposed contract consistent with orchestration |
+| Credit receives explicit commands rather than independently reacting to order lifecycle events | Selected; Credit defines `credit.reserve`, `credit.release`, and `credit.transfer` for future saga publishers |
 
-Credit’s asynchronous responsibilities are consuming user lifecycle events and reliably publishing outbox outcomes to Pub/Sub. Credit-outcome consumers and saga progression are deferred team integrations; Credit-only verification does not claim to demonstrate the complete team workflow.
+Credit’s asynchronous responsibilities are consuming user lifecycle events and credit commands, and reliably publishing outbox outcomes to Pub/Sub. Credit-outcome consumers and saga progression are deferred team integrations; Credit-only verification does not claim to demonstrate the complete team workflow.
 
 ## Credit domain model
 
@@ -78,15 +78,15 @@ User IDs follow User Service’s positive integer IDs; Credit does not generate 
 | C4 | Reject insufficient available credits | A request exceeding available credits makes no reservation movement and records a definitive rejection. Concurrent reservations cannot spend the same available credits. |
 | C5 | Transfer an existing reservation to the assigned courier | Transfer specifies orderId and courierId, not an amount; Credit reads the requester and amount from the successful reserve movement and command history. Completing the 120-credit reservation changes requester total to 880 and reserved to 0, and increases courier total by 120 in one transaction. |
 | C6 | Release credits on cancellation or expiry | Releasing a HELD 120-credit reservation restores requester available credits to 1,000 without increasing total. Before reserve, persist a successful RELEASE whose derived state is CANCELLED without moving credits; a later reserve/transfer rejects. Matching repeats never move credits twice. |
-| C7 | Handle repeated requests safely | Same request ID and payload return the existing CreditOrder result. Changed fields with the same ID conflict. Per-errand locking and derived command history prevent duplicate financial effects even with fresh request IDs; matching repeats may succeed as no-ops. |
-| C8 | Resolve uncertain credit outcomes | After a lost response, the orchestrator can query or retry the operation and recover its committed result. Events eventually expose committed outcomes after a broker outage. |
+| C7 | Handle repeated requests safely | The same request ID and complete envelope, including correlationId, reuse the existing CreditOrder result and outcome event. Changed fields with the same ID conflict. Per-errand locking and derived command history prevent duplicate financial effects even with fresh request IDs; matching repeats may succeed as no-ops. |
+| C8 | Resolve uncertain credit outcomes | After uncertain delivery, the publisher can query or redeliver the command and recover its committed result. Events eventually expose committed outcomes after a broker outage. |
 | C9 | Publish credit results reliably | Every committed result is saved in the transactional outbox with its business effects and published to the credit event queue after commit. A publisher restart may repeat delivery; the consumer recognizes the stable event ID. |
 | C10 | Protect the closed economy | No purchase, withdrawal, cash exchange, arbitrary balance-edit, or general peer-to-peer transfer endpoint. Transfer uses the amount in the reservation. |
 | C11 | Recover delayed initial allocation | Successful registration remains valid while Credit is unavailable. Credit’s durable subscription retries uncommitted creation events; meanwhile reads and commands needing an absent account return retryable ACCOUNT_PENDING. Existing users receive a one-time trusted backfill through the same provisioning handler. |
 | C12 | Preserve movement evidence | Each balance-changing credit order links to its committed transaction. Rejections and successful no-ops have no movement; compensation creates new evidence rather than rewriting history. |
 | C13 | Handle user deletion safely | Store deletion on the account, inserting a zero-balance tombstone if creation has not arrived; delayed creation cannot allocate to it. Retain balances and ledger history, deny deleted-user balance access and new reserve/transfer, and allow existing holds to be released. |
 
-The Credit Service verifies that an internal caller is authorized. The order owner verifies that an order may be completed or cancelled and that the courier is assigned to it. Credit must still reject self-transfer, mismatched requester or amount, and contradictory reservation transitions.
+The Credit Service authenticates Pub/Sub delivery. Topic publisher IAM controls who can submit credit commands. The order owner verifies that an order may be completed or cancelled and that the courier is assigned to it. Credit must still reject self-transfer, mismatched requester or amount, and contradictory reservation transitions.
 
 ## Credit behavior at caller boundaries
 
@@ -100,17 +100,23 @@ Credit stores permanent deletion state on the account without version counters. 
 
 The suggested 1,000-credit default permits ten 100-credit example errands before any earnings. This is a product assumption, not a prescribed reward price. The team must agree on reward sizing and the allocation together.
 
+### Command delivery
+
+Every command carries UUID `requestId`, `correlationId`, and `orderId`. Reserve and release carry requesterId and amount. Release also carries a nonblank reason of at most 200 characters. Transfer carries courierId. User IDs and amounts are positive integers at most 2147483647. Preserve the entire envelope on retry.
+
+Credit acknowledges push delivery with 204 after atomically committing a final result and its outbox event, including business rejection. Missing accounts, a transfer awaiting reserve, and temporary failures remain unacknowledged for retry. Invalid or conflicting messages need repair or deployment-configured dead-letter handling. Broker acceptance does not mean business completion.
+
 ### Placing an errand
 
-An authorized caller supplies `requestId`, `correlationId`, `orderId`, integer `requesterId`, and a positive whole-credit `amount`. For an active provisioned requester, Credit reserves that amount or records a definitive rejection without a reservation movement. Missing provisioning returns retryable ACCOUNT_PENDING without a finalized CreditOrder. A later release can compensate a successful reservation. Whether an errand is eligible for another attempt belongs to its caller.
+A publisher sends `credit.reserve` with `requestId`, `correlationId`, `orderId`, integer `requesterId`, and a positive whole-credit `amount`. For an active provisioned requester, Credit reserves that amount or records a definitive rejection without a reservation movement. Missing provisioning returns retryable ACCOUNT_PENDING without a finalized CreditOrder. A later release can compensate a successful reservation. Whether an errand is eligible for another attempt belongs to its caller.
 
 ### Completing an errand
 
-An authorized caller requests transfer after requester-confirmed completion (`order.completed` in the existing Order contract). Credit receives `orderId` and integer `courierId`, derives the requester and amount from the actual reserve movement and its command, and transfers atomically only when both participants are active and provisioned. A missing account returns retryable ACCOUNT_PENDING; a deleted participant returns 403 USER_INACTIVE without a finalized CreditOrder. It does not consume Order events or decide completion. Payment is confirmed only after transfer commits; retries must never pay twice.
+A future saga publishes `credit.transfer` after requester-confirmed completion (`order.completed` in the existing Order contract). Credit receives `orderId` and integer `courierId`, derives the requester and amount from the actual reserve movement and its command, and transfers atomically only when both participants are active and provisioned. A missing account returns retryable ACCOUNT_PENDING; a deleted participant produces a durable REJECTED CreditOrder and `USER_INACTIVE` outcome. It does not consume Order events or decide completion. Payment is confirmed only after transfer commits; retries must never pay twice.
 
 ### Cancelling or expiring an errand
 
-An authorized caller requests release with the errand reference and matching requester/amount. Credit releases a HELD reservation atomically, or records a successful RELEASE command that derives CANCELLED when no reserve movement exists. Both cases require a provisioned requester account; pending provisioning returns ACCOUNT_PENDING without promising successful cancellation. Existing holds can be released for inactive users.
+A publisher sends `credit.release` with the errand reference and matching requester/amount. Credit releases a HELD reservation atomically, or records a successful RELEASE command that derives CANCELLED when no reserve movement exists. Both cases require a provisioned requester account; pending provisioning returns ACCOUNT_PENDING without promising successful cancellation. Existing holds can be released for inactive users.
 
 CANCELLED is derived from the successful RELEASE history; it has no separate state row, changes no balance, and creates no ledger movement. It records a successful RELEASE result and outbox outcome atomically, preventing a delayed RESERVE or TRANSFER. Matching repeats against CANCELLED or RELEASED succeed without another movement. A release after TRANSFERRED rejects. Credit does not decide cancellation or expiry; held credits become available only after release commits.
 
@@ -131,18 +137,18 @@ Latency and scale targets should follow the team's demo environment. D3 correctn
 | Stage | Credit-owned output | Dependency and evidence |
 |---|---|---|
 | 1. Credit core | Schema, provisioning, balance query, reserve, transfer, release, operation lookup | Real database tests for retries, races, rollback, and conservation |
-| 2. Credit transport | Authenticated command APIs, user-event consumer, sample payloads, result events | Existing user-events consumed through Credit’s subscription; outage, duplicate-delivery, and pending-account demos |
+| 2. Credit transport | Authenticated Pub/Sub command and user-event consumers, sample publisher, result events | Existing user-events consumed through Credit’s subscription; outage, duplicate-delivery, and pending-account demos |
 | 3. Local deployment | Credit image, database migration, persistent storage, configuration, worker startup | Reproducible Compose startup and restart without data loss |
 | Deferred integration | Credit command/result contract available for other owners | No orchestrator or other-service changes in this implementation |
 
 For D3, show allocation, successful reservation, insufficient balance, transfer, release, duplicate requests, concurrent overspending protection, and recovery after a temporary failure. Show actual before-and-after balances and credit orders and ledger transactions. Explain database choice, caller permissions, compensation, and container isolation.
 
-A credit-only test client can validate the contract before Order Service is ready. It cannot substitute for the milestone's evidence of real team integration. D3 also covers the team's chosen nice-to-have features and responsibility allocation; no credit-related nice-to-have is selected here.
+The `command:publish` CLI can validate the contract before Order Service is ready. It cannot substitute for the milestone's evidence of real team integration. D3 also covers the team's chosen nice-to-have features and responsibility allocation; no credit-related nice-to-have is selected here.
 
 ## Decisions needed before integration
 
-1. Confirm the remaining wire details for the agreed orderId-based transfer lookup. Requester and amount are read from the successful reserve history, not supplied by the transfer caller.
-2. Confirm internal command-caller and Pub/Sub delivery permissions. User lifecycle events supply requester/courier identity state. Pub/Sub and the Order-style event mapping are selected; see the TD for Credit event types.
+1. Use the Credit-owned flat command contracts in the TD for integration. Requester and amount are read from the successful reserve history, not supplied by the transfer caller.
+2. Confirm command-topic publisher IAM and Pub/Sub delivery permissions. User lifecycle events supply requester/courier identity state. Pub/Sub and the Order-style event mapping are selected; see the TD for Credit event types.
 3. Confirm the initial allocation and reward units, and obtain the existing-user backfill source. Credit owns user-event retry handling; lazy initialisation is removed.
 4. External order states and stalled-saga recovery belong to other owners and are deferred; Credit supplies durable outcomes and lookup.
 5. Decide whether a rejected pending errand can make a new reserve attempt after its balance changes.

@@ -121,10 +121,14 @@ test("deletion before creation is permanent; provisioned deletion retains histor
       .rows[0].deleted_at,
     first,
   );
-  await assert.rejects(
-    execute(command("RELEASE", randomUUID(), { requesterId: 9 })),
-    { code: "USER_INACTIVE" },
-  );
+  const inactive = command("RELEASE", randomUUID(), { requesterId: 9 });
+  const rejection = await execute(inactive);
+  assert.equal(rejection.code, "USER_INACTIVE");
+  assert.equal(rejection.status, "REJECTED");
+  assert.deepEqual(await execute(inactive), rejection);
+  assert.deepEqual((await lookup(inactive.requestId)).result, rejection);
+  assert.equal(await count("credit_transactions"), 0);
+  assert.equal(await count("credit_outbox"), 1);
   await create(1);
   const reserve = command("RESERVE");
   await execute(reserve);
@@ -442,4 +446,34 @@ test("mixed-case UUIDs serialize one errand and replay one request", async () =>
     }),
     results[0],
   );
+});
+
+test("missing transfer recipient retries; deleted recipient rejects durably without moving credit", async () => {
+  await create(1);
+  const reserve = command("RESERVE");
+  await execute(reserve);
+  const transfer = command("TRANSFER", reserve.orderId);
+  await assert.rejects(execute(transfer), { code: "ACCOUNT_PENDING" });
+  await assert.rejects(lookup(transfer.requestId), {
+    code: "OPERATION_NOT_FOUND",
+  });
+  await userEvent({ type: "user.deleted", eventId: randomUUID(), userId: 2 });
+  const rejected = await execute(transfer);
+  assert.equal(rejected.status, "REJECTED");
+  assert.equal(rejected.code, "USER_INACTIVE");
+  assert.equal(rejected.applied, false);
+  assert.deepEqual(rejected.transactionIds, []);
+  assert.deepEqual(rejected.deltas, {
+    requesterTotal: 0,
+    requesterReserved: 0,
+    courierTotal: 0,
+  });
+  assert.deepEqual(await execute(transfer), rejected);
+  assert.deepEqual(await balance(1), {
+    totalCredits: 1000,
+    reservedCredits: 120,
+    availableCredits: 880,
+  });
+  assert.equal(await count("credit_transactions"), 2);
+  assert.equal(await count("credit_outbox"), 3);
 });

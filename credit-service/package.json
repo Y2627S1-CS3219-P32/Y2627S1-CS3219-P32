@@ -7,6 +7,7 @@
     "build": "rm -rf dist && tsc",
     "typecheck": "tsc --noEmit",
     "start": "node dist/index.js",
+    "command:publish": "node dist/events/send-command.js",
     "publisher": "node dist/events/publisher.js",
     "db:migrate": "node dist/db/migrate.js",
     "test": "npm run build && node --test test/*.test.mjs",

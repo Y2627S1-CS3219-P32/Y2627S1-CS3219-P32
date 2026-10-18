@@ -1,6 +1,6 @@
 # Credit Service
 
-Credit owns four PostgreSQL tables. Commands commit the saved JSON result, movement, balances, and outcome together. The API requires a user JWT for the caller's balance and an authorized internal identity for commands and operation lookup. User events provision accounts once. No request creates an account.
+Credit owns four PostgreSQL tables. Commands commit the saved JSON result, movement, balances, and outcome together. Balance reads require a user JWT. Reserve, release, and transfer arrive through authenticated Pub/Sub push delivery. Operation lookup requires an authorized internal identity. User events provision accounts once. No request creates an account.
 
 ## Source layout
 
@@ -41,9 +41,9 @@ Commit the generated SQL and `migrations/meta/` together. The first migration re
 
 Set `DATABASE_URL`, `JWT_SECRET`, and `INITIAL_CREDITS` (default 1000). Set `PORT` if needed. Balance JWTs require HS256, `typ=JWT`, an unexpired integer `exp`, and positive integer string `sub`.
 
-Cloud internal callers require `INTERNAL_AUDIENCE` and comma-separated `INTERNAL_INVOKER_EMAILS`. Set `PUBSUB_PUSH_SERVICE_ACCOUNT` to the dedicated push identity. Only that identity may ingest user events. Grant it Pub/Sub token-creation and service invocation permissions in deployment. Local `INTERNAL_SHARED_SECRET` works only when `PUBSUB_EMULATOR_HOST` is set. Commands use `x-internal-secret`. The local push subscription uses a token query parameter.
+Cloud internal callers require `INTERNAL_AUDIENCE` and comma-separated `INTERNAL_INVOKER_EMAILS`. Set `PUBSUB_PUSH_SERVICE_ACCOUNT` to the dedicated push identity. Only that identity may ingest user events and credit commands. Grant it Pub/Sub token-creation and service invocation permissions in deployment. Local `INTERNAL_SHARED_SECRET` works only when `PUBSUB_EMULATOR_HOST` is set. Internal reads accept `x-internal-secret`. Local push subscriptions use a token query parameter.
 
-Set `PUBSUB_PROJECT_ID` (default foc-local), `PUBSUB_EMULATOR_HOST`, and `PUBSUB_PUSH_BASE_URL`. Topic defaults are `USER_EVENTS_TOPIC=user-events` and `CREDIT_EVENTS_TOPIC=credit-events`. The durable subscription defaults to `USER_EVENTS_SUBSCRIPTION=credit-service-user-events`. Provisioning is idempotent and preserves an existing subscription. It sets seven-day retention and retry backoff. In Cloud, configure a dead-letter topic, grant forwarding permissions to the Pub/Sub service agent, and alert on undelivered messages and oldest unacknowledged age. Repair failed events before retention expires. The emulator is development infrastructure, not an existing-user recovery store.
+Set `PUBSUB_PROJECT_ID` (default foc-local), `PUBSUB_EMULATOR_HOST`, and `PUBSUB_PUSH_BASE_URL`. Topic defaults are `USER_EVENTS_TOPIC=user-events`, `CREDIT_COMMANDS_TOPIC=credit-commands`, and `CREDIT_EVENTS_TOPIC=credit-events`. Subscription defaults are `USER_EVENTS_SUBSCRIPTION=credit-service-user-events` and `CREDIT_COMMANDS_SUBSCRIPTION=credit-service-commands`. Provisioning creates both subscriptions with seven-day retention and retry backoff. Repeated provisioning updates push configuration without replacing subscriptions. In Cloud, configure a dead-letter topic, grant forwarding permissions to the Pub/Sub service agent, and alert on undelivered messages and oldest unacknowledged age. Repair failed events before retention expires. The emulator is development infrastructure, not an existing-user recovery store.
 
 ## Operations
 
@@ -51,15 +51,48 @@ Set `PUBSUB_PROJECT_ID` (default foc-local), `PUBSUB_EMULATOR_HOST`, and `PUBSUB
 
 `GET /api/v1/credits/me` returns `totalCredits`, `reservedCredits`, and `availableCredits` for the bearer JWT owner.
 
-Internal endpoints require internal authentication.
+### Reserve, release, and transfer commands
 
-- `POST /internal/v1/credit-reservations` accepts UUID `requestId`, `correlationId`, `orderId`, positive integer `requesterId`, and integer `amount` from 1 to 2147483647.
-- `POST /internal/v1/credit-reservations/{orderId}/transfer` accepts UUID `requestId`, `correlationId`, and positive integer `courierId`. Credit derives the amount and requester from committed reserve history.
-- `POST /internal/v1/credit-reservations/{orderId}/release` accepts UUID `requestId`, `correlationId`, positive integer `requesterId`, integer `amount`, and nonempty `reason` of at most 200 characters.
-- `GET /internal/v1/credit-orders/{requestId}` returns the durable result.
-- `GET /internal/v1/credit-reservations/{orderId}` returns derived reservation state.
+Credit owns the command contract. Publish flat JSON envelopes to `credit-commands`. The future saga decides when to publish each command. Credit does not translate Order lifecycle events into commands.
 
-Reuse request IDs for retries. Changed business fields conflict. Missing provisioning returns retryable `503 ACCOUNT_PENDING`. Definitive business rejections return 409 and remain fixed for that request ID. Release before reserve records CANCELLED without a movement. Release never reverses transfer.
+All commands require UUID `requestId`, `correlationId`, and `orderId`.
+
+| Type | Additional fields |
+|---|---|
+| `credit.reserve` | Positive integer `requesterId` and integer `amount` from 1 to 2147483647 |
+| `credit.release` | The same requester and amount fields, plus a nonblank `reason` of at most 200 characters |
+| `credit.transfer` | Positive integer `courierId`. Credit derives requester and amount from reserve history. |
+
+User IDs must fit PostgreSQL INTEGER, at most 2147483647. A reserve envelope is:
+
+```json
+{
+  "type": "credit.reserve",
+  "requestId": "6f1c3fc6-183c-4c56-99f9-d6df888ee944",
+  "correlationId": "a7a461f2-e5fa-4a30-9699-f834737f38e5",
+  "orderId": "4c29bc32-b0ef-4ab4-91dd-0bd579bb9ac8",
+  "requesterId": 1,
+  "amount": 120
+}
+```
+
+After building, publish a saved envelope from the service directory:
+
+```sh
+npm run command:publish -- command.json
+```
+
+For the running Compose stack, pass that file to the container:
+
+```sh
+docker compose exec -T credit-service node dist/events/send-command.js /dev/stdin < command.json
+```
+
+The CLI validates the envelope and uses `orderId` as the ordering key. Its output confirms broker acceptance only. Observe the result on `credit-events` or use authenticated `GET /internal/v1/credit-orders/{requestId}`. `GET /internal/v1/credit-reservations/{orderId}` returns derived reservation state.
+
+The `credit-service-commands` subscription pushes to `POST /internal/pubsub/credit-commands` with the standard base64 Pub/Sub wrapper. There are no direct HTTP reserve, release, or transfer routes. The push handler returns 204 only after the final result and outbox commit, including definitive `REJECTED` outcomes. Missing provisioning and reservation dependencies return retryable `503 ACCOUNT_PENDING` or `503 RESERVATION_NOT_READY`. Unexpected failures return 503. Invalid envelopes and request-ID conflicts return non-2xx for repair or dead-letter handling. Configure Cloud dead-letter forwarding and its Pub/Sub service-agent IAM during deployment.
+
+Keep the entire envelope, including `correlationId`, stable across retries. Redelivery reuses the saved result and original outbox event. It does not create another outcome. Inactive users produce a durable `USER_INACTIVE` rejection. Release remains permitted for an allocated deleted account. Release before reserve records CANCELLED without a movement. Release never reverses transfer.
 
 ## Verification
 
@@ -69,11 +102,11 @@ npm test
 npm run test:pubsub
 ```
 
-Set `DATABASE_URL` to a disposable migrated PostgreSQL database for integration tests. Pub/Sub verification additionally needs the emulator, a provisioned durable subscription, and `PUBSUB_PUSH_BASE_URL` reachable from the emulator. For a Docker emulator calling an API on the host, use `http://host.docker.internal:3004` and `PORT=3004`. The test provisions through real push delivery, publishes through the emulator, attempts delivery to an unavailable broker, then simulates a crash after broker acknowledgment and verifies repeated delivery with the same event ID.
+Set `DATABASE_URL` to a disposable migrated PostgreSQL database for integration tests. Pub/Sub verification additionally needs the emulator, provisioned durable user and command subscriptions, and `PUBSUB_PUSH_BASE_URL` reachable from the emulator. For a Docker emulator calling an API on the host, use `http://host.docker.internal:3004` and `PORT=3004`. The test provisions users and executes commands through real push delivery, publishes outcomes through the emulator, attempts delivery to an unavailable broker, then simulates a crash after broker acknowledgment and verifies repeated delivery with the same event ID.
 
 The PostgreSQL test suite truncates Credit tables. Use the disposable test database, never a database containing work you need. Run the database suite before the Pub/Sub proof, because they share that test database. The Pub/Sub proof uses a separate subscription from the container API. It demonstrates an unavailable broker endpoint and injects failure immediately after broker acknowledgment. It asserts stable event IDs and same-key publication order.
 
-`test/compose.mjs` runs inside the deployed API container through standard input. Set a new `CREDIT_PROOF_USER_ID` for `prepare`, then use the same ID for `verify` after recreating `credit-db`. It checks the real HTTP balance and retained command and movement counts. `test/outbox.mjs` uses `release`, `pending`, and `published` to verify the deployed publisher while the emulator is paused and after it resumes. These proof scripts create demo financial history.
+`test/compose.mjs` runs inside the deployed API container through standard input. Set a new `CREDIT_PROOF_USER_ID` for `prepare`, then use the same ID for `verify` after recreating `credit-db`. It checks the real HTTP balance and retained command and movement counts. `test/outbox.mjs` uses `release`, `pending`, and `published` to verify publisher recovery. Pause the publisher first, deliver `release` while the broker is available, then pause the emulator and resume the publisher. Check `pending`, resume the emulator, and check `published`. Input commands cannot arrive while the broker is unavailable. These proof scripts create demo financial history.
 
 ```sh
 docker compose exec -T -e CREDIT_PROOF_USER_ID=1900000010 credit-service node --input-type=module - prepare < credit-service/test/compose.mjs

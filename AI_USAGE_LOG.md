@@ -1060,3 +1060,23 @@ for context, frontend-service is being set up. The frontend’s supplier screen 
   broker outages, and stable-event redelivery after acknowledgment. The production
   Docker image built and applied migrations twice to a fresh database.
 - Author review: Pending.
+
+## 2026-10-18: Replace Credit mutation APIs with Pub/Sub commands
+
+- Tool: Codex (GPT-6). Mode: Contract design, implementation, and verification.
+- Exact prompt: `Implement the Credit-owned Pub/Sub command flow for reserve, release, and transfer, replacing their direct HTTP mutation APIs.`
+- Key response: Added explicit command parsing, an authenticated push consumer,
+  durable command subscription provisioning, and a validating publisher CLI.
+  Removed the three mutation routes and migrated verification callers to Pub/Sub.
+  Commands acknowledge only after a final outcome and outbox commit. Temporary
+  prerequisites retry, and inactive accounts produce durable rejection outcomes.
+- Affected files: Credit consumer, configuration, provisioning, account handling,
+  publisher CLI, tests, existing design documents, README, Compose, and this log.
+- Verification: All 21 PostgreSQL and transport tests passed. A reproduced alternate-URL
+  authentication bypass is blocked by route-local push identity checks. Real Pub/Sub checks
+  exercised the CLI, all three commands, duplicate replay, outcome correlation,
+  pending-account and early-transfer retries, cancellation, inactive-user rejection,
+  removed mutation routes, authentication, broker outage, and outbox crash recovery.
+  The rebuilt local API and publisher are healthy, and the command subscription
+  targets the authenticated push handler.
+- Author review: Pending.

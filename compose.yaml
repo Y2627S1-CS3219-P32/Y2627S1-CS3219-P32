@@ -41,6 +41,8 @@ services:
       USER_EVENTS_TOPIC: user-events
       USER_EVENTS_SUBSCRIPTION: credit-service-user-events
       CREDIT_EVENTS_TOPIC: credit-events
+      CREDIT_COMMANDS_TOPIC: credit-commands
+      CREDIT_COMMANDS_SUBSCRIPTION: credit-service-commands
     depends_on:
       pubsub-emulator:
         condition: service_healthy

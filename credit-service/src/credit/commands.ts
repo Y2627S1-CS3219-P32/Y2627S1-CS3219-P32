@@ -52,15 +52,12 @@ export async function execute(command: Command): Promise<Outcome> {
       command.kind === "TRANSFER"
         ? [requesterId, command.courierId]
         : [requesterId];
-    const accounts = await lockAccounts(
-      client,
-      ids,
-      command.kind === "RELEASE",
-    );
+    const locked = await lockAccounts(client, ids, command.kind === "RELEASE");
     let code = "OK",
       applied = false,
       next = state.reservationState;
-    if (
+    if (!locked.active) code = "USER_INACTIVE";
+    else if (
       state.requesterId !== undefined &&
       (requesterId !== state.requesterId || amount !== state.amount)
     )
@@ -73,11 +70,8 @@ export async function execute(command: Command): Promise<Outcome> {
       else if (["RELEASED", "TRANSFERRED"].includes(state.reservationState))
         code = "RESERVATION_SETTLED";
       else if (state.reservationState === "NONE") {
-        const account = accounts.get(requesterId)!;
-        if (
-          account.total_credits - account.reserved_credits <
-          BigInt(amount)
-        )
+        const account = locked.accounts.get(requesterId)!;
+        if (account.total_credits - account.reserved_credits < BigInt(amount))
           code = "INSUFFICIENT_CREDITS";
         else {
           applied = true;
@@ -105,7 +99,7 @@ export async function execute(command: Command): Promise<Outcome> {
       else if (state.reservationState === "HELD") {
         if (
           BigInt(amount) >
-          MAX - accounts.get(command.courierId)!.total_credits
+          MAX - locked.accounts.get(command.courierId)!.total_credits
         )
           code = "BALANCE_LIMIT_EXCEEDED";
         else {

@@ -13,6 +13,9 @@ export const config = {
     ? process.env.INTERNAL_SHARED_SECRET
     : undefined,
   projectId: process.env.PUBSUB_PROJECT_ID ?? "foc-local",
+  commandTopic: process.env.CREDIT_COMMANDS_TOPIC ?? "credit-commands",
+  commandSubscription:
+    process.env.CREDIT_COMMANDS_SUBSCRIPTION ?? "credit-service-commands",
   creditTopic: process.env.CREDIT_EVENTS_TOPIC ?? "credit-events",
   userTopic: process.env.USER_EVENTS_TOPIC ?? "user-events",
   subscription:

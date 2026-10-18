@@ -25,7 +25,9 @@ export async function lockAccounts(
   client: Transaction,
   ids: number[],
   allowDeleted: boolean,
-) {
+): Promise<
+  { active: true; accounts: Map<number, Account> } | { active: false }
+> {
   const accounts = new Map<number, Account>();
   for (const id of [...new Set(ids)].sort((a, b) => a - b)) {
     await lock(client, "account", id);
@@ -50,11 +52,11 @@ export async function lockAccounts(
               ),
             )
         ).length;
-      if (!allocated) throw new CreditError(403, "USER_INACTIVE");
+      if (!allocated) return { active: false };
     }
     accounts.set(id, account);
   }
-  return accounts;
+  return { active: true, accounts };
 }
 
 export async function userEvent(event: unknown, initialCredits = 1000n) {
