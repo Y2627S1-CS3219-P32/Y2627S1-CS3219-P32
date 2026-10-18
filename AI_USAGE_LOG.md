@@ -904,6 +904,239 @@ for context, frontend-service is being set up. The frontend’s supplier screen 
 - Author review: Pending.
 
 
+# AI usage log (Credit Service)
+
+## 2026-10-18: Align Credit TD and PRD with existing service contracts
+
+- Tool: ChatGPT / Codex (GPT-6). Mode: Repository inspection and documentation editing.
+- Exact prompt:
+
+  ```text
+  Revise the Credit technical design and product requirements documents to:
+  1. Use integer user IDs.
+  2. Align order references with the Order service's existing mapping.
+  3. Clarify how the Order service validates JWTs and how this applies to Credit.
+
+  Focus on the Credit service. Defer orchestration and changes to other services.
+  ```
+- Key response: Updated user references to integers while retaining UUID errand/request IDs;
+  aligned errand references and event fields with Order (`orderId`, `type`, `eventId`,
+  `occurredAt`, Pub/Sub attributes); replaced candidate Redis delivery with existing Pub/Sub.
+  Documented Order’s current JWT and internal authentication behavior, corrected the
+  registration projection assumption, and kept verified-user integration explicit.
+  Deferred orchestration and other-service changes; kept Credit-only verification.
+- Affected files: `credit-service/docs/credit-service-tech-design.md`,
+  `credit-service/docs/credit-service-prd.md`, and this log.
+- Verification: Checked Markdown fences, parsed JSON examples, and searched for stale
+  UUID user fields, taskOrderId references, and Redis delivery instructions. No runtime changes.
+- Author review: Pending.
+
+## 2026-10-18: Select event-driven account provisioning
+
+- Tool: ChatGPT / Codex (GPT-6). Mode: Documentation editing.
+- Exact prompt: `Proceed with event-driven account provisioning through Credit's dedicated Pub/Sub subscription, including duplicate and deletion handling, pending-account responses, and existing-user backfill.`
+- Key response: Updated TD and PRD to make the user-event consumer the single
+  provisioning path. Added minimal versioned lifecycle state for deletion tombstones;
+  removed the allocation API and request-triggered grants; aligned schema, transaction
+  flows, authentication, deployment, and verification scenarios with that choice.
+  Credit retains financial history after deletion; existing holds remain releasable.
+- Affected files: `credit-service/docs/credit-service-tech-design.md`,
+  `credit-service/docs/credit-service-prd.md`, and this log.
+- Verification: Parsed JSON examples, checked Markdown fences and route/flow consistency,
+  searched for superseded provisioning instructions, and ran git diff --check.
+  Documentation only; no runtime tests run.
+- Author review: Pending.
+
+## 2026-10-18: Document lookup access and credit number encoding
+
+- Tool: ChatGPT / Codex (GPT-6). Mode: Documentation editing and explanation.
+- Exact prompt:
+
+  ```text
+  Proceed with the proposed lookup access rules and credit number encoding.
+  Clarify the CANCELLED state and explain how the design ensures idempotency.
+  ```
+- Key response: Documented internal-caller lookup access and the whole-credit JSON
+  number contract with Order-compatible reward bounds, safe balance bounds, exact
+  BIGINT conversion, and atomic recipient-overflow rejection. Clarified the cancellation
+  marker and request/order-level idempotency in the design.
+- Affected files: Credit TD, Credit PRD, and this log.
+- Verification: Checked JSON examples, monetary limits, lookup wording, and
+  git diff --check. No runtime code changed.
+- Author review: Pending.
+
+## 2026-10-18: Finalize cancellation guards and shared movement design
+
+- Tool: ChatGPT / Codex (GPT-6). Mode: Documentation editing.
+- Exact prompt: `Proceed with release-before-reserve cancellation handling and the shared movement design using available and reserved balance buckets.`
+- Key response: Updated TD and PRD with terminal CANCELLED, a reserve link nullable
+  only for that state, atomic zero-movement cancellation results/outbox events,
+  state-transition rules, replay behavior, and both reserve/release arrival orders.
+  Clarified the shared movement operation and kept business checks in the handlers.
+  Reworked diagrams to exit before balance changes for pending/deleted identities.
+- Affected files: `credit-service/docs/credit-service-tech-design.md`,
+  `credit-service/docs/credit-service-prd.md`, and this log.
+- Verification: Checked JSON examples, Markdown fences, sequence-diagram branch
+  balance, reservation state coverage, schema relationships, and stale policy text.
+  Ran git diff --check. Documentation only; no runtime tests run.
+- Author review: Pending.
+
+## 2026-10-18: Refine redundant schema fields
+
+- Tool: ChatGPT / Codex (GPT-6). Mode: Documentation editing and design discussion.
+- Exact prompt:
+
+  ```text
+  Review whether lifecycle state can be consolidated into credit accounts and
+  reservation state derived from credit order history. Store the initial grant
+  amount in credit orders, and remove the original request ID and redundant
+  outbox fields, including attempts and last error.
+
+  Reassess stored results and versioning, considering whether operations can
+  reproduce their outcomes reliably from committed history.
+  ```
+- Key response: Removed original_request_id, outbox event_type, attempts, and last_error.
+  Moved the actual initial_grant amount from accounts to ALLOCATE CreditOrders.
+  The design review also covered account/lifecycle consolidation, version removal,
+  result representation, and deriving reservation state from command history.
+- Affected files: Credit TD, Credit PRD, and this log.
+- Verification: Parsed JSON examples, checked Markdown fences and removed schema fields,
+  and ran git diff --check. No runtime code changed.
+- Author review: Pending.
+
+## 2026-10-18: Apply four-table model and remove versions
+
+- Tool: ChatGPT / Codex (GPT-6). Mode: Documentation editing.
+- Exact prompt: `Apply the four-table model and remove version fields. Retain the existing outcome representation while the proposed alternative remains under review.`
+- Key response: Revised TD and PRD to use credit_accounts, credit_orders,
+  credit_transactions, and credit_outbox. Merged permanent deletion into accounts,
+  removed separate user/reservation tables, and derived per-errand state from
+  successful command history and actual ledger movements. Removed stored lifecycle
+  and reservation counters and Credit event version fields. Existing upstream user
+  messages remain accepted with their extra version metadata ignored. Retained the
+  existing JSON result field and explicitly deferred the structured-outcome proposal.
+  Updated ERD, locks, cancellation/provisioning flows, API descriptions, retention,
+  and verification scenarios for the selected model.
+- Affected files: `credit-service/docs/credit-service-tech-design.md`,
+  `credit-service/docs/credit-service-prd.md`, and this log.
+- Verification: Checked the four schema sections and ERD, removed table/column
+  references, retained result schema, JSON examples, Markdown fences, and sequence
+  branches. Ran git diff --check. No runtime implementation or tests changed.
+- Author review: Pending.
+
+## 2026-10-18: Profile credit balance UI
+
+- Tool: ChatGPT / Codex (GPT-6). Mode: UI implementation and verification.
+- Exact prompt: `Begin with the profile credit balance UI, displaying available credits prominently, reserved credits secondarily, and total credits with lower visual emphasis.`
+- Key response: Added a responsive credit summary with loading, account setup pending,
+  unavailable, and Retry states. Added an authenticated read-only Nuxt proxy with
+  safe-integer balance validation and sanitized dependency errors. Scoped fetch data
+  to the signed-in user and added private local and Compose service configuration.
+- Affected files: Credit component, shared balance type, server client and proxy,
+  profile page, Nuxt config, frontend environment example, credit frontend README,
+  frontend environment in compose.yaml, and this log.
+- Verification: Frontend typecheck, production build, and git diff --check passed.
+  A real browser exercised desktop and mobile layouts, loading, setup pending,
+  service failure, Retry, zero and maximum balances, invalid upstream balances,
+  and missing-cookie authentication against controlled service responses.
+  Screenshots and the verification script are in /tmp/credit-ui-proof and
+  /tmp/credit-ui-check.cjs. The full order-to-credit workflow was not tested.
+- Author review: Pending.
+
+## 2026-10-18: Integrate Drizzle into Credit
+
+- Tool: Codex (GPT-6). Mode: Schema migration, implementation, and verification.
+- Exact prompt: `Integrate Drizzle ORM into the Credit service.`
+- Key response: Defined the four existing tables in Drizzle, derived account and
+  transaction types from the schema, and replaced direct PostgreSQL queries with
+  Drizzle builders and transactions. Preserved advisory locks, exact bigint arithmetic,
+  JSONB replay matching, and the publisher's dedicated connection. Adopted the original
+  idempotent SQL as the first tracked migration and added schema generation tooling.
+- Affected files: Credit schema, database access, migration metadata, Dockerfile,
+  dependencies, tests, README, and this log.
+- Verification: All 17 PostgreSQL and HTTP tests passed, including populated-schema
+  adoption, repeated and concurrent migration, financial rollback, and response
+  compatibility. Real Pub/Sub checks passed for push provisioning, credit operations,
+  broker outages, and stable-event redelivery after acknowledgment. The production
+  Docker image built and applied migrations twice to a fresh database.
+- Author review: Pending.
+
+## 2026-10-18: Replace Credit mutation APIs with Pub/Sub commands
+
+- Tool: Codex (GPT-6). Mode: Contract design, implementation, and verification.
+- Exact prompt: `Implement the Credit-owned Pub/Sub command flow for reserve, release, and transfer, replacing their direct HTTP mutation APIs.`
+- Key response: Added explicit command parsing, an authenticated push consumer,
+  durable command subscription provisioning, and a validating publisher CLI.
+  Removed the three mutation routes and migrated verification callers to Pub/Sub.
+  Commands acknowledge only after a final outcome and outbox commit. Temporary
+  prerequisites retry, and inactive accounts produce durable rejection outcomes.
+- Affected files: Credit consumer, configuration, provisioning, account handling,
+  publisher CLI, tests, existing design documents, README, Compose, and this log.
+- Verification: All 21 PostgreSQL and transport tests passed. A reproduced alternate-URL
+  authentication bypass is blocked by route-local push identity checks. Real Pub/Sub checks
+  exercised the CLI, all three commands, duplicate replay, outcome correlation,
+  pending-account and early-transfer retries, cancellation, inactive-user rejection,
+  removed mutation routes, authentication, broker outage, and outbox crash recovery.
+  The rebuilt local API and publisher are healthy, and the command subscription
+  targets the authenticated push handler.
+- Author review: Pending.
+
+## 2026-10-18: Separate Credit command decisions
+
+- Tool: Codex (GPT-6). Mode: Refactoring and verification.
+- Exact prompt: `Extract separate reserve, release, and transfer handlers within the existing command module. Retain shared transaction logic and replace repeated command and reservation-state strings with typed constants.`
+- Key response: Added private decision handlers in commands.ts and shared constants
+  for command kinds, message types, and reservation states. Derived domain types
+  from those constants. Retained common locking, replay handling, balance writes,
+  and atomic outcome persistence.
+- Affected files: Credit command module, constants, types, account and query code,
+  schema type definitions, event adapters, README, and this log.
+- Verification: The same 21 PostgreSQL and transport tests passed before and after
+  the refactor. Typechecking passed, and Drizzle reported no schema changes.
+  Real Pub/Sub checks passed for all three commands, replay, rejection, correlated
+  outcomes, prerequisite retries, cancellation, authentication, broker outage,
+  and outbox recovery. Independent review found no behavioral regressions.
+- Author review: Pending.
+
+## 2026-10-18: Remove predeployment compatibility tooling
+
+- Tool: Codex (GPT-6). Mode: Cleanup.
+- Exact prompt: `Remove unnecessary backfill and database-adoption support because Credit has not been deployed. Assess whether the credit module should be named core.`
+- Key response: Removed the offline user backfill tool and npm command. Replaced
+  the initial SQL with Drizzle-generated schema creation and removed the test step
+  that erased the migration journal to simulate database adoption. Updated the
+  README, PRD, and technical design. Retained the credit domain name and normal
+  migration tracking and serialization.
+- Affected files: Credit backfill entry point, npm scripts, initial migration,
+  migration test, README, design documents, and this log.
+- Verification: Generated the initial migration from the current schema and
+  confirmed that its snapshot matches the tracked snapshot. Reviewed callers
+  and the diff. Tests were not run for this cleanup.
+- Author review: Pending.
+
+# AI usage log (Saga Orchestrator)
+
+## 2026-10-18: Saga orchestrator
+
+- Tool: Claude Code (Opus 5.5). Mode: Implementation, tests, documentation, and verification.
+- Exact prompt: `ignore the sync service for now, you can go ahead and build the orchestrator,
+  branch off of credti service branch`, after the student had designed the orchestrated saga
+  (order.created → reserve → OpenOrder/RejectOrder, timeout → AbortOrder and release,
+  order.completed → transfer → SettleOrder) and the credit service had moved to commands over
+  Pub/Sub (`credit-commands`) with results on `credit-events`.
+- Key response: new `saga-orchestrator` service: a saga row per order, credit results matched by
+  request id, idempotent handling of redelivered events, a transactional outbox for commands,
+  releases on timeout, cancellation and expiry, transfer and settlement on completion, and a
+  timeout sweep; Compose services and a ticker.
+- Affected files: `saga-orchestrator/` (all files), `compose.yaml`, `compose.dev.yaml`, and this log.
+- Verification: 8 integration tests passed. On the Pub/Sub emulator with the real user, order and
+  credit services: orders opened after reservation, a 900-credit order was rejected with
+  `INSUFFICIENT_CREDITS`, a cancelled order released its credits, a completed order transferred
+  12 credits to the courier and settled, and balances matched (988/260 and 1012/140). With
+  credit-service stopped, the order was aborted after the timeout, and once credit-service
+  returned the delayed reserve and the release cancelled out, leaving the balance unchanged.
+- Author review: Pending.
+
 ## 2026-10-18: Supplier-service local user copy and event worker
 
 - Tool: Claude Code (Opus 5.5). Mode: Implementation, refactoring, tests, documentation, and verification.
