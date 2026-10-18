@@ -2,9 +2,13 @@
  * AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-28.
  * Scope: Repeatable supplier seed with transactional dry-run support.
  * Author review: Done.
+ * AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-10-18.
+ * Scope: Newly inserted suppliers are recorded as supplier.created in the outbox, which
+ * the event worker's relay publishes. Author review: Pending.
  */
 import { pathToFileURL } from "node:url";
 import { inArray } from "drizzle-orm";
+import { recordSupplierChanges, type Transaction } from "../supplier-events.js";
 import { db, pool } from "./index.js";
 import { buildings, operatingHours, suppliers, types } from "./schema.js";
 import { supplierSeedData } from "./seed-data.js";
@@ -16,7 +20,7 @@ type SeedSummary = {
 };
 
 // Pass a transaction so suppliers and their hours are inserted atomically.
-export async function seedSuppliers(tx: Pick<typeof db, "insert" | "select">): Promise<SeedSummary> {
+export async function seedSuppliers(tx: Transaction): Promise<SeedSummary> {
   const typeNames = [...new Set(supplierSeedData.map((row) => row.typeName))];
   const buildingNames = [...new Set(supplierSeedData.map((row) => row.buildingName))];
 
@@ -40,6 +44,7 @@ export async function seedSuppliers(tx: Pick<typeof db, "insert" | "select">): P
     operatingHoursInserted: 0,
   };
 
+  const insertedIds: string[] = [];
   for (const row of supplierSeedData) {
     const supplierTypeId = typeIds.get(row.typeName);
     const buildingId = buildingIds.get(row.buildingName);
@@ -74,10 +79,15 @@ export async function seedSuppliers(tx: Pick<typeof db, "insert" | "select">): P
         closingHrs: row.closingHrs,
       })),
     );
+    insertedIds.push(inserted.id);
     summary.suppliersInserted++;
     summary.operatingHoursInserted += 7;
   }
 
+  // Existing suppliers were skipped above, so only new ones get an event.
+  if (insertedIds.length > 0) {
+    await recordSupplierChanges(tx, "supplier.created", inArray(suppliers.id, insertedIds));
+  }
   return summary;
 }
 

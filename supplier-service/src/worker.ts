@@ -2,6 +2,10 @@
 Tool: Claude Code (model: Opus 5.5), date: 2026-10-18
 Scope: supplier-service Pub/Sub worker. Keeps the local users table in step with user-events,
 and sets up (or repoints) the push subscription on the local emulator.
+Author review: Pending.
+Tool: Claude Code (model: Opus 5.5), date: 2026-10-18
+Scope: POST /outbox/publish sweep that relays unpublished supplier-events, and the
+supplier-events topic on the local emulator.
 Author review: Pending. **/
 
 import "dotenv/config";
@@ -9,12 +13,14 @@ import { pathToFileURL } from "node:url";
 import { PubSub } from "@google-cloud/pubsub";
 import express, { type ErrorRequestHandler } from "express";
 import { pool } from "./db/index.js";
+import { publishPendingSupplierEvents } from "./supplier-events.js";
 import { applyUserEvent, InvalidUserEventError } from "./user-events.js";
 
 const port = Number(process.env.PORT ?? 3004);
 const projectId = process.env.PUBSUB_PROJECT_ID ?? process.env.GOOGLE_CLOUD_PROJECT ?? "foc-local";
 const topicName = process.env.USER_EVENTS_TOPIC ?? "user-events";
 const subscriptionName = process.env.PUBSUB_SUBSCRIPTION ?? "supplier-service-user-events";
+const supplierEventsTopicName = process.env.SUPPLIER_EVENTS_TOPIC ?? "supplier-events";
 
 export const app = express();
 app.use(express.json({ limit: "1mb" }));
@@ -49,9 +55,15 @@ app.post("/pubsub/user-events", async (req, res) => {
   res.status(204).end();
 });
 
+// Called every minute by Cloud Scheduler (locally by the supplier-ticker container) to
+// publish outbox rows that the API's relay after each commit did not.
+app.post("/outbox/publish", async (_req, res) => {
+  res.json({ published: await publishPendingSupplierEvents() });
+});
+
 const errorHandler: ErrorRequestHandler = (error, _req, res, _next) => {
-  console.error("[supplier-event-worker] Could not apply user event", error);
-  res.status(500).json({ error: "Could not apply user event" });
+  console.error("[supplier-event-worker] Request failed", error);
+  res.status(500).json({ error: "Internal server error" });
 };
 
 app.use(errorHandler);
@@ -61,15 +73,17 @@ function isAlreadyExists(error: unknown): boolean {
 }
 
 // Local development only: the emulator starts empty. In Cloud, deploy.sh creates these.
-async function ensureEmulatorSubscription(): Promise<void> {
+async function ensureEmulatorResources(): Promise<void> {
   if (!process.env.PUBSUB_EMULATOR_HOST) return;
   const pushEndpoint = process.env.PUBSUB_PUSH_ENDPOINT;
   if (!pushEndpoint) throw new Error("PUBSUB_PUSH_ENDPOINT is required when using the Pub/Sub emulator");
 
   const pubsub = new PubSub({ projectId });
-  await pubsub.createTopic(topicName).catch((error: unknown) => {
-    if (!isAlreadyExists(error)) throw error;
-  });
+  for (const name of [topicName, supplierEventsTopicName]) {
+    await pubsub.createTopic(name).catch((error: unknown) => {
+      if (!isAlreadyExists(error)) throw error;
+    });
+  }
   await pubsub.topic(topicName).createSubscription(subscriptionName, { pushEndpoint, enableMessageOrdering: true })
     .catch(async (error: unknown) => {
       if (!isAlreadyExists(error)) throw error;
@@ -79,7 +93,7 @@ async function ensureEmulatorSubscription(): Promise<void> {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  ensureEmulatorSubscription()
+  ensureEmulatorResources()
     .then(() => {
       app.listen(port, "0.0.0.0", (error) => {
         if (error) throw error;

@@ -26,6 +26,10 @@ Scope: /types and /buildings routes moved to reference-routes.ts; UUID check mov
 Author review: Pending.
 Tool: Claude Code (model: Opus 5.5), date: 2026-10-18
 Scope: Error responses carry HttpError headers (retry-after while a new account replicates).
+Author review: Pending.
+Tool: Claude Code (model: Opus 5.5), date: 2026-10-18
+Scope: POST, PUT, and DELETE /suppliers record supplier-events in the outbox in the same
+transaction, then start the relay after commit; operating-hours JSON moved to supplier-events.ts.
 Author review: Pending. **/
 
 import "dotenv/config";
@@ -39,7 +43,14 @@ import { buildings, operatingHours, suppliers, types } from "./db/schema.js";
 import { HttpError } from "./errors.js";
 import { getUuidParam } from "./params.js";
 import { referenceRouter } from "./reference-routes.js";
-import { parseOperatingHours, type OperatingPeriodInput } from "./operating-hours-input.js";
+import { parseOperatingHours } from "./operating-hours-input.js";
+import {
+  operatingHoursJson,
+  recordSupplierChanges,
+  recordSupplierDeleted,
+  requestOutboxPublish,
+  type Transaction,
+} from "./supplier-events.js";
 import { parseSupplierInput, type SupplierInput } from "./supplier-input.js";
 
 export const app = express();
@@ -54,16 +65,7 @@ app.get("/", (_req, res) => {
 function selectSuppliers(where: SQL | undefined) {
   const isOpen = sql<boolean>`${suppliers.isActive} and ${openingHoursMatch(new Date(), "Asia/Singapore")}`;
   const { supplierTypeId, buildingId, ...supplierColumns } = getTableColumns(suppliers);
-  // Times are returned as "HH:MM" (closing may be "24:00"), matching the request format.
-  const hours = sql<OperatingPeriodInput[]>`(
-    select coalesce(json_agg(json_build_object(
-      'day', ${operatingHours.day},
-      'openingHrs', to_char(${operatingHours.openingHrs}, 'HH24:MI'),
-      'closingHrs', to_char(${operatingHours.closingHrs}, 'HH24:MI')
-    ) order by ${operatingHours.day}, ${operatingHours.openingHrs}), '[]'::json)
-    from ${operatingHours}
-    where ${operatingHours.supplierId} = ${suppliers.id}
-  )`;
+  const hours = operatingHoursJson();
 
   return db
     .select({ ...supplierColumns, type: types.name, buildingName: buildings.name, isOpen, operatingHours: hours })
@@ -77,8 +79,6 @@ function selectSuppliers(where: SQL | undefined) {
 function getSupplierIdParam(req: Request): string {
   return getUuidParam(req, "Supplier not found");
 }
-
-type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 // Maps the body's type and building names to the columns stored on a supplier row.
 async function toSupplierRow(tx: Transaction, input: SupplierInput) {
@@ -136,8 +136,10 @@ app.post("/suppliers", requireAuthentication, requireAdministrator, async (req, 
     if (hours.length > 0) {
       await tx.insert(operatingHours).values(hours.map(period => ({ supplierId: created.id, ...period })));
     }
+    await recordSupplierChanges(tx, "supplier.created", eq(suppliers.id, created.id));
     return created.id;
   });
+  requestOutboxPublish();
 
   const [supplier] = await selectSuppliers(eq(suppliers.id, newId));
   res.status(201).json(supplier);
@@ -157,9 +159,11 @@ app.put("/suppliers/:id", requireAuthentication, requireAdministrator, async (re
       await tx.delete(operatingHours).where(eq(operatingHours.supplierId, id));
       if (hours.length > 0) await tx.insert(operatingHours).values(hours.map(period => ({ supplierId: id, ...period })));
     }
+    await recordSupplierChanges(tx, "supplier.updated", eq(suppliers.id, id));
     return true;
   });
   if (!found) throw new HttpError(404, "Supplier not found");
+  requestOutboxPublish();
 
   const [supplier] = await selectSuppliers(eq(suppliers.id, id));
   res.status(200).json(supplier);
@@ -171,10 +175,13 @@ app.delete("/suppliers/:id", requireAuthentication, requireAdministrator, async 
   const found = await db.transaction(async (tx) => {
     await tx.delete(operatingHours).where(eq(operatingHours.supplierId, id));
     const deleted = await tx.delete(suppliers).where(eq(suppliers.id, id)).returning({ id: suppliers.id });
-    return deleted.length > 0;
+    if (deleted.length === 0) return false;
+    await recordSupplierDeleted(tx, id);
+    return true;
   });
 
   if (!found) throw new HttpError(404, "Supplier not found");
+  requestOutboxPublish();
   res.status(204).end();
 });
 

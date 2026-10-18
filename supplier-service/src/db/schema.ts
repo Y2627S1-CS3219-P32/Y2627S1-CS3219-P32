@@ -5,6 +5,9 @@
  * AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-10-18.
  * Scope: Local users table fed by user-events (columns chosen by the student, mirroring
  * order-service). Author review: Pending.
+ * AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-10-18.
+ * Scope: supplier_event_sequence and the supplier_events transactional outbox (delivery
+ * approach chosen by the student). Author review: Pending.
  */
 
 import { sql } from "drizzle-orm";
@@ -12,8 +15,11 @@ import {
   bigint,
   boolean,
   check,
+  index,
   integer,
+  jsonb,
   numeric,
+  pgSequence,
   pgTable,
   primaryKey,
   text,
@@ -100,5 +106,30 @@ export const users = pgTable(
       "users_details_check",
       sql`${table.deletedAt} is not null or (${table.displayName} is not null and ${table.role} is not null)`,
     ),
+  ],
+);
+
+// Versions of supplier-events: one value per event, increasing across all suppliers.
+export const supplierEventSequence = pgSequence("supplier_event_sequence");
+
+// Transactional outbox for supplier-events. Each row is written in the same transaction
+// as the change it describes and is unpublished while published_at is null. payload is
+// the SupplierSnapshot for created/updated events and null for deletions.
+export const supplierEvents = pgTable(
+  "supplier_events",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    version: bigint("version", { mode: "number" }).notNull().unique()
+      .default(sql`nextval('supplier_event_sequence')`),
+    type: text("type").notNull(),
+    supplierId: uuid("supplier_id").notNull(),
+    payload: jsonb("payload"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    publishedAt: timestamp("published_at", { withTimezone: true }),
+  },
+  (table) => [
+    check("supplier_events_type_check", sql`${table.type} in ('supplier.created', 'supplier.updated', 'supplier.deleted')`),
+    check("supplier_events_payload_check", sql`(${table.type} = 'supplier.deleted') = (${table.payload} is null)`),
+    index("supplier_events_unpublished_idx").on(table.version).where(sql`${table.publishedAt} is null`),
   ],
 );

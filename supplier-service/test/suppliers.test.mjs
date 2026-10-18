@@ -25,6 +25,9 @@
  * Scope: Signed test tokens and local user rows in place of the stub user-service, and
  * checks for deleted and not-yet-replicated callers.
  * Author review: Pending.
+ * AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-10-18.
+ * Scope: In-memory supplier-events publisher, so route writes do not reach Pub/Sub.
+ * Author review: Pending.
  */
 import assert from "node:assert/strict";
 import { createHmac, randomBytes } from "node:crypto";
@@ -41,7 +44,7 @@ if (!process.env.TEST_DATABASE_URL) {
 const admin = new pg.Client({ connectionString: process.env.TEST_DATABASE_URL });
 const databaseName = `supplier_routes_test_${randomBytes(8).toString("hex")}`;
 let createdDatabase = false;
-let db, pool, schema, openingHoursMatch, server, baseUrl;
+let db, pool, schema, openingHoursMatch, server, baseUrl, outboxIdle;
 let foodId, coffeeId, shoppingId;
 
 const jwtSecret = "test-jwt-secret-that-is-at-least-32-bytes";
@@ -82,6 +85,9 @@ before(async () => {
     { id: 2, displayName: "Admin", role: "admin", version: 2 },
     { id: 3, displayName: "Deleted", role: "admin", version: 4, deletedAt: new Date() },
   ]);
+  let setPublisher;
+  ({ setPublisher, outboxIdle } = await import("../dist/supplier-events.js"));
+  setPublisher(async () => {});
   const { app } = await import("../dist/index.js");
   server = app.listen(0, "127.0.0.1");
   await once(server, "listening");
@@ -124,6 +130,7 @@ after(async () => {
     if (server) await new Promise((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
   } finally {
     try {
+      if (outboxIdle) await outboxIdle();
       if (pool) await pool.end();
       if (createdDatabase) await admin.query(`DROP DATABASE "${databaseName}"`);
     } finally {
