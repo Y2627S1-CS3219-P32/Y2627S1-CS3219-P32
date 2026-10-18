@@ -99,6 +99,23 @@ gcloud builds submit --config cloudbuild.yaml --region asia-southeast1  # build 
 ./deploy.sh seed    # load supplier seed data (safe to repeat)
 ```
 
+### Automatic deployment (GitHub Actions)
+
+<!-- AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-10-18.
+Scope: GitHub Actions deployment instructions. Author review: Pending. -->
+
+[`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) builds the images and runs
+`./deploy.sh` on every push to `main` (it can also be run manually from the Actions tab, with an
+option to seed). It signs in through Workload Identity Federation, so no service account key is
+stored in GitHub. One-time setup, after `./deploy.sh setup`:
+
+```sh
+./deploy.sh github  # deployer service account, identity pool restricted to this repo's main branch
+```
+
+Then add the three printed values (`GCP_PROJECT_ID`, `GCP_WORKLOAD_IDENTITY_PROVIDER`,
+`GCP_SERVICE_ACCOUNT`) as repository variables under Settings > Secrets and variables > Actions.
+
 The user service publishes state-change events to the `user-events` topic. The
 authenticated `user-event-worker` Cloud Run service consumes its push
 subscription and updates the PostgreSQL read model. Events contain password
