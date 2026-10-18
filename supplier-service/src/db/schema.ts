@@ -2,10 +2,14 @@
  * AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-28.
  * Scope: Implement the student-defined supplier database schema.
  * Author review: Prior scaffold and these schema changes reviewed.
+ * AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-10-18.
+ * Scope: Local users table fed by user-events (columns chosen by the student, mirroring
+ * order-service). Author review: Pending.
  */
 
 import { sql } from "drizzle-orm";
 import {
+  bigint,
   boolean,
   check,
   integer,
@@ -76,5 +80,25 @@ export const operatingHours = pgTable(
   (table) => [
     primaryKey({ columns: [table.supplierId, table.day, table.openingHrs] }),
     check("operating_hours_day_check", sql`${table.day} between 0 and 6`),
+  ],
+);
+
+// Local copy of users from user-events, used to authorize callers without calling
+// user-service. A deletion that arrives before the user's creation is stored as a
+// row with only the id, version and deleted_at, so the older creation is skipped.
+export const users = pgTable(
+  "users",
+  {
+    id: integer("id").primaryKey(),
+    displayName: text("display_name"),
+    role: text("role"),
+    version: bigint("version", { mode: "number" }).notNull(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  },
+  (table) => [
+    check(
+      "users_details_check",
+      sql`${table.deletedAt} is not null or (${table.displayName} is not null and ${table.role} is not null)`,
+    ),
   ],
 );

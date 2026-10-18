@@ -23,6 +23,9 @@ when the body includes operatingHours.
 Author review: Pending.
 Tool: Claude Code (model: Opus 5.5), date: 2026-10-15
 Scope: /types and /buildings routes moved to reference-routes.ts; UUID check moved to params.ts.
+Author review: Pending.
+Tool: Claude Code (model: Opus 5.5), date: 2026-10-18
+Scope: Error responses carry HttpError headers (retry-after while a new account replicates).
 Author review: Pending. **/
 
 import "dotenv/config";
@@ -177,7 +180,7 @@ app.delete("/suppliers/:id", requireAuthentication, requireAdministrator, async 
 
 const errorHandler: ErrorRequestHandler = (error, _req, res, _next) => {
   if (error instanceof HttpError) {
-    res.status(error.statusCode).json({ error: error.message });
+    res.set(error.headers).status(error.statusCode).json({ error: error.message });
     return;
   }
 

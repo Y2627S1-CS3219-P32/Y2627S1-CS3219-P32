@@ -903,3 +903,31 @@ for context, frontend-service is being set up. The frontend’s supplier screen 
   panel (mobile and desktop), toast, and marking as read worked.
 - Author review: Pending.
 
+
+## 2026-10-18: Supplier-service local user copy and event worker
+
+- Tool: Claude Code (Opus 5.5). Mode: Implementation, refactoring, tests, documentation, and verification.
+- Exact prompt: `this prompt is only for the supplier service. we're switching to using a copy of
+  the users database (usersTable). we already have the user service pubsub set up but we're still
+  on the old implementation where the supplier service talks to the user service directly.
+  create a worker, listen to user.created, user.updated, and user.deleted. on the event, update
+  your local copy of users. we currently have some operations that is dependent on user
+  authentication, and those are to be refactored to keep in line with the local copy.`
+  When asked which columns to keep, the student chose to mirror order-service (id, displayName,
+  role, version, deletedAt; no password hash).
+- Key response:
+  - supplier-service: `users` table and migration, a separate push worker (`src/worker.ts`) that
+    applies user events with a version guard and deletion tombstones, and authentication that
+    verifies JWTs locally with `JWT_SECRET` and reads the caller's role from the local copy
+    (401 for deleted users, retryable 503 before the user has replicated) instead of calling
+    user-service `GET /me`.
+  - Compose and `deploy.sh`: the worker service and its push subscription; supplier-service gets
+    `JWT_SECRET` in place of `USER_SERVICE_BASE_URL`.
+- Affected files: `supplier-service/` (`src/auth.ts`, `src/worker.ts`, `src/user-events.ts`,
+  `src/errors.ts`, `src/index.ts`, `src/db/schema.ts`, `drizzle/0001_local_users.sql` and meta,
+  tests, README, package files), `compose.yaml`, `compose.dev.yaml`, `deploy.sh`, and this log.
+- Verification: supplier-service tests (42/42) and the strict TypeScript typecheck passed. On
+  Docker Compose with the Pub/Sub emulator, a newly registered user reached the local copy, could
+  list suppliers (200) but not create types (403), and a display-name change was applied as
+  `user.updated`. Cloud deployment was not run.
+- Author review: Pending.
