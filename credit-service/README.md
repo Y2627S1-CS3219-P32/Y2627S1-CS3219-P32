@@ -4,7 +4,7 @@ Credit owns four PostgreSQL tables. Commands commit the saved JSON result, movem
 
 ## Source layout
 
-`src/credit/commands.ts` owns reservation commands and their atomic transaction. `accounts.ts` handles account locks and user lifecycle events. `queries.ts` reads balances, operations, and reservation history. `orders.ts` stores operation results. `types.ts` defines Credit types and shared value helpers.
+`src/credit/commands.ts` coordinates the atomic transaction and contains private reserve, release, and transfer decision handlers. `constants.ts` defines shared command kinds, message types, and reservation states. `accounts.ts` handles account locks and user lifecycle events. `queries.ts` reads balances, operations, and reservation history. `orders.ts` stores operation results. `types.ts` defines Credit types and shared value helpers.
 
 `src/events/` owns outbox envelopes, publishing, Pub/Sub provisioning, and publisher health. `src/db/schema.ts` defines the four Drizzle tables and their constraints. `src/db/` owns the PostgreSQL pool, Drizzle transactions, locks, and migration. The HTTP adapter, authentication, configuration, API startup, and backfill entry point stay at the source root.
 

@@ -1,3 +1,4 @@
+import { COMMAND_KIND, RESERVATION_STATE } from "./constants.js";
 import { randomUUID } from "node:crypto";
 import { eq, sql } from "drizzle-orm";
 import { db, lock, type Transaction } from "../db/index.js";
@@ -10,8 +11,10 @@ import {
   canonical,
   CreditError,
   MAX,
+  type Account,
   type Command,
   type Outcome,
+  type Reservation,
 } from "./types.js";
 import { readReservation } from "./queries.js";
 import { lockAccounts } from "./accounts.js";
@@ -43,71 +46,67 @@ export async function execute(command: Command): Promise<Outcome> {
     }
     await lock(client, "order", command.orderId);
     const state = await readReservation(client, command.orderId);
-    if (command.kind === "TRANSFER" && state.reservationState === "NONE")
+    if (
+      command.kind === COMMAND_KIND.TRANSFER &&
+      state.reservationState === RESERVATION_STATE.NONE
+    )
       throw new CreditError(503, "RESERVATION_NOT_READY");
     const requesterId =
-      command.kind === "TRANSFER" ? state.requesterId! : command.requesterId;
-    const amount = command.kind === "TRANSFER" ? state.amount! : command.amount;
+      command.kind === COMMAND_KIND.TRANSFER
+        ? state.requesterId!
+        : command.requesterId;
+    const amount =
+      command.kind === COMMAND_KIND.TRANSFER ? state.amount! : command.amount;
     const ids =
-      command.kind === "TRANSFER"
+      command.kind === COMMAND_KIND.TRANSFER
         ? [requesterId, command.courierId]
         : [requesterId];
-    const locked = await lockAccounts(client, ids, command.kind === "RELEASE");
-    let code = "OK",
-      applied = false,
-      next = state.reservationState;
-    if (!locked.active) code = "USER_INACTIVE";
+    const locked = await lockAccounts(
+      client,
+      ids,
+      command.kind === COMMAND_KIND.RELEASE,
+    );
+    let decision: Decision;
+    if (!locked.active)
+      decision = {
+        code: "USER_INACTIVE",
+        applied: false,
+        reservationState: state.reservationState,
+      };
     else if (
       state.requesterId !== undefined &&
       (requesterId !== state.requesterId || amount !== state.amount)
     )
-      code = "RESERVATION_MISMATCH";
-    else if (command.kind === "TRANSFER" && command.courierId === requesterId)
-      code = "SELF_TRANSFER";
-    else if (command.kind === "RESERVE") {
-      if (state.reservationState === "CANCELLED")
-        code = "RESERVATION_CANCELLED";
-      else if (["RELEASED", "TRANSFERRED"].includes(state.reservationState))
-        code = "RESERVATION_SETTLED";
-      else if (state.reservationState === "NONE") {
-        const account = locked.accounts.get(requesterId)!;
-        if (account.total_credits - account.reserved_credits < BigInt(amount))
-          code = "INSUFFICIENT_CREDITS";
-        else {
-          applied = true;
-          next = "HELD";
-        }
-      }
-    } else if (command.kind === "RELEASE") {
-      if (state.reservationState === "TRANSFERRED")
-        code = "RESERVATION_SETTLED";
-      else if (state.reservationState === "NONE") next = "CANCELLED";
-      else if (state.reservationState === "HELD") {
-        applied = true;
-        next = "RELEASED";
-      }
-    } else {
-      if (state.reservationState === "CANCELLED")
-        code = "RESERVATION_CANCELLED";
-      else if (state.reservationState === "RELEASED")
-        code = "RESERVATION_SETTLED";
-      else if (
-        state.reservationState === "TRANSFERRED" &&
-        command.courierId !== state.courierId
-      )
-        code = "RESERVATION_MISMATCH";
-      else if (state.reservationState === "HELD") {
-        if (
-          BigInt(amount) >
-          MAX - locked.accounts.get(command.courierId)!.total_credits
-        )
-          code = "BALANCE_LIMIT_EXCEEDED";
-        else {
-          applied = true;
-          next = "TRANSFERRED";
-        }
-      }
-    }
+      decision = {
+        code: "RESERVATION_MISMATCH",
+        applied: false,
+        reservationState: state.reservationState,
+      };
+    else if (
+      command.kind === COMMAND_KIND.TRANSFER &&
+      command.courierId === requesterId
+    )
+      decision = {
+        code: "SELF_TRANSFER",
+        applied: false,
+        reservationState: state.reservationState,
+      };
+    else if (command.kind === COMMAND_KIND.RESERVE)
+      decision = handleReserve(
+        command,
+        state,
+        locked.accounts.get(requesterId)!,
+      );
+    else if (command.kind === COMMAND_KIND.RELEASE)
+      decision = handleRelease(state);
+    else
+      decision = handleTransfer(
+        command,
+        state,
+        locked.accounts.get(command.courierId)!,
+        amount,
+      );
+    const { code, applied, reservationState: next } = decision;
     const result: Outcome = {
       requestId: command.requestId,
       status: code === "OK" ? "SUCCEEDED" : "REJECTED",
@@ -119,15 +118,19 @@ export async function execute(command: Command): Promise<Outcome> {
       transactionIds: applied ? [randomUUID()] : [],
       requesterId,
       amount,
-      ...(command.kind === "TRANSFER" ? { courierId: command.courierId } : {}),
+      ...(command.kind === COMMAND_KIND.TRANSFER
+        ? { courierId: command.courierId }
+        : {}),
       deltas: {
-        requesterTotal: applied && command.kind === "TRANSFER" ? -amount : 0,
+        requesterTotal:
+          applied && command.kind === COMMAND_KIND.TRANSFER ? -amount : 0,
         requesterReserved: applied
-          ? command.kind === "RESERVE"
+          ? command.kind === COMMAND_KIND.RESERVE
             ? amount
             : -amount
           : 0,
-        courierTotal: applied && command.kind === "TRANSFER" ? amount : 0,
+        courierTotal:
+          applied && command.kind === COMMAND_KIND.TRANSFER ? amount : 0,
       },
     };
     await saveOrder(client, {
@@ -152,6 +155,87 @@ export async function execute(command: Command): Promise<Outcome> {
   });
 }
 
+type Decision = Pick<Outcome, "code" | "applied" | "reservationState">;
+
+function handleReserve(
+  command: Extract<Command, { kind: typeof COMMAND_KIND.RESERVE }>,
+  state: Reservation,
+  requester: Account,
+): Decision {
+  const unchanged = {
+    code: "OK",
+    applied: false,
+    reservationState: state.reservationState,
+  };
+  if (state.reservationState === RESERVATION_STATE.CANCELLED)
+    return { ...unchanged, code: "RESERVATION_CANCELLED" };
+  if (
+    state.reservationState === RESERVATION_STATE.RELEASED ||
+    state.reservationState === RESERVATION_STATE.TRANSFERRED
+  )
+    return { ...unchanged, code: "RESERVATION_SETTLED" };
+  if (state.reservationState !== RESERVATION_STATE.NONE) return unchanged;
+  if (
+    requester.total_credits - requester.reserved_credits <
+    BigInt(command.amount)
+  )
+    return { ...unchanged, code: "INSUFFICIENT_CREDITS" };
+  return {
+    code: "OK",
+    applied: true,
+    reservationState: RESERVATION_STATE.HELD,
+  };
+}
+
+function handleRelease(state: Reservation): Decision {
+  const unchanged = {
+    code: "OK",
+    applied: false,
+    reservationState: state.reservationState,
+  };
+  if (state.reservationState === RESERVATION_STATE.TRANSFERRED)
+    return { ...unchanged, code: "RESERVATION_SETTLED" };
+  if (state.reservationState === RESERVATION_STATE.NONE)
+    return { ...unchanged, reservationState: RESERVATION_STATE.CANCELLED };
+  if (state.reservationState === RESERVATION_STATE.HELD)
+    return {
+      code: "OK",
+      applied: true,
+      reservationState: RESERVATION_STATE.RELEASED,
+    };
+  return unchanged;
+}
+
+function handleTransfer(
+  command: Extract<Command, { kind: typeof COMMAND_KIND.TRANSFER }>,
+  state: Reservation,
+  courier: Account,
+  amount: number,
+): Decision {
+  const unchanged = {
+    code: "OK",
+    applied: false,
+    reservationState: state.reservationState,
+  };
+  if (state.reservationState === RESERVATION_STATE.CANCELLED)
+    return { ...unchanged, code: "RESERVATION_CANCELLED" };
+  if (state.reservationState === RESERVATION_STATE.RELEASED)
+    return { ...unchanged, code: "RESERVATION_SETTLED" };
+  if (
+    state.reservationState === RESERVATION_STATE.TRANSFERRED &&
+    command.courierId !== state.courierId
+  )
+    return { ...unchanged, code: "RESERVATION_MISMATCH" };
+  if (state.reservationState !== RESERVATION_STATE.HELD) return unchanged;
+  if (BigInt(amount) > MAX - courier.total_credits)
+    return { ...unchanged, code: "BALANCE_LIMIT_EXCEEDED" };
+  return {
+    code: "OK",
+    applied: true,
+    reservationState: RESERVATION_STATE.TRANSFERRED,
+  };
+}
+
 async function move(
   client: Transaction,
   command: Command,
@@ -159,8 +243,8 @@ async function move(
   amount: number,
   transactionId: string,
 ) {
-  const total = command.kind === "TRANSFER" ? -amount : 0;
-  const reserved = command.kind === "RESERVE" ? amount : -amount;
+  const total = command.kind === COMMAND_KIND.TRANSFER ? -amount : 0;
+  const reserved = command.kind === COMMAND_KIND.RESERVE ? amount : -amount;
   await client
     .update(creditAccounts)
     .set({
@@ -169,7 +253,7 @@ async function move(
       updated_at: sql`now()`,
     })
     .where(eq(creditAccounts.user_id, requesterId));
-  if (command.kind === "TRANSFER")
+  if (command.kind === COMMAND_KIND.TRANSFER)
     await client
       .update(creditAccounts)
       .set({
@@ -182,9 +266,11 @@ async function move(
     credit_order_request_id: command.requestId,
     debit_user_id: requesterId,
     credit_user_id:
-      command.kind === "TRANSFER" ? command.courierId : requesterId,
-    debit_bucket: command.kind === "RESERVE" ? "AVAILABLE" : "RESERVED",
-    credit_bucket: command.kind === "RESERVE" ? "RESERVED" : "AVAILABLE",
+      command.kind === COMMAND_KIND.TRANSFER ? command.courierId : requesterId,
+    debit_bucket:
+      command.kind === COMMAND_KIND.RESERVE ? "AVAILABLE" : "RESERVED",
+    credit_bucket:
+      command.kind === COMMAND_KIND.RESERVE ? "RESERVED" : "AVAILABLE",
     amount: BigInt(amount),
   });
 }

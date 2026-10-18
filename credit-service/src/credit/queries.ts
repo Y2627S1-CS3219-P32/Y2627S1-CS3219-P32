@@ -1,3 +1,4 @@
+import { COMMAND_KIND, RESERVATION_STATE } from "./constants.js";
 import { and, eq } from "drizzle-orm";
 import { db, type Database, type Transaction } from "../db/index.js";
 import {
@@ -17,9 +18,7 @@ export async function balance(userId: number) {
   return {
     totalCredits: money(account.total_credits),
     reservedCredits: money(account.reserved_credits),
-    availableCredits: money(
-      account.total_credits - account.reserved_credits,
-    ),
+    availableCredits: money(account.total_credits - account.reserved_credits),
   };
 }
 export async function lookup(requestId: string) {
@@ -35,7 +34,7 @@ export async function lookup(requestId: string) {
 }
 export async function reservation(orderId: string) {
   const state = await readReservation(db, orderId);
-  if (state.reservationState === "NONE")
+  if (state.reservationState === RESERVATION_STATE.NONE)
     throw new CreditError(404, "RESERVATION_NOT_FOUND");
   return state;
 }
@@ -63,35 +62,37 @@ export async function readReservation(
       ),
     );
   const reserve = rows.find(
-    (row) => row.kind === "RESERVE" && row.amount !== null,
+    (row) => row.kind === COMMAND_KIND.RESERVE && row.amount !== null,
   );
   const transfer = rows.find(
-    (row) => row.kind === "TRANSFER" && row.amount !== null,
+    (row) => row.kind === COMMAND_KIND.TRANSFER && row.amount !== null,
   );
-  const release = rows.find((row) => row.kind === "RELEASE");
+  const release = rows.find((row) => row.kind === COMMAND_KIND.RELEASE);
   if (transfer && release) throw new Error("Contradictory settlement history");
   if (transfer)
     return {
-      reservationState: "TRANSFERRED",
+      reservationState: RESERVATION_STATE.TRANSFERRED,
       requesterId: transfer.debit_user_id!,
       amount: money(transfer.amount!),
       courierId: transfer.credit_user_id!,
     };
   if (reserve)
     return {
-      reservationState: release ? "RELEASED" : "HELD",
+      reservationState: release
+        ? RESERVATION_STATE.RELEASED
+        : RESERVATION_STATE.HELD,
       requesterId: reserve.debit_user_id!,
       amount: money(reserve.amount!),
     };
   if (
     release &&
     "kind" in release.request_payload &&
-    release.request_payload.kind === "RELEASE"
+    release.request_payload.kind === COMMAND_KIND.RELEASE
   )
     return {
-      reservationState: "CANCELLED",
+      reservationState: RESERVATION_STATE.CANCELLED,
       requesterId: release.request_payload.requesterId,
       amount: release.request_payload.amount,
     };
-  return { reservationState: "NONE" };
+  return { reservationState: RESERVATION_STATE.NONE };
 }

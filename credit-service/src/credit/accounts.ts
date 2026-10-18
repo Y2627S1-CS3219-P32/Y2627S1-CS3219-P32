@@ -1,3 +1,4 @@
+import { RESERVATION_STATE } from "./constants.js";
 import { randomUUID } from "node:crypto";
 import { and, eq, sql } from "drizzle-orm";
 import { db, lock, type Transaction } from "../db/index.js";
@@ -149,7 +150,7 @@ export async function userEvent(event: unknown, initialCredits = 1000n) {
       status: "SUCCEEDED",
       httpStatus: 200,
       code: "OK",
-      reservationState: "NONE",
+      reservationState: RESERVATION_STATE.NONE,
       applied: true,
       transactionIds: [transactionId],
       requesterId: id,

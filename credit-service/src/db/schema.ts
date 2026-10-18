@@ -1,3 +1,4 @@
+import { COMMAND_KIND } from "../credit/constants.js";
 import { sql } from "drizzle-orm";
 import {
   bigint,
@@ -42,7 +43,12 @@ export const creditOrders = pgTable(
   {
     request_id: uuid().primaryKey(),
     kind: text({
-      enum: ["ALLOCATE", "RESERVE", "TRANSFER", "RELEASE"],
+      enum: [
+        "ALLOCATE",
+        COMMAND_KIND.RESERVE,
+        COMMAND_KIND.TRANSFER,
+        COMMAND_KIND.RELEASE,
+      ],
     }).notNull(),
     initial_grant: bigint({ mode: "bigint" }),
     request_payload: jsonb()

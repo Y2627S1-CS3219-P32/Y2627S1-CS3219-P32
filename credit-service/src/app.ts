@@ -1,3 +1,4 @@
+import { RESERVATION_STATE } from "./credit/constants.js";
 import express from "express";
 import type { NextFunction, Request, Response } from "express";
 import { internal, userId } from "./auth.js";
@@ -54,7 +55,7 @@ export function createApp(credit: CreditApi) {
   app.get("/internal/v1/credit-reservations/:orderId", async (req, res) => {
     await internal(req);
     const result = await credit.reservation(id(req.params.orderId));
-    if (!result || result.reservationState === "NONE")
+    if (!result || result.reservationState === RESERVATION_STATE.NONE)
       throw new CreditError(404, "NOT_FOUND");
     res.json(result);
   });

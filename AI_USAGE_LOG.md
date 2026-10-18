@@ -1080,3 +1080,20 @@ for context, frontend-service is being set up. The frontend’s supplier screen 
   The rebuilt local API and publisher are healthy, and the command subscription
   targets the authenticated push handler.
 - Author review: Pending.
+
+## 2026-10-18: Separate Credit command decisions
+
+- Tool: Codex (GPT-6). Mode: Refactoring and verification.
+- Exact prompt: `Extract separate reserve, release, and transfer handlers within the existing command module. Retain shared transaction logic and replace repeated command and reservation-state strings with typed constants.`
+- Key response: Added private decision handlers in commands.ts and shared constants
+  for command kinds, message types, and reservation states. Derived domain types
+  from those constants. Retained common locking, replay handling, balance writes,
+  and atomic outcome persistence.
+- Affected files: Credit command module, constants, types, account and query code,
+  schema type definitions, event adapters, README, and this log.
+- Verification: The same 21 PostgreSQL and transport tests passed before and after
+  the refactor. Typechecking passed, and Drizzle reported no schema changes.
+  Real Pub/Sub checks passed for all three commands, replay, rejection, correlated
+  outcomes, prerequisite retries, cancellation, authentication, broker outage,
+  and outbox recovery. Independent review found no behavioral regressions.
+- Author review: Pending.

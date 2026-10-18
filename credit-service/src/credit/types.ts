@@ -1,11 +1,18 @@
-export type Kind = "RESERVE" | "RELEASE" | "TRANSFER";
-export type State = "NONE" | "HELD" | "RELEASED" | "CANCELLED" | "TRANSFERRED";
+import { COMMAND_KIND, RESERVATION_STATE } from "./constants.js";
+
+export type Kind = (typeof COMMAND_KIND)[keyof typeof COMMAND_KIND];
+export type State = (typeof RESERVATION_STATE)[keyof typeof RESERVATION_STATE];
 type Base = { requestId: string; correlationId: string; orderId: string };
 export type Command = Base &
   (
-    | { kind: "RESERVE"; requesterId: number; amount: number }
-    | { kind: "RELEASE"; requesterId: number; amount: number; reason: string }
-    | { kind: "TRANSFER"; courierId: number }
+    | { kind: typeof COMMAND_KIND.RESERVE; requesterId: number; amount: number }
+    | {
+        kind: typeof COMMAND_KIND.RELEASE;
+        requesterId: number;
+        amount: number;
+        reason: string;
+      }
+    | { kind: typeof COMMAND_KIND.TRANSFER; courierId: number }
   );
 export type Reservation = {
   reservationState: State;

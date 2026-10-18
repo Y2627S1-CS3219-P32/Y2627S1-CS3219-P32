@@ -1,3 +1,4 @@
+import { COMMAND_KIND, COMMAND_TYPES } from "../credit/constants.js";
 import { CreditError, type Command } from "../credit/types.js";
 
 function id(value: unknown): string {
@@ -35,10 +36,15 @@ export function parseCommand(value: unknown): Command {
     correlationId: id(value.correlationId),
     orderId: id(value.orderId),
   };
-  if (value.type === "credit.transfer" && "courierId" in value)
-    return { ...base, kind: "TRANSFER", courierId: integer(value.courierId) };
+  if (value.type === COMMAND_TYPES.TRANSFER && "courierId" in value)
+    return {
+      ...base,
+      kind: COMMAND_KIND.TRANSFER,
+      courierId: integer(value.courierId),
+    };
   if (
-    (value.type === "credit.reserve" || value.type === "credit.release") &&
+    (value.type === COMMAND_TYPES.RESERVE ||
+      value.type === COMMAND_TYPES.RELEASE) &&
     "requesterId" in value &&
     "amount" in value
   ) {
@@ -46,15 +52,20 @@ export function parseCommand(value: unknown): Command {
       requesterId: integer(value.requesterId),
       amount: integer(value.amount),
     };
-    if (value.type === "credit.reserve")
-      return { ...base, ...fields, kind: "RESERVE" };
+    if (value.type === COMMAND_TYPES.RESERVE)
+      return { ...base, ...fields, kind: COMMAND_KIND.RESERVE };
     if (
       "reason" in value &&
       typeof value.reason === "string" &&
       value.reason.trim() &&
       value.reason.length <= 200
     )
-      return { ...base, ...fields, kind: "RELEASE", reason: value.reason };
+      return {
+        ...base,
+        ...fields,
+        kind: COMMAND_KIND.RELEASE,
+        reason: value.reason,
+      };
   }
   throw new CreditError(400, "INVALID_COMMAND");
 }

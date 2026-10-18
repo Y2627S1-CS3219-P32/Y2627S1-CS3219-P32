@@ -1,3 +1,4 @@
+import { COMMAND_TYPES } from "../credit/constants.js";
 import { readFile } from "node:fs/promises";
 import { PubSub } from "@google-cloud/pubsub";
 import { config } from "../config.js";
@@ -9,7 +10,7 @@ if (!path || process.argv.length !== 3)
 const value: unknown = JSON.parse(await readFile(path, "utf8"));
 const command = parseCommand(value);
 const { kind, ...fields } = command;
-const type = `credit.${kind.toLowerCase()}`;
+const type = COMMAND_TYPES[kind];
 const pubsub = new PubSub({ projectId: config.projectId });
 try {
   const messageId = await pubsub.topic(config.commandTopic).publishMessage({

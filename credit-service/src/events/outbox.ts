@@ -1,3 +1,4 @@
+import { COMMAND_KIND } from "../credit/constants.js";
 import { randomUUID } from "node:crypto";
 import type { Transaction } from "../db/index.js";
 import { creditOrders, creditOutbox } from "../db/schema.js";
@@ -11,13 +12,13 @@ export async function enqueueOutcome(
 ) {
   const types = {
     ALLOCATE: "credit.account_allocated",
-    RESERVE: "credit.reserved",
-    RELEASE: "credit.released",
-    TRANSFER: "credit.transferred",
+    [COMMAND_KIND.RESERVE]: "credit.reserved",
+    [COMMAND_KIND.RELEASE]: "credit.released",
+    [COMMAND_KIND.TRANSFER]: "credit.transferred",
   };
   const type =
     result.status === "REJECTED"
-      ? kind === "RESERVE"
+      ? kind === COMMAND_KIND.RESERVE
         ? "credit.reservation_rejected"
         : "credit.order_rejected"
       : result.applied
