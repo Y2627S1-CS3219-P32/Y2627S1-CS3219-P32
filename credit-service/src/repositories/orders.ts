@@ -1,30 +1,67 @@
 import { and, eq, sql } from "drizzle-orm";
-import type { Database, Transaction } from "../db/index.js";
+import type { Transaction } from "../db/index.js";
 import { creditOrders, creditTransactions } from "../db/schema.js";
-import type { operationPayload, Outcome } from "../common/types.js";
+import type { Kind, Outcome } from "../common/types.js";
 
 export async function findPriorOrder(
   tx: Transaction,
   requestId: string,
-  payload: ReturnType<typeof operationPayload>,
 ) {
   const [order] = await tx
     .select({
-      kind: creditOrders.kind,
+      orderId: creditOrders.order_id,
       result: creditOrders.result,
-      same: sql<boolean>`${creditOrders.request_payload} = ${JSON.stringify(payload)}::jsonb`,
     })
     .from(creditOrders)
     .where(eq(creditOrders.request_id, requestId));
   return order;
 }
 
-export async function findOrder(db: Database | Transaction, requestId: string) {
-  const [order] = await db
+export async function findOrder(tx: Transaction, requestId: string) {
+  const [order] = await tx
     .select()
     .from(creditOrders)
     .where(eq(creditOrders.request_id, requestId));
   return order;
+}
+
+export async function findAppliedOperation(
+  tx: Transaction,
+  orderId: string,
+  kind: Kind,
+) {
+  const [order] = await tx
+    .select({ result: creditOrders.result })
+    .from(creditOrders)
+    .where(
+      and(
+        eq(creditOrders.order_id, orderId),
+        eq(creditOrders.kind, kind),
+        eq(creditOrders.status, "SUCCEEDED"),
+        sql`${creditOrders.result}->>'applied' = 'true'`,
+      ),
+    )
+    .limit(1);
+  return order?.result;
+}
+
+export async function findSuccessfulOperation(
+  tx: Transaction,
+  orderId: string,
+  kind: Kind,
+) {
+  const [order] = await tx
+    .select({ result: creditOrders.result })
+    .from(creditOrders)
+    .where(
+      and(
+        eq(creditOrders.order_id, orderId),
+        eq(creditOrders.kind, kind),
+        eq(creditOrders.status, "SUCCEEDED"),
+      ),
+    )
+    .limit(1);
+  return order?.result;
 }
 
 export async function hasAllocation(tx: Transaction, id: number) {
@@ -40,28 +77,6 @@ export async function hasAllocation(tx: Transaction, id: number) {
     )
     .limit(1);
   return allocation !== undefined;
-}
-
-export async function findHistory(db: Database | Transaction, orderId: string) {
-  return db
-    .select({
-      kind: creditOrders.kind,
-      request_payload: creditOrders.request_payload,
-      debit_user_id: creditTransactions.debit_user_id,
-      credit_user_id: creditTransactions.credit_user_id,
-      amount: creditTransactions.amount,
-    })
-    .from(creditOrders)
-    .leftJoin(
-      creditTransactions,
-      eq(creditTransactions.credit_order_request_id, creditOrders.request_id),
-    )
-    .where(
-      and(
-        eq(creditOrders.order_id, orderId),
-        eq(creditOrders.status, "SUCCEEDED"),
-      ),
-    );
 }
 
 export async function saveOrder(

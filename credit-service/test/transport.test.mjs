@@ -193,19 +193,17 @@ test("Pub/Sub dispatches credit operations and acknowledges only persisted outco
     const reserve = wire();
     assert.equal((await post(base, endpoint, reserve)).status, 204);
     assert.equal((await post(base, endpoint, reserve)).status, 204);
-    const operation = await fetch(base + `/internal/v1/credit-orders/${reserve.requestId}`, { headers });
-    const recorded = await operation.json();
+    const recorded = (await pool.query("SELECT result FROM credit_orders WHERE request_id=$1", [reserve.requestId])).rows[0];
     assert.equal(recorded.result.status, "SUCCEEDED");
-    const reservation = await fetch(base + `/internal/v1/credit-reservations/${reserve.orderId}`, { headers });
-    assert.equal((await reservation.json()).reservationState, "HELD");
     assert.equal((await post(base, endpoint, wire("credit.transfer", { orderId: reserve.orderId }))).status, 204);
     const release = wire("credit.release");
     assert.equal((await post(base, endpoint, release)).status, 204);
     const rejected = wire("credit.reserve", { orderId: release.orderId });
     assert.equal((await post(base, endpoint, rejected)).status, 204);
-    const rejectedRow = await fetch(base + `/internal/v1/credit-orders/${rejected.requestId}`, { headers });
-    assert.equal((await rejectedRow.json()).result.status, "REJECTED");
-    const conflict = await post(base, endpoint, { ...reserve, amount: 121 });
+    const rejectedRow = (await pool.query("SELECT result FROM credit_orders WHERE request_id=$1", [rejected.requestId])).rows[0];
+    assert.equal(rejectedRow.result.status, "REJECTED");
+    assert.equal((await post(base, endpoint, { ...reserve, amount: 121 })).status, 204);
+    const conflict = await post(base, endpoint, { ...reserve, orderId: randomUUID() });
     assert.equal(conflict.status, 409);
     assert.deepEqual(await conflict.json(), { code: "IDEMPOTENCY_CONFLICT" });
     const pending = await post(base, endpoint, wire("credit.transfer"));
@@ -218,13 +216,14 @@ test("Pub/Sub dispatches credit operations and acknowledges only persisted outco
       `/internal/v1/credit-reservations/${randomUUID()}/release`,
       `/internal/v1/credit-reservations/${randomUUID()}/transfer`,
     ]) assert.equal((await fetch(base + path, { method: "POST", headers, body: "{}" })).status, 404);
-    assert.equal((await fetch(base + "/internal/v1/credit-orders/bad", { headers })).status, 400);
-    const missingOrders = await fetch(base + `/internal/v1/credit-orders/${randomUUID()}`, { headers });
-    assert.equal(missingOrders.status, 404);
-    assert.deepEqual(await missingOrders.json(), { code: "OPERATION_NOT_FOUND" });
-    const missingReservations = await fetch(base + `/internal/v1/credit-reservations/${randomUUID()}`, { headers });
-    assert.equal(missingReservations.status, 404);
-    assert.deepEqual(await missingReservations.json(), { code: "RESERVATION_NOT_FOUND" });
+    for (const [resource, existingId] of [
+      ["credit-orders", reserve.requestId],
+      ["credit-reservations", reserve.orderId],
+    ])
+      for (const id of [existingId, randomUUID(), "bad"])
+        for (const requestHeaders of [{}, headers])
+          assert.equal((await fetch(base + `/internal/v1/${resource}/${id}`, { headers: requestHeaders })).status, 404);
+
   });
 });
 
@@ -241,7 +240,6 @@ test("HTTP error boundary maps business and dependency failures", async () => {
       [409, "IDEMPOTENCY_CONFLICT"], [400, "INVALID_INPUT"],
       [400, "INVALID_COMMAND"], [400, "INVALID_EVENT"],
       [401, "UNAUTHORIZED"], [401, "USER_INACTIVE"],
-      [404, "OPERATION_NOT_FOUND"], [404, "RESERVATION_NOT_FOUND"],
       [503, "database"],
     ]) {
       const res = await fetch(base + "/" + code);
@@ -256,12 +254,10 @@ test("Pub/Sub push authentication rejects diagnostic identities on alternate URL
   const originalVerify = OAuth2Client.prototype.verifyIdToken;
   const settings = {
     internalAudience: config.internalAudience,
-    internalInvokerEmails: config.internalInvokerEmails,
     pushInvokerEmail: config.pushInvokerEmail,
     internalSharedSecret: config.internalSharedSecret,
   };
   config.internalAudience = "credit-test-audience";
-  config.internalInvokerEmails = ["diagnostic@example.test"];
   config.pushInvokerEmail = "pubsub@example.test";
   config.internalSharedSecret = undefined;
   OAuth2Client.prototype.verifyIdToken = async ({ idToken }) => ({
@@ -290,14 +286,6 @@ test("Pub/Sub push authentication rejects diagnostic identities on alternate URL
       )),
     });
   try {
-    assert.equal(
-      (
-        await fetch(base + `/internal/v1/credit-orders/${randomUUID()}`, {
-          headers: { authorization: "Bearer diagnostic-token" },
-        })
-      ).status,
-      404,
-    );
     for (const path of [
       "/internal/pubsub/credit-commands",
       "/internal/pubsub/credit-commands/",

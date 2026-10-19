@@ -1,7 +1,15 @@
 import { randomUUID } from 'node:crypto';
 import { config } from '../config.js';
 import { db, lock, type Transaction } from '../db/index.js';
-import { RESERVATION_STATE, CreditError, MAX, money, type Account } from '../common/types.js';
+import {
+  RESERVATION_STATE,
+  CreditError,
+  MAX,
+  money,
+  formatOutcome,
+  outcomeEvent,
+  type Account,
+} from '../common/types.js';
 import {
   findAccount,
   lockAccount,
@@ -15,7 +23,17 @@ import {
   saveMovement,
 } from '../repositories/orders.js';
 import { insertOutbox } from '../repositories/outbox.js';
-import { formatOutcome, outcomeEvent } from './outcomes.js';
+
+export async function getBalance(userId: number) {
+  const account = await findAccount(db, userId);
+  if (!account) throw new CreditError("ACCOUNT_PENDING");
+  if (account.deleted_at) throw new CreditError("USER_INACTIVE");
+  return {
+    totalCredits: money(account.total_credits),
+    reservedCredits: money(account.reserved_credits),
+    availableCredits: money(account.total_credits - account.reserved_credits),
+  };
+}
 
 export function validateInitialCredits(initialCredits: bigint) {
   if (initialCredits <= 0n || initialCredits > MAX)

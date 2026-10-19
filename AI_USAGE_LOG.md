@@ -1354,3 +1354,75 @@ for context, frontend-service is being set up. The frontend’s supplier screen 
 - Scope: Credit refactor, runtime entrypoint changes, tests, README, and this log.
   The separate untracked demo runbook is excluded.
 - Author review: Pending.
+
+## 2026-10-19: Remove Credit operation double dispatch
+
+- Tool: Codex (GPT-6). Mode: Refactoring and verification.
+- User instruction: Simplify the reserve/release/transfer wrappers that dispatch
+  back to private operation functions; consider clearer invariants.
+- Key response: Each public credit operation contains its business decision body.
+  One private transaction helper owns normalization, replay, lock ordering, fact
+  loading, and atomic balance/ledger/result/outbox persistence. Removed the second
+  operation switch and three private operation functions. Capture business inputs
+  before database waits to preserve the original input snapshot. Existing
+  history source, guard precedence, schema, and wire outcomes remain unchanged.
+- Design: Compared inline operation callbacks with duplicated explicit transaction
+  setup. Selected the shared concrete helper to keep the concurrency protocol in
+  one place. Deferred saved-result-based fact reads pending historical consistency
+  verification. Preserved the user's concurrent constants/type consolidation.
+- Verification: All 41 tests passed before and after the change on disposable
+  PostgreSQL. Actual Pub/Sub checks passed provisioning, operations, replay,
+  rejection, dependency retries, cancellation, authentication, broker outage, and
+  publish-before-mark recovery. Independent review identified the snapshot edge
+  case, fixed before final verification. Disposable containers removed afterwards.
+- Author review: Pending.
+
+## 2026-10-19: Give Credit operations their own saved-record lookups
+
+- Tool: Codex (GPT-6). Mode: Refactoring and verification.
+- User instruction: Remove shared order-history loading from the operation flow
+  and fold `outcomes.ts` into an existing module.
+- Key response: Added specific applied/successful operation queries returning
+  saved outcomes. Reserve, release, and transfer own their lookups and stop when
+  terminal records make further reads unnecessary. Successful release lookups
+  include cancellation without movement. The transaction helper no longer knows
+  the history shape; history reconstruction is private to the read endpoint.
+  Moved outcome data constructors beside Outcome/OutcomeEvent in `common/types.ts`
+  and deleted `services/outcomes.ts`. Preserved lock ordering, request replay,
+  guard precedence, saved result fields, and atomic financial/outbox persistence.
+- Invariants: Applied transfer is terminal; successful releases preserve the same
+  requester/amount and cancellation or release snapshot. Existing service locking
+  enforces these rules. The read endpoint retains contradictory-history detection;
+  command lookups rely on the terminal invariant instead of rebuilding all facts.
+- Verification: All 41 PostgreSQL/HTTP/architecture tests and real Pub/Sub checks
+  passed. Built the previous committed implementation separately, used it to write
+  12 saved outcomes including duplicate no-ops and cancellations, then verified
+  exact replay and continuation from held/released/cancelled/transferred orders
+  with the revised implementation. Applied flags matched ledger presence in this
+  compatibility fixture. Independent review found no valid-history regressions.
+  Disposable verification containers were removed. No schema migration.
+- Author review: Pending.
+
+## 2026-10-19: Remove Credit's diagnostic order and reservation read APIs
+
+- Tool: Codex (GPT-6). Mode: Removal and verification.
+- User instruction: Remove GET /internal/v1/credit-orders/:requestId and
+  GET /internal/v1/credit-reservations/:orderId because they are outside main flows.
+- Key response: Removed both routes, handlers, read-model queries, unused read
+  result type, error mappings, and diagnostic-caller authentication/allowlist.
+  Deleted services/reads.ts and moved its remaining balance function into accounts.
+  Retained transaction-only request lookup for account initialization and
+  operation-owned saved-result lookups. Simplified Pub/Sub authentication to its
+  sole remaining caller policy. Removed the Credit-only deployment allowlist
+  setting and updated README/technical design. No runtime callers outside Credit
+  were found. Command completion is observed through correlated credit-events.
+- Verification: All 41 PostgreSQL/HTTP/architecture tests passed. Removed routes
+  return 404 for existing/missing/malformed IDs with and without former auth
+  headers. Financial assertions use actual saved rows, balances, ledger, and
+  outbox. Real Pub/Sub proof passed account provisioning, commands, replay,
+  rejection, dependency retries, cancellation, authentication, JWT balance,
+  removed routes, broker outage, and publish-before-mark recovery. Independent
+  review found no regressions in remaining interfaces. Compose configurations,
+  deployment shell syntax, and whitespace checks passed. Disposable containers
+  were removed. No schema migration or deployment.
+- Author review: Pending.

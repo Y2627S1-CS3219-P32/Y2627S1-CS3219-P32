@@ -4,10 +4,6 @@ export const config = {
   jwtSecret: process.env.JWT_SECRET ?? '',
   initialCredits: BigInt(process.env.INITIAL_CREDITS ?? '1000'),
   internalAudience: process.env.INTERNAL_AUDIENCE,
-  internalInvokerEmails: (process.env.INTERNAL_INVOKER_EMAILS ?? '')
-    .split(',')
-    .map((value) => value.trim())
-    .filter(Boolean),
   pushInvokerEmail: process.env.PUBSUB_PUSH_SERVICE_ACCOUNT,
   internalSharedSecret: process.env.PUBSUB_EMULATOR_HOST
     ? process.env.INTERNAL_SHARED_SECRET

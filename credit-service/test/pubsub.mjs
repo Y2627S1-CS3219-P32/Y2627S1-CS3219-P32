@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import { PubSub } from "@google-cloud/pubsub";
 import { createApp } from "../dist/app.js";
-import { getBalance as balance } from "../dist/services/reads.js";
+import { getBalance as balance } from "../dist/services/accounts.js";
 import { pool } from "../dist/db/index.js";
 import { publishBatch } from "../dist/outbox-publisher/publisher.js";
 
@@ -173,15 +173,12 @@ try {
     ).rows[0].count,
     beforeReplay,
   );
-  assert.equal(
-    (await request("/internal/v1/credit-orders/" + reserve.requestId)).status,
-    200,
-  );
-  assert.equal(
-    (await request("/internal/v1/credit-reservations/" + reserve.orderId)).body
-      .reservationState,
-    "HELD",
-  );
+  for (const path of [
+    `/internal/v1/credit-orders/${reserve.requestId}`,
+    `/internal/v1/credit-reservations/${reserve.orderId}`,
+  ]) assert.equal((await fetch(base + path, {
+    headers: { "x-internal-secret": process.env.INTERNAL_SHARED_SECRET },
+  })).status, 404);
   const rejected = await outcome({
     ...reserve,
     requestId: randomUUID(),
@@ -224,7 +221,7 @@ try {
   assert.equal((await balance(userId)).reservedCredits, 0);
   assert.equal((await balance(courierId)).totalCredits, 1120);
   console.log(
-    "PASS CLI and Pub/Sub reserve, duplicate replay, rejection, transfer, release, correlated outcomes, and HTTP reads",
+    "PASS CLI and Pub/Sub reserve, duplicate replay, rejection, transfer, release, correlated outcomes, JWT balance read, and removed diagnostic routes",
   );
 
   for (const path of [

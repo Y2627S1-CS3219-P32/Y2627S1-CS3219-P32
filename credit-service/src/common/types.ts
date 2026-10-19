@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+
 export const OPERATION_KIND = {
   RESERVE: "RESERVE",
   RELEASE: "RELEASE",
@@ -22,12 +24,6 @@ export type CreditOperation =
   | (ReserveCreditsInput & { kind: typeof OPERATION_KIND.RESERVE })
   | (ReleaseCreditsInput & { kind: typeof OPERATION_KIND.RELEASE })
   | (TransferCreditsInput & { kind: typeof OPERATION_KIND.TRANSFER });
-export type Reservation = {
-  reservationState: State;
-  requesterId?: number;
-  amount?: number;
-  courierId?: number;
-};
 export class CreditError extends Error {
   constructor(public code: string) {
     super(code);
@@ -74,3 +70,43 @@ export type OutcomeEvent = {
   orderId?: string;
   data: Outcome;
 };
+
+export function formatOutcome(
+  data: Omit<Outcome, 'status' | 'httpStatus'>,
+): Outcome {
+  return {
+    ...data,
+    status: data.code === 'OK' ? 'SUCCEEDED' : 'REJECTED',
+    httpStatus: data.code === 'OK' ? 200 : 409,
+  };
+}
+
+export function outcomeEvent(
+  kind: Kind | 'ALLOCATE',
+  correlationId: string,
+  result: Outcome,
+): OutcomeEvent {
+  const types = {
+    ALLOCATE: 'credit.account_allocated',
+    [OPERATION_KIND.RESERVE]: 'credit.reserved',
+    [OPERATION_KIND.RELEASE]: 'credit.released',
+    [OPERATION_KIND.TRANSFER]: 'credit.transferred',
+  };
+  const type =
+    result.status === 'REJECTED'
+      ? kind === OPERATION_KIND.RESERVE
+        ? 'credit.reservation_rejected'
+        : 'credit.order_rejected'
+      : result.applied
+        ? types[kind]
+        : 'credit.order_succeeded';
+  return {
+    eventId: randomUUID(),
+    type,
+    occurredAt: new Date().toISOString(),
+    requestId: result.requestId,
+    correlationId,
+    ...(result.orderId ? { orderId: result.orderId } : {}),
+    data: result,
+  };
+}

@@ -4,6 +4,8 @@ import {
   OPERATION_KIND,
   RESERVATION_STATE,
   operationPayload,
+  formatOutcome,
+  outcomeEvent,
   CreditError,
   MAX,
   type CreditOperation,
@@ -12,20 +14,16 @@ import {
   type ReleaseCreditsInput,
   type TransferCreditsInput,
 } from '../common/types.js';
-import {
-  readOrderHistory,
-  summarizeReservation,
-  type OrderHistory,
-} from './reads.js';
 import { lockAccounts } from './accounts.js';
 import {
   findPriorOrder,
+  findAppliedOperation,
+  findSuccessfulOperation,
   saveOrder,
   saveMovement,
 } from '../repositories/orders.js';
 import { applyBalanceChanges } from '../repositories/accounts.js';
 import { insertOutbox } from '../repositories/outbox.js';
-import { formatOutcome, outcomeEvent } from './outcomes.js';
 
 type Movement = {
   creditUserId: number;
@@ -40,18 +38,166 @@ type OperationResult = Pick<
 > & { movement?: Movement };
 
 export function reserveCredits(input: ReserveCreditsInput): Promise<Outcome> {
-  return executeOperation({ ...input, kind: OPERATION_KIND.RESERVE });
+  const { requesterId, amount } = input;
+  return runCreditOperation(
+    { ...input, kind: OPERATION_KIND.RESERVE },
+    async (tx, orderId) => {
+      const transferred = await findAppliedOperation(tx, orderId, 'TRANSFER');
+      const reserved = transferred
+        ? undefined
+        : await findAppliedOperation(tx, orderId, 'RESERVE');
+      const released = transferred
+        ? undefined
+        : await findSuccessfulOperation(tx, orderId, 'RELEASE');
+      const result = {
+        code: 'OK',
+        requesterId,
+        amount,
+        reservationState:
+          (transferred ?? released ?? reserved)?.reservationState ??
+          RESERVATION_STATE.NONE,
+      };
+      const locked = await lockAccounts(tx, [requesterId], false);
+      if (!locked.active) return { ...result, code: 'USER_INACTIVE' };
+      const original = transferred ?? reserved ?? released;
+      if (
+        original &&
+        (requesterId !== original.requesterId || amount !== original.amount)
+      )
+        return { ...result, code: 'RESERVATION_MISMATCH' };
+      if (released && !reserved)
+        return { ...result, code: 'RESERVATION_CANCELLED' };
+      if (released || transferred)
+        return { ...result, code: 'RESERVATION_SETTLED' };
+      if (reserved) return result;
+      const requester = locked.accounts.get(requesterId)!;
+      if (requester.total_credits - requester.reserved_credits < BigInt(amount))
+        return { ...result, code: 'INSUFFICIENT_CREDITS' };
+      return {
+        ...result,
+        reservationState: RESERVATION_STATE.HELD,
+        movement: {
+          creditUserId: requesterId,
+          debitBucket: 'AVAILABLE',
+          creditBucket: 'RESERVED',
+          deltas: { requesterTotal: 0, requesterReserved: amount, courierTotal: 0 },
+        },
+      };
+    },
+  );
 }
 
 export function releaseCredits(input: ReleaseCreditsInput): Promise<Outcome> {
-  return executeOperation({ ...input, kind: OPERATION_KIND.RELEASE });
+  const { requesterId, amount } = input;
+  return runCreditOperation(
+    { ...input, kind: OPERATION_KIND.RELEASE },
+    async (tx, orderId) => {
+      const transferred = await findAppliedOperation(tx, orderId, 'TRANSFER');
+      const released = transferred
+        ? undefined
+        : await findSuccessfulOperation(tx, orderId, 'RELEASE');
+      const reserved =
+        transferred || released
+          ? undefined
+          : await findAppliedOperation(tx, orderId, 'RESERVE');
+      const result = {
+        code: 'OK',
+        requesterId,
+        amount,
+        reservationState:
+          (transferred ?? released ?? reserved)?.reservationState ??
+          RESERVATION_STATE.NONE,
+      };
+      const locked = await lockAccounts(tx, [requesterId], true);
+      if (!locked.active) return { ...result, code: 'USER_INACTIVE' };
+      const original = transferred ?? reserved ?? released;
+      if (
+        original &&
+        (requesterId !== original.requesterId || amount !== original.amount)
+      )
+        return { ...result, code: 'RESERVATION_MISMATCH' };
+      if (transferred) return { ...result, code: 'RESERVATION_SETTLED' };
+      if (released) return result;
+      if (!reserved)
+        return { ...result, reservationState: RESERVATION_STATE.CANCELLED };
+      return {
+        ...result,
+        reservationState: RESERVATION_STATE.RELEASED,
+        movement: {
+          creditUserId: requesterId,
+          debitBucket: 'RESERVED',
+          creditBucket: 'AVAILABLE',
+          deltas: {
+            requesterTotal: 0,
+            requesterReserved: -amount,
+            courierTotal: 0,
+          },
+        },
+      };
+    },
+  );
 }
 
 export function transferCredits(input: TransferCreditsInput): Promise<Outcome> {
-  return executeOperation({ ...input, kind: OPERATION_KIND.TRANSFER });
+  const { courierId } = input;
+  return runCreditOperation(
+    { ...input, kind: OPERATION_KIND.TRANSFER },
+    async (tx, orderId) => {
+      const transferred = await findAppliedOperation(tx, orderId, 'TRANSFER');
+      const reserved = transferred
+        ? undefined
+        : await findAppliedOperation(tx, orderId, 'RESERVE');
+      const released = transferred
+        ? undefined
+        : await findSuccessfulOperation(tx, orderId, 'RELEASE');
+      const original = transferred ?? reserved ?? released;
+      if (!original) throw new CreditError('RESERVATION_NOT_READY');
+      const { requesterId, amount } = original;
+      const result = {
+        code: 'OK',
+        requesterId,
+        amount,
+        courierId,
+        reservationState:
+          (transferred ?? released ?? reserved)?.reservationState ??
+          RESERVATION_STATE.NONE,
+      };
+      const locked = await lockAccounts(tx, [requesterId, courierId], false);
+      if (!locked.active) return { ...result, code: 'USER_INACTIVE' };
+      if (courierId === requesterId) return { ...result, code: 'SELF_TRANSFER' };
+      if (released && !reserved)
+        return { ...result, code: 'RESERVATION_CANCELLED' };
+      if (released) return { ...result, code: 'RESERVATION_SETTLED' };
+      if (transferred) {
+        if (courierId !== transferred.courierId)
+          return { ...result, code: 'RESERVATION_MISMATCH' };
+        return result;
+      }
+      const courier = locked.accounts.get(courierId)!;
+      if (BigInt(amount) > MAX - courier.total_credits)
+        return { ...result, code: 'BALANCE_LIMIT_EXCEEDED' };
+      return {
+        ...result,
+        reservationState: RESERVATION_STATE.TRANSFERRED,
+        movement: {
+          creditUserId: courierId,
+          debitBucket: 'RESERVED',
+          creditBucket: 'AVAILABLE',
+          deltas: {
+            requesterTotal: -amount,
+            requesterReserved: -amount,
+            courierTotal: amount,
+          },
+        },
+      };
+    },
+  );
 }
 
-async function executeOperation(operation: CreditOperation): Promise<Outcome> {
+async function runCreditOperation(
+  operation: CreditOperation,
+  decide: (tx: Transaction, orderId: string) => Promise<OperationResult>,
+): Promise<Outcome> {
   operation = {
     ...operation,
     requestId: operation.requestId.toLowerCase(),
@@ -61,30 +207,14 @@ async function executeOperation(operation: CreditOperation): Promise<Outcome> {
   return db.transaction(async (tx) => {
     await lock(tx, 'request', operation.requestId);
     const payload = operationPayload(operation);
-    const prior = await findPriorOrder(tx, operation.requestId, payload);
+    const prior = await findPriorOrder(tx, operation.requestId);
     if (prior) {
-      if (prior.kind !== operation.kind || !prior.same)
+      if (prior.orderId !== operation.orderId)
         throw new CreditError('IDEMPOTENCY_CONFLICT');
       return prior.result;
     }
     await lock(tx, 'order', operation.orderId);
-    const history = await readOrderHistory(tx, operation.orderId);
-    let decision: OperationResult;
-    switch (operation.kind) {
-      case OPERATION_KIND.RESERVE:
-        decision = await reserve(tx, operation, history);
-        break;
-      case OPERATION_KIND.RELEASE:
-        decision = await release(tx, operation, history);
-        break;
-      case OPERATION_KIND.TRANSFER:
-        decision = await transfer(tx, operation, history);
-        break;
-      default: {
-        const unreachable: never = operation;
-        return unreachable;
-      }
-    }
+    const decision = await decide(tx, operation.orderId);
     const { movement: plannedMovement, ...outcome } = decision;
     const movement = plannedMovement && {
       ...plannedMovement,
@@ -134,130 +264,4 @@ async function executeOperation(operation: CreditOperation): Promise<Outcome> {
     );
     return result;
   });
-}
-
-async function reserve(
-  tx: Transaction,
-  operation: Extract<CreditOperation, { kind: typeof OPERATION_KIND.RESERVE }>,
-  history: OrderHistory,
-): Promise<OperationResult> {
-  const { requesterId, amount } = operation;
-  const result = {
-    code: 'OK',
-    requesterId,
-    amount,
-    reservationState: summarizeReservation(history).reservationState,
-  };
-  const locked = await lockAccounts(tx, [requesterId], false);
-  if (!locked.active) return { ...result, code: 'USER_INACTIVE' };
-  const original = history.transfer ?? history.reserve ?? history.release;
-  if (
-    original &&
-    (requesterId !== original.requesterId || amount !== original.amount)
-  )
-    return { ...result, code: 'RESERVATION_MISMATCH' };
-  if (history.release && !history.reserve)
-    return { ...result, code: 'RESERVATION_CANCELLED' };
-  if (history.release || history.transfer)
-    return { ...result, code: 'RESERVATION_SETTLED' };
-  if (history.reserve) return result;
-  const requester = locked.accounts.get(requesterId)!;
-  if (requester.total_credits - requester.reserved_credits < BigInt(amount))
-    return { ...result, code: 'INSUFFICIENT_CREDITS' };
-  return {
-    ...result,
-    reservationState: RESERVATION_STATE.HELD,
-    movement: {
-      creditUserId: requesterId,
-      debitBucket: 'AVAILABLE',
-      creditBucket: 'RESERVED',
-      deltas: { requesterTotal: 0, requesterReserved: amount, courierTotal: 0 },
-    },
-  };
-}
-
-async function release(
-  tx: Transaction,
-  operation: Extract<CreditOperation, { kind: typeof OPERATION_KIND.RELEASE }>,
-  history: OrderHistory,
-): Promise<OperationResult> {
-  const { requesterId, amount } = operation;
-  const result = {
-    code: 'OK',
-    requesterId,
-    amount,
-    reservationState: summarizeReservation(history).reservationState,
-  };
-  const locked = await lockAccounts(tx, [requesterId], true);
-  if (!locked.active) return { ...result, code: 'USER_INACTIVE' };
-  const original = history.transfer ?? history.reserve ?? history.release;
-  if (
-    original &&
-    (requesterId !== original.requesterId || amount !== original.amount)
-  )
-    return { ...result, code: 'RESERVATION_MISMATCH' };
-  if (history.transfer) return { ...result, code: 'RESERVATION_SETTLED' };
-  if (history.release) return result;
-  if (!history.reserve)
-    return { ...result, reservationState: RESERVATION_STATE.CANCELLED };
-  return {
-    ...result,
-    reservationState: RESERVATION_STATE.RELEASED,
-    movement: {
-      creditUserId: requesterId,
-      debitBucket: 'RESERVED',
-      creditBucket: 'AVAILABLE',
-      deltas: {
-        requesterTotal: 0,
-        requesterReserved: -amount,
-        courierTotal: 0,
-      },
-    },
-  };
-}
-
-async function transfer(
-  tx: Transaction,
-  operation: Extract<CreditOperation, { kind: typeof OPERATION_KIND.TRANSFER }>,
-  history: OrderHistory,
-): Promise<OperationResult> {
-  const original = history.transfer ?? history.reserve ?? history.release;
-  if (!original) throw new CreditError('RESERVATION_NOT_READY');
-  const { requesterId, amount } = original;
-  const { courierId } = operation;
-  const result = {
-    code: 'OK',
-    requesterId,
-    amount,
-    courierId,
-    reservationState: summarizeReservation(history).reservationState,
-  };
-  const locked = await lockAccounts(tx, [requesterId, courierId], false);
-  if (!locked.active) return { ...result, code: 'USER_INACTIVE' };
-  if (courierId === requesterId) return { ...result, code: 'SELF_TRANSFER' };
-  if (history.release && !history.reserve)
-    return { ...result, code: 'RESERVATION_CANCELLED' };
-  if (history.release) return { ...result, code: 'RESERVATION_SETTLED' };
-  if (history.transfer) {
-    if (courierId !== history.transfer.courierId)
-      return { ...result, code: 'RESERVATION_MISMATCH' };
-    return result;
-  }
-  const courier = locked.accounts.get(courierId)!;
-  if (BigInt(amount) > MAX - courier.total_credits)
-    return { ...result, code: 'BALANCE_LIMIT_EXCEEDED' };
-  return {
-    ...result,
-    reservationState: RESERVATION_STATE.TRANSFERRED,
-    movement: {
-      creditUserId: courierId,
-      debitBucket: 'RESERVED',
-      creditBucket: 'AVAILABLE',
-      deltas: {
-        requesterTotal: -amount,
-        requesterReserved: -amount,
-        courierTotal: amount,
-      },
-    },
-  };
 }

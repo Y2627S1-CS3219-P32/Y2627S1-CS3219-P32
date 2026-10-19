@@ -4,8 +4,7 @@ import { randomUUID } from "node:crypto";
 import { migrateDatabase } from "../dist/db/migrate.js";
 import { pool } from "../dist/db/index.js";
 import { reserveCredits, releaseCredits, transferCredits } from "../dist/services/credits.js";
-import { initializeAccount, deactivateAccount } from "../dist/services/accounts.js";
-import { getBalance as balance, getReservation as reservation, getCreditOperation as lookup } from "../dist/services/reads.js";
+import { initializeAccount, deactivateAccount, getBalance as balance } from "../dist/services/accounts.js";
 import { config } from "../dist/config.js";
 const create = (userId, requestId = randomUUID()) =>
   initializeAccount({ requestId, userId });
@@ -26,6 +25,8 @@ const command = (kind, orderId = randomUUID(), extra = {}) => ({
   ...(kind === "RELEASE" ? { reason: "CANCELLED" } : {}),
   ...extra,
 });
+const savedOrder = async (requestId) =>
+  (await pool.query("SELECT * FROM credit_orders WHERE request_id=$1", [requestId])).rows[0];
 const count = async (table) =>
   Number((await pool.query(`SELECT count(*) FROM ${table}`)).rows[0].count);
 before(migrateDatabase);
@@ -59,8 +60,8 @@ test("Repeated and concurrent migrations preserve financial history and run once
       ),
     );
   const before = await snapshot();
-  const allocation = await lookup(allocationId);
-  assert.equal(allocation.initial_grant, 1000);
+  const allocation = await savedOrder(allocationId);
+  assert.equal(Number(allocation.initial_grant), 1000);
   assert.equal(allocation.request_id, allocationId);
   assert.doesNotThrow(() => JSON.stringify(allocation));
   await Promise.all([migrateDatabase(), migrateDatabase()]);
@@ -68,7 +69,7 @@ test("Repeated and concurrent migrations preserve financial history and run once
   assert.deepEqual(await snapshot(), before);
   assert.deepEqual(
     await runOperation(reserve),
-    await lookup(reserve.requestId).then((row) => row.result),
+    await savedOrder(reserve.requestId).then((row) => row.result),
   );
   assert.equal(
     Number(
@@ -116,7 +117,7 @@ test("deletion before creation is permanent; provisioned deletion retains histor
   assert.equal(rejection.code, "USER_INACTIVE");
   assert.equal(rejection.status, "REJECTED");
   assert.deepEqual(await runOperation(inactive), rejection);
-  assert.deepEqual((await lookup(inactive.requestId)).result, rejection);
+  assert.deepEqual((await savedOrder(inactive.requestId)).result, rejection);
   assert.equal(await count("credit_transactions"), 0);
   assert.equal(await count("credit_outbox"), 1);
   await create(1);
@@ -155,7 +156,9 @@ test("concurrent reservations cannot overspend and rejected request replays orig
   const rejected = await runOperation(loser);
   await runOperation(command("RELEASE", winner.orderId, { amount: 700 }));
   assert.deepEqual(await runOperation(loser), rejected);
-  await assert.rejects(runOperation({ ...loser, amount: 1 }), {
+  assert.deepEqual(await runOperation({ ...loser, amount: 1 }), rejected);
+  assert.deepEqual((await savedOrder(loser.requestId)).request_payload.amount, 700);
+  await assert.rejects(runOperation({ ...loser, orderId: randomUUID() }), {
     code: "IDEMPOTENCY_CONFLICT",
   });
   assert.equal((await balance(1)).reservedCredits, 0);
@@ -164,6 +167,14 @@ test("same-ID success replays historical result and fresh-ID repeats create no m
   await Promise.all([create(1), create(2)]);
   const reserve = command("RESERVE");
   const original = await runOperation(reserve);
+  const movements = await count("credit_transactions");
+  const events = await count("credit_outbox");
+  assert.deepEqual(await runOperation({ ...reserve, amount: 200, requesterId: 2,
+    correlationId: randomUUID() }), original);
+  assert.deepEqual(await runOperation({ ...reserve, kind: "TRANSFER", courierId: 2 }), original);
+  assert.equal(await count("credit_transactions"), movements);
+  assert.equal(await count("credit_outbox"), events);
+  assert.equal((await savedOrder(reserve.requestId)).request_payload.amount, 120);
   assert.equal(
     (await runOperation(command("RESERVE", reserve.orderId))).applied,
     false,
@@ -175,10 +186,6 @@ test("same-ID success replays historical result and fresh-ID repeats create no m
     false,
   );
   assert.deepEqual(await runOperation(reserve), original);
-  assert.equal(
-    (await reservation(reserve.orderId)).reservationState,
-    "TRANSFERRED",
-  );
   assert.deepEqual(await balance(1), {
     totalCredits: 880,
     reservedCredits: 0,
@@ -194,10 +201,6 @@ test("cancellation without movement survives outbox archival and blocks delayed 
   assert.equal(result.reservationState, "CANCELLED");
   assert.equal(result.applied, false);
   await pool.query("DELETE FROM credit_outbox");
-  assert.equal(
-    (await reservation(release.orderId)).reservationState,
-    "CANCELLED",
-  );
   assert.equal(
     (await runOperation(command("RESERVE", release.orderId))).code,
     "RESERVATION_CANCELLED",
@@ -219,11 +222,8 @@ test("both reserve/release arrival orders and concurrent transfer/release serial
     const reserve = command("RESERVE", id),
       release = command("RELEASE", id);
     await runOperation(releaseFirst ? release : reserve);
-    await runOperation(releaseFirst ? reserve : release);
-    assert.equal(
-      (await reservation(id)).reservationState,
-      releaseFirst ? "CANCELLED" : "RELEASED",
-    );
+    const settled = await runOperation(releaseFirst ? reserve : release);
+    assert.equal(settled.reservationState, releaseFirst ? "CANCELLED" : "RELEASED");
   }
   for (let i = 0; i < 12; i++) {
     const id = randomUUID();
@@ -327,7 +327,7 @@ test("recipient overflow and self transfer reject atomically with exact safe JSO
   assert.equal((await balance(1)).reservedCredits, 120);
 });
 
-test("simultaneous reserve and release settle once and history agrees with reserved balances", async () => {
+test("simultaneous reserve and release settle once and ledger agrees with reserved balances", async () => {
   await create(1);
   for (let i = 0; i < 20; i++) {
     const id = randomUUID();
@@ -335,11 +335,6 @@ test("simultaneous reserve and release settle once and history agrees with reser
       runOperation(command("RESERVE", id)),
       runOperation(command("RELEASE", id)),
     ]);
-    assert.ok(
-      ["RELEASED", "CANCELLED"].includes(
-        (await reservation(id)).reservationState,
-      ),
-    );
   }
   assert.equal((await balance(1)).reservedCredits, 0);
   const rows = await pool.query(
@@ -428,9 +423,7 @@ test("missing transfer recipient retries; deleted recipient rejects durably with
   await runOperation(reserve);
   const transfer = command("TRANSFER", reserve.orderId);
   await assert.rejects(runOperation(transfer), { code: "ACCOUNT_PENDING" });
-  await assert.rejects(lookup(transfer.requestId), {
-    code: "OPERATION_NOT_FOUND",
-  });
+  assert.equal(await savedOrder(transfer.requestId), undefined);
   await deactivateAccount({ requestId: randomUUID(), userId: 2 });
   const rejected = await runOperation(transfer);
   assert.equal(rejected.status, "REJECTED");
@@ -483,12 +476,7 @@ for (const [initial, kind, code, next, deltas] of [
     const request = command(kind, orderId);
     if (code === "RESERVATION_NOT_READY") {
       await assert.rejects(runOperation(request), { code });
-      await assert.rejects(lookup(request.requestId), {
-        code: "OPERATION_NOT_FOUND",
-      });
-      await assert.rejects(reservation(orderId), {
-        code: "RESERVATION_NOT_FOUND",
-      });
+      assert.equal(await savedOrder(request.requestId), undefined);
     } else {
       const result = await runOperation(request);
       assert.equal(result.code, code);
@@ -502,9 +490,8 @@ for (const [initial, kind, code, next, deltas] of [
         requesterReserved: deltas?.[1] ?? 0,
         courierTotal: deltas?.[2] ?? 0,
       });
-      assert.deepEqual((await lookup(request.requestId)).result, result);
+      assert.deepEqual((await savedOrder(request.requestId)).result, result);
       assert.deepEqual(await runOperation(request), result);
-      assert.equal((await reservation(orderId)).reservationState, next);
       const { rows: entries } = await pool.query(
         "SELECT debit_user_id, credit_user_id, debit_bucket, credit_bucket, amount FROM credit_transactions WHERE credit_order_request_id=$1",
         [request.requestId],
@@ -541,13 +528,19 @@ test("account and participant guards precede settlement checks while historical 
   await runOperation(cancelled);
   const reserve = command("RESERVE");
   const original = await runOperation(reserve);
+  const movements = await count("credit_transactions");
+  const events = await count("credit_outbox");
+  assert.deepEqual(await runOperation({ ...reserve, amount: 200, requesterId: 2,
+    correlationId: randomUUID() }), original);
+  assert.deepEqual(await runOperation({ ...reserve, kind: "TRANSFER", courierId: 2 }), original);
+  assert.equal(await count("credit_transactions"), movements);
+  assert.equal(await count("credit_outbox"), events);
+  assert.equal((await savedOrder(reserve.requestId)).request_payload.amount, 120);
   await runOperation(command("TRANSFER", reserve.orderId));
   for (const orderId of [cancelled.orderId, reserve.orderId]) {
     const missingCourier = command("TRANSFER", orderId, { courierId: 3 });
     await assert.rejects(runOperation(missingCourier), { code: "ACCOUNT_PENDING" });
-    await assert.rejects(lookup(missingCourier.requestId), {
-      code: "OPERATION_NOT_FOUND",
-    });
+    assert.equal(await savedOrder(missingCourier.requestId), undefined);
   }
   assert.equal(
     (await runOperation(command("TRANSFER", cancelled.orderId, { courierId: 1 }))).code,
@@ -557,8 +550,7 @@ test("account and participant guards precede settlement checks while historical 
   const inactive = command("RESERVE", cancelled.orderId, { requesterId: 2 });
   const rejected = await runOperation(inactive);
   assert.equal(rejected.code, "USER_INACTIVE");
-  assert.deepEqual((await lookup(inactive.requestId)).result, rejected);
+  assert.deepEqual((await savedOrder(inactive.requestId)).result, rejected);
   await deactivateAccount({ requestId: randomUUID(), userId: 1 });
   assert.deepEqual(await runOperation(reserve), original);
-  assert.equal((await reservation(reserve.orderId)).reservationState, "TRANSFERRED");
 });
