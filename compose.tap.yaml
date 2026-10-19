@@ -1,0 +1,37 @@
+# AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-10-19.
+# Scope: Opt-in event bus tap on the Compose network, next to the Pub/Sub emulator
+# (whose port 8085 is not published to the host). Plain `docker compose up` does not
+# read this file, so the default stack is unchanged. Author review: Pending.
+#
+#   docker compose -f compose.yaml -f compose.tap.yaml up -d --build
+#   open http://127.0.0.1:3010
+services:
+  event-bus-tap:
+    build: ./event-bus-tap
+    environment:
+      # Emulator only: the tap refuses to start without PUBSUB_EMULATOR_HOST unless
+      # TAP_MODE=remote is chosen explicitly.
+      TAP_MODE: emulator
+      PUBSUB_EMULATOR_HOST: pubsub-emulator:8085
+      PUBSUB_PROJECT_ID: foc-local
+      TAP_HOST: 0.0.0.0
+      TAP_PORT: "3010"
+      TAP_MAX_EVENTS: ${TAP_MAX_EVENTS:-1000}
+    # Loopback only: the viewer has no login.
+    ports:
+      - "127.0.0.1:3010:3010"
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3010/health/ready').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    # Time to delete its own subscriptions on SIGTERM.
+    stop_grace_period: 15s
+    depends_on:
+      pubsub-emulator:
+        condition: service_healthy

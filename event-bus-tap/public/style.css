@@ -1,0 +1,52 @@
+/* AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-10-19.
+   Scope: Event bus tap viewer styles. Author review: Pending. */
+:root { font-family: system-ui, sans-serif; font-size: 14px; color: #1d2330; background: #f6f7f9; }
+body { margin: 0; }
+header { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 10px 16px; background: #1d2330; color: #fff; }
+header h1 { font-size: 18px; margin: 0 8px 0 0; }
+header a { color: #cfe0ff; }
+.spacer { flex: 1; }
+button { font: inherit; padding: 3px 10px; border: 1px solid #9aa3b5; border-radius: 4px; background: #fff; cursor: pointer; }
+button[aria-pressed="true"] { background: #ffe9a8; }
+.badge { padding: 2px 8px; border-radius: 10px; font-size: 12px; font-weight: 600; }
+.badge-ok { background: #c9f2d3; color: #0b5121; }
+.badge-wait { background: #fff1c2; color: #6b4e00; }
+.badge-bad { background: #ffd0d0; color: #7d0b0b; }
+.muted { color: #6a7385; }
+header .muted { color: #b8c0d0; }
+.small { font-size: 12px; }
+.notice { margin: 0; padding: 8px 16px; background: #eef3ff; border-bottom: 1px solid #d5def3; }
+main { display: grid; grid-template-columns: 340px 1fr; gap: 16px; padding: 12px 16px; align-items: start; }
+aside { background: #fff; border: 1px solid #dde1e8; border-radius: 6px; padding: 10px; position: sticky; top: 8px; }
+aside h2 { font-size: 15px; margin: 0 0 4px; }
+.row { display: flex; gap: 6px; margin: 6px 0; }
+#topics { list-style: none; padding: 0; margin: 0; }
+#topics li { padding: 6px 0; border-top: 1px solid #eef0f4; }
+#topics label { display: flex; gap: 6px; align-items: center; font-weight: 600; cursor: pointer; white-space: nowrap; }
+.topic-meta { margin: 2px 0 0 22px; font-size: 12px; color: #6a7385; }
+.state { font-size: 11px; padding: 1px 6px; border-radius: 8px; margin-left: auto; font-weight: 600; }
+.state-ready { background: #c9f2d3; color: #0b5121; }
+.state-missing, .state-subscribing, .state-unknown { background: #eceff4; color: #4a5263; }
+.state-retrying { background: #fff1c2; color: #6b4e00; }
+.state-error { background: #ffd0d0; color: #7d0b0b; }
+section { background: #fff; border: 1px solid #dde1e8; border-radius: 6px; padding: 10px; overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; }
+th, td { text-align: left; padding: 4px 6px; border-bottom: 1px solid #eef0f4; vertical-align: top; }
+th { font-size: 12px; color: #6a7385; font-weight: 600; }
+tr.event { cursor: pointer; }
+tr.event:hover { background: #f4f7ff; }
+tr.event.open { background: #eef3ff; }
+td.ids, td.type { font-family: ui-monospace, monospace; font-size: 12px; word-break: break-all; }
+td.type { min-width: 12em; }
+td.time, td.topic { white-space: nowrap; }
+.kind { font-size: 11px; padding: 1px 6px; border-radius: 8px; font-weight: 600; }
+.kind-command { background: #ffe1c7; color: #7a3500; }
+.kind-event { background: #d7e8ff; color: #0b3c7a; }
+.kind-message { background: #eceff4; color: #4a5263; }
+.flag { display: inline-block; font-size: 11px; padding: 1px 6px; border-radius: 8px; background: #fff1c2; color: #6b4e00; margin-right: 4px; }
+tr.detail td { background: #fafbfd; }
+pre { margin: 4px 0; padding: 8px; background: #f1f3f7; border-radius: 4px; overflow: auto; max-height: 420px; font-size: 12px; white-space: pre-wrap; word-break: break-word; }
+dl { display: grid; grid-template-columns: max-content 1fr; gap: 2px 12px; margin: 4px 0; font-size: 12px; }
+dt { color: #6a7385; }
+dd { margin: 0; font-family: ui-monospace, monospace; word-break: break-all; }
+.empty { text-align: center; color: #6a7385; padding: 24px; margin: 0; }

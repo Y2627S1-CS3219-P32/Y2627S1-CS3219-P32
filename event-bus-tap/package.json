@@ -1,0 +1,31 @@
+{
+  "//": "AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-10-19. Scope: Event bus tap dependencies and scripts, mirroring notification-service; package-lock.json is npm-generated. Author review: Pending.",
+  "name": "event-bus-tap",
+  "version": "1.0.0",
+  "description": "Read-only live viewer of every Pub/Sub topic, for demonstrating the event-driven architecture",
+  "main": "dist/index.js",
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "cli": "node dist/cli.js",
+    "cleanup": "node dist/cleanup.js",
+    "typecheck": "tsc --noEmit",
+    "test": "npm run build && node --test test/*.test.mjs",
+    "test:emulator": "npm run build && node --test --test-concurrency=1 test/emulator.integration.mjs",
+    "test:browser": "npm run build && node --test --test-concurrency=1 test/browser.integration.mjs test/browser-view.integration.mjs"
+  },
+  "license": "ISC",
+  "dependencies": {
+    "@google-cloud/pubsub": "^6.3.0",
+    "express": "^5.3.0"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.6.5",
+    "playwright-core": "^1.64.1",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  }
+}

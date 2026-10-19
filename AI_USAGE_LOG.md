@@ -1227,3 +1227,111 @@ for context, frontend-service is being set up. The frontend’s supplier screen 
 - Affected files: `cloudbuild.yaml`, `deploy.sh`, `credit-service/src/events/publisher.ts`, and this log.
 - Verification: `bash -n deploy.sh`, Cloud Build YAML parsing, and a credit-service typecheck.
 - Author review: Pending.
+
+# AI usage log (Documentation)
+
+## 2026-10-19: Teaching guide to Pub/Sub interactions and containerization
+
+- Tool: Claude Code (Opus 5.5). Mode: Learning support (explanation) and documentation.
+  No implementation, architecture, or design changes.
+- Exact prompt:
+  > FIRST task only: produce a compiled teaching PDF for Kavish explaining actual latest main of CS3219 repo /home/hermes/projects/cs3219-p32, fetched/fast-forwarded to ea16eec5baddbcbddd9412eeb219f563a81b8499 (supplier-pubsub merge). Inspect git status/HEAD and all relevant actual source. You are sole Claude instance: no subagents/nested CLI/model sessions. No commits/push/deploy/cloud mutations, no secrets printed, no production data actions, no implementation changes. Create artifacts under docs/service-architecture-guide/ only (respect repo AGENTS/AI_USAGE_LOG convention; append accurate AI usage record if required, no fabricated records). User asks teach how services interact with pubsub and how EACH service is containerized, PDF format. This is a TEACHING guide grounded in code, not generic architecture, audit, exercises or presentation script. Kavish programs but wants causal beginner-accessible explanations: show concrete action->HTTP/API->state write->outbox/publish->actual topic->subscription->handler->state effect; define Pub/Sub topic vs subscription, independent fanout vs competing consumers, push/pull, ack/retry/duplicates/idempotency/outbox and saga commands vs events only where evidenced. Explain existing service interaction map and real message payloads/envelopes with field meaning. Inventory all services including frontend/user/order/supplier/credit/saga and infrastructure actually present; do not assume names or handlers without code. Explain direct HTTP interactions separately from asynchronous ones, local emulator and deployed transport, auth/provisioning/env/ports/readiness, what is configured vs actually exercised. Trace at least one real implemented happy path and relevant failure/compensation or user-state replication path. Identify unimplemented endpoints or missing links honestly, not invented flows. Containerization: each actual Dockerfile build context, stages/base image/dependencies/build vs runtime command/user/exposed and mapped port, container networks/service-name DNS, bind mounts/named volumes, each DB ownership/persistence/migrations, worker processes, compose vs compose.dev vs cloudbuild/deploy. Clarify EXPOSE vs published ports, depends_on vs readiness with exact implementation. Use architecture and sequence diagrams, readable bullets/full sentences and short code excerpts, not huge tables/tiny fonts. Start familiar mental model then terminology; every substantive section explains mechanism and why it matters. No source-relative narration such as source says/slides say; provenance paths/line ranges and pinned SHA in separate reference appendix. Cite actual source for every architectural claim privately in a claim map. Do not overclaim exactly-once or transactional outbox atomicity without real source proof. Deliver docs/service-architecture-guide/guide.tex and guide.pdf plus BUILD.md and RESULT.md, minimal figure/build dependencies. Compile actual PDF, inspect every page/extracted text and rendered contact sheets for readable diagrams, no clipping/missing glyphs/overflow, substantive learning not cover-page filler. Practical run command appendix welcome for demo but no compulsory tasks/self-checks. You may run safe local read-only inspection/diagram/TeX tools, no cloud calls or production startup. Report file paths/page counts and evidence boundaries. AFTER this task parent will separately request event bus tap implementation; do not build tap yet, but keep brief architecture notes useful for its later design.
+- Key response: a 33-page LaTeX/TikZ guide that explains the existing code at commit
+  `ea16eec`. It covers the Pub/Sub vocabulary, every running program with its ports and
+  database, synchronous HTTP vs asynchronous flows, all six topics and their
+  subscriptions with payload fields, push/pull acknowledgement behaviour, the outbox
+  variants and their limits, walkthroughs (sign-up replication, order saga happy path,
+  rejection, timeout abort and release, supplier edits), local emulator vs `deploy.sh`
+  transport, each Dockerfile and the Compose/Cloud Build/Cloud Run packaging, gaps, and
+  notes for a later event bus tap. Claims are mapped to source lines in `CLAIM_MAP.md`.
+- Affected files: `docs/service-architecture-guide/guide.tex`, `guide.pdf`, `BUILD.md`,
+  `RESULT.md`, `CLAIM_MAP.md`, and this log.
+- Verification: `latexmk -pdf` built the PDF with no overfull boxes; every page was
+  rendered and inspected; the PDF text was extracted and checked; all cited line ranges
+  were checked against the pinned commit. No services, tests, Docker or cloud commands
+  were run (Docker is unavailable on this machine). Statements that flows were exercised
+  are taken from earlier log entries and labelled as reported.
+- Author review: Pending.
+
+# AI usage log (Event Bus Tap)
+
+## 2026-10-19: Event bus tap for demonstrating the event-driven architecture
+
+- Tool: Claude Code (Opus 5.5). Mode: Implementation (new opt-in demo service), tests and
+  documentation. No application business logic changed.
+- Exact prompt:
+  > SECOND authorized task: implement working event-bus tap in /home/hermes/projects/cs3219-p32 at latest fetched main ea16eec plus existing docs/service-architecture-guide (preserve PDF/source/AI log). Read guide section20, actual source/topic provisioning, compose/runtime. Sole Claude instance; no subagents/nested agents. User: event bus tap listens to ALL events and ONLY DISPLAYS events on selected topics, for later demonstration of event driven architecture. Build a simple useful live demo viewer (browser UI with topic multi-select preferred, optional CLI) with backend that consumes independent tap subscriptions for every application topic, receiving continuously independently of display filter. Inspect actual topics/services, do not guess or silently omit commands/replies topics. Discover existing topics including startup-created ones, support refresh/reconnect and visible connection/subscription readiness state, bounded memory/event retention. ALL events means all application topics in selected project/emulator; Pub/Sub has no wildcard, must list/create per-topic independent subscriptions, never attach to existing application subs or acknowledge their deliveries. Broker side tap-only subscriptions/cleanup for emulator/local authorized, but NO production/cloud resource mutations or cloud paid operations. Safe default emulator/local and clear explicit opt-in for remote config without auto creating cloud subscriptions. No unsolicited cloud auth, secrets or production access. Redact password hashes, passwords, tokens, secrets and sensitive credentials BEFORE data leaves backend and in logs/exports; actual user-events include hashes/emails. Prefer safe redacted email display or explicitly masked. No unrestricted raw toggle exposing secrets. Passive observer only, do not publish business events or trigger real orders; any synthetic demo publisher must clearly label its local-only isolated test events and never masquerade as real business traffic. Need actual evidence with real Pub/Sub emulator/transport if possible, not only mocked UI or fabricated canned stream. Docker reportedly absent; discover available runtime/options and install isolated local dependencies if needed, avoid sudo/system/cloud changes. Use existing packages/tools, can download isolated emulator if required, no production modifications. Containerize tap as opt-in compose profile/override so it can reach emulator service over internal network even though 8085 not host published; preserve default service behavior and readiness. Implement runnable docs for Kavish demo machine (full stack may require credentials; report). Display timestamp, topic, event type, correlation/order/trace IDs as actually present, safely expandable JSON and status; topic toggles must visibly filter without changing upstream capture/subscriptions and existing captured events should filter coherently. Pause/clear optional only if straightforward; no feature bloat. Graceful shutdown, ack/error handling, reconnect, duplicates labeled/preserved or explicit correct handling, no unbounded failure loops. Give example demo sequence using real existing business flows; distinguish command delivery vs events vs business processing completion, observer cannot prove effects by merely seeing messages. Repo is coursework and user explicitly authorizes feature: append accurate AI_USAGE_LOG entry per convention. No commits/push/deploy. Tests first for redaction/filter/capture invariants; run actual transport and browser integration showing two topics with only selected topic visible while both captured, filter switching, fanout other independent consumer still receiving, bounded retention, malicious payload text safe, disconnected/loading/error states and no secrets escaping. Run build/typecheck and relevant regression checks. No app business logic redesign. Write EVENT-BUS-TAP-HANDOFF.md with exact start/run instructions, changed paths, evidence artifacts, actual test results and limitations. Preserve original document. Do not self-approve independence: parent will run the one independent review after this author pass. Return verifiable artifact paths and results.
+- Key response: a new `event-bus-tap/` service. Pub/Sub has no wildcard, so it lists the
+  project's topics every 5 s and creates one pull subscription per topic named
+  `event-bus-tap-<instance>-<topic>`. It never reads another subscription, acknowledges
+  only its own deliveries, never publishes, and redacts every message before storing it
+  (hashes, passwords, tokens, secrets and JWTs are replaced, e-mails masked, non-JSON
+  withheld). It keeps the last 1000 events, labels duplicates, retries with capped
+  backoff, recreates lost emulator subscriptions, and deletes its subscriptions on
+  SIGTERM. The browser viewer streams over Server-Sent Events; topic toggles filter the
+  display only. There is a small CLI and an emulator-only cleanup command. Emulator mode
+  is the default; remote mode is explicit and read-only and never creates subscriptions.
+  Added an opt-in `compose.tap.yaml` (the default `compose.yaml` is unchanged), a README
+  section and `EVENT-BUS-TAP-HANDOFF.md`.
+- Affected files: `event-bus-tap/**` (new), `compose.tap.yaml` (new),
+  `EVENT-BUS-TAP-HANDOFF.md` (new), `README.md`, and this log. The guide under
+  `docs/service-architecture-guide/` was not changed.
+- Verification: typecheck clean. 53 unit tests, 10 tests against a real Pub/Sub emulator
+  (gcloud component 0.8.37 on Temurin JRE 21, both downloaded with their checksums
+  checked), and 9 headless-Chromium tests all pass. The real services ran natively
+  against that emulator and a local PostgreSQL 17 (no Docker on this machine): sign-up,
+  a supplier edit, an order through to settlement, a rejection for insufficient credits,
+  and a cancellation with release. The tap captured all six topics with no secrets in its
+  export, and every business state was confirmed from the services' own databases.
+  Existing service test suites passed (order 17, saga 8, notification 7, supplier 50,
+  user 9, credit 21). Compose files were checked only with `docker-compose config`;
+  the image was not built and `docker compose up` was not run. Remote mode was not run
+  against Google Cloud. Evidence is in `event-bus-tap/evidence/`.
+- Author review: Pending.
+
+## 2026-10-19: Correction to the two entries above ("Exact prompt" labels)
+
+- Tool: Claude Code (Opus 5.5). Mode: Documentation (log correction, appended; no
+  earlier line edited).
+- The entries "Teaching guide to Pub/Sub interactions and containerization" and "Event
+  bus tap for demonstrating the event-driven architecture" label their quotations
+  "Exact prompt". The independent review found that the quoted prompts may differ from
+  the prompts as given: it cites `…preserve PDF/source/AI lo` and
+  `…ea16eec5baddbcbddd9412eeb219f5`, while the log reads `AI log` and the full commit SHA.
+  The original prompt text could not be checked. Read both quotations as the prompts **as
+  recorded, possibly edited or abridged, not verified to be verbatim**.
+
+## 2026-10-19: Author repair of the event bus tap review's Low findings
+
+- Tool: Claude Code (Opus 5.5). Mode: Bug fixes with regression tests, and documentation.
+  No application service changed.
+- Exact prompt (verbatim):
+  > Perform bounded author repair for five LOW findings from the completed single independent review in /home/hermes/projects/cs3219-p32. Read EVENT-BUS-TAP-REVIEW.md and exact code/evidence. Sole Claude instance, no subagents, no second independent verification. Fix T1 stale per-topic green listening during broker outage; T2 browser initial history honors actual configured TAP_MAX_EVENTS rather than hardcoded1000; T3 redact known emails/secrets BEFORE truncating long strings including boundary email regression; L1 do not claim truncated prompts exact in AI_USAGE_LOG, preserve append-only convention by append correction rather than rewriting historical log; P1 PDF guide says only saga publishes commands but credit manual command:publish also exists—qualify accurate normal workflow vs operator test tool. Add targeted regressions for code fixes and run own unit/type/build/integration/browser relevant tests as feasible. Do not expand scope or alter business services, no commits/push/deploy/cloud mutations. Preserve completed review/evidence, label repairs self-tested, no rereview. Rebuild guide.tex -> guide.pdf after P1 correction and recheck extraction/rendering of affected page and downstream pagination. Existing33 pages not mandatory if valid reflow. Keep only revised PDF/source plus updated handoff/repair notes and scoped tap fixes/tests. Update EVENT-BUS-TAP-HANDOFF.md with final run instructions and accurate tested boundaries, write EVENT-BUS-TAP-REPAIR.md. User accesses files via Telegram and repository not this filesystem: produce a ZIP of event-bus-tap, compose.tap.yaml, handoff and README run instructions at /home/hermes/cs3219-event-bus-tap.zip excluding node_modules/dist if reproducibly built, .env/secrets/logs/user data/large evidence/runtime downloads. Include package-lock, Dockerfile and required source/public/build configs so archive can actually npm ci/build. Test extracting archive into scratch and documented npm ci/build (no cloud calls) or report precise blocker; safe temporary files. Do not include unrelated repo history or private data. Return final PDF and archive absolute paths and exact self-test results. Nothing beyond findings and artifact delivery.
+- Key response:
+  - The viewer no longer shows a topic as green "listening" while the broker is
+    unreachable; it shows "unknown" with an explanatory tooltip (T1).
+  - The browser's first snapshot uses the tap's configured `TAP_MAX_EVENTS` (T2).
+  - Redaction runs before long strings are cut, over a bounded 4000-character window,
+    because the e-mail pattern is quadratic on long input. Error text is now also
+    scrubbed before it is cut (T3).
+  - The correction above (L1).
+  - Guide §2 now says that only the saga sends commands in the normal workflow, and
+    names credit-service's `npm run command:publish` as an operator test tool outside it.
+    The PDF was rebuilt (P1).
+  - A delivery ZIP of the tap, its Compose override and the run documentation.
+- Affected files: `event-bus-tap/src/redact.ts`, `public/view.js`, `public/app.js`,
+  `public/style.css`, `package.json`, `test/redact.test.mjs`, `test/view.test.mjs`,
+  `test/browser-view.integration.mjs` (new), `docs/service-architecture-guide/guide.tex`,
+  `guide.pdf`, `CLAIM_MAP.md`, `RESULT.md`, `EVENT-BUS-TAP-HANDOFF.md`,
+  `EVENT-BUS-TAP-REPAIR.md` (new), and this log.
+- Verification (self-tested, not re-reviewed):
+  - Typecheck clean.
+  - 57 unit tests, 10 emulator tests and 11 headless-Chromium tests pass.
+  - The new regressions fail on the pre-repair code.
+  - The guide rebuilds to 33 pages with no overfull boxes; only pages 4–6 changed, and
+    they were inspected.
+  - From a clean extract of the ZIP: `npm ci`, the build, the typecheck and the unit
+    tests pass.
+  - Docker, the real-flow run and remote mode were not run. Details are in
+    `EVENT-BUS-TAP-REPAIR.md`.
+- Author review: Pending.

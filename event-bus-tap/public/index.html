@@ -1,0 +1,54 @@
+<!doctype html>
+<!-- AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-10-19.
+     Scope: Event bus tap viewer page. Author review: Pending. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Event bus tap</title>
+  <link rel="stylesheet" href="style.css">
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+  <header>
+    <h1>Event bus tap</h1>
+    <span id="connection" class="badge badge-wait" data-state="loading">Loading…</span>
+    <span id="broker" class="badge badge-wait" data-state="connecting">Broker: connecting</span>
+    <span id="source" class="muted"></span>
+    <span class="spacer"></span>
+    <button id="refresh" type="button" title="Look for new topics now">Refresh topics</button>
+    <button id="pause" type="button" aria-pressed="false">Pause</button>
+    <button id="clear" type="button" title="Hide events received so far (they stay captured)">Clear view</button>
+    <a id="export" href="api/events" download="event-bus-tap-export.json">Export shown topics</a>
+  </header>
+  <p class="notice">
+    Passive observer: the tap reads its own copy of every topic and changes nothing.
+    A row proves a message was <strong>published</strong> to that topic. It does not prove
+    that a consumer processed it; check the consumer's state for that.
+    <span class="kind kind-command">command</span> asks one service to do something;
+    <span class="kind kind-event">event</span> reports something that already happened.
+  </p>
+  <main>
+    <aside>
+      <h2>Topics</h2>
+      <p class="muted small">Unticking a topic only hides it here. The tap keeps capturing every topic.</p>
+      <div class="row">
+        <button id="all" type="button">All</button>
+        <button id="none" type="button">None</button>
+      </div>
+      <ul id="topics"><li class="muted">Waiting for the tap…</li></ul>
+      <p id="buffer" class="muted small"></p>
+    </aside>
+    <section>
+      <p id="summary" class="muted"></p>
+      <table>
+        <thead>
+          <tr><th>#</th><th>Received</th><th>Topic</th><th>Kind</th><th>Type</th><th>Ids</th><th>Notes</th></tr>
+        </thead>
+        <tbody id="events"></tbody>
+      </table>
+      <p id="empty" class="empty">Loading…</p>
+    </section>
+  </main>
+</body>
+</html>

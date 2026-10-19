@@ -83,6 +83,18 @@ modules (frontend) on change.
 Editing a `package.json` rebuilds that service's image. Outside Docker, run
 `npm run dev` in any of these service folders.
 
+## Watch the event bus (optional)
+
+<!-- Claude Code (Opus 5.5), 2026-10-19. Author review: Pending. -->
+```sh
+docker compose -f compose.yaml -f compose.tap.yaml up -d --build
+```
+
+Open **http://127.0.0.1:3010** for a live, redacted view of every Pub/Sub topic on the
+local emulator, filtered by the topics you tick. See
+[`EVENT-BUS-TAP-HANDOFF.md`](EVENT-BUS-TAP-HANDOFF.md) and
+[`event-bus-tap/`](event-bus-tap/README.md).
+
 ## Deploy to Google Cloud (Cloud Run)
 
 <!-- AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-09-30.
