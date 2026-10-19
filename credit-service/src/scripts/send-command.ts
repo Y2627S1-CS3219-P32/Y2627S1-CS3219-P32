@@ -1,8 +1,7 @@
-import { COMMAND_TYPES } from "../credit/constants.js";
 import { readFile } from "node:fs/promises";
 import { PubSub } from "@google-cloud/pubsub";
 import { config } from "../config.js";
-import { parseCommand } from "./commands.js";
+import { COMMAND_TYPES, parseCommand } from "../event-handler/parsers.js";
 
 const path = process.argv[2];
 if (!path || process.argv.length !== 3)

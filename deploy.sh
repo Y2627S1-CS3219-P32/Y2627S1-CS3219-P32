@@ -265,7 +265,7 @@ deploy_event_services() {
   # credit-service creates its own push subscriptions (credit-provision).
   local credit_url credit_env
   credit_url="$(run_url credit-service)"
-  credit_env="^|^PUBSUB_PROJECT_ID=${PROJECT_ID}|INTERNAL_AUDIENCE=${credit_url}|INTERNAL_INVOKER_EMAILS=${invokers}"
+  credit_env="^|^PUBSUB_PROJECT_ID=${PROJECT_ID}|INTERNAL_AUDIENCE=${credit_url}"
   credit_env="${credit_env}|PUBSUB_PUSH_SERVICE_ACCOUNT=${PUBSUB_PUSH_SERVICE_ACCOUNT}|PUBSUB_PUSH_BASE_URL=${credit_url}|INITIAL_CREDITS=${INITIAL_CREDITS}"
   run run deploy credit-service --region "$REGION" --image "${REGISTRY}/credit-service:${TAG}" \
     --port 3000 --ingress internal --allow-unauthenticated \
