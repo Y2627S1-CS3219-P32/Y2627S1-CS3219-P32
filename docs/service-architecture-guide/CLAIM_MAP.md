@@ -1,7 +1,12 @@
 <!-- AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-10-19.
 Scope: Claim-to-source map backing guide.tex (learning support / documentation). Author review: Pending. -->
 
-# Claim map for `guide.pdf`
+# Claim map for `guide-detailed.pdf` (and the short `guide.pdf`)
+
+Section numbers below refer to `guide-detailed.pdf`, the original 33-page guide. The
+4-page `guide.pdf` is a condensation of it and draws its claims from this map. Its only
+additions are the footnote's note that commit `7e8c31b` changes no service code and the
+mention of the opt-in `compose.tap.yaml` (added in that commit).
 
 Each architectural claim in the guide, mapped to the source that supports it. All paths
 are relative to the repository root, at commit `ea16eec5baddbcbddd9412eeb219f563a81b8499`

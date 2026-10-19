@@ -1335,3 +1335,28 @@ for context, frontend-service is being set up. The frontend’s supplier screen 
   - Docker, the real-flow run and remote mode were not run. Details are in
     `EVENT-BUS-TAP-REPAIR.md`.
 - Author review: Pending.
+
+## 2026-10-19: Four-page version of the service architecture guide
+
+- Tool: Claude Code (Opus 5.5). Mode: Documentation (rewrite of a learning-support guide
+  for length and scope). No application or tap code changed.
+- Exact prompt (verbatim):
+  > Revise the CS3219 guide in /home/hermes/projects/cs3219-p32 on feat/event-bus-tap. User explicitly requests SHORTER GUIDE, FOUR PAGES MAXIMUM total including title/references. Existing docs/service-architecture-guide/guide.tex/pdf is33 pages. Read guide and core source as needed. Produce a genuinely concise teaching guide, not same33 pages compressed into tiny text. Keep normal readable ~10-11pt body and useful diagrams, no cover or contents page. Prioritize user original two objectives: how actual services interact via Pub/Sub and how EACH is containerized. Include all7 services, actual topics/subscriptions, one concise coherent end-to-end order/saga and signup/supplier replication explanation, independent pub/sub fanout/ack/outbox distinction, then per-service Docker/runtime/ports and compose networking/persistence. Group common container patterns to save repetition, concise real per-service differences. Motivate terms briefly in natural plain English, no jargon inventory or enormous tables. No exercises, caveat boilerplate, generic microservices tutorial, or exhaustive reference appendix. File/commit provenance compact footnote; existing detailed CLAIM_MAP.md can stay as supplementary reference not pages. Four pages is hard maximum; aim four readable well-filled pages. Preserve long original as guide-detailed.tex/pdf under same directory if not present so prior work remains available, but canonical guide.pdf/guide.tex becomes short. Update BUILD.md/RESULT.md with true new page count/scope and self-checks, AI_USAGE_LOG per convention, preserve evidence/review and all tap implementation. Do not run another independent verification (user allows at most one); this is author formatting/scope revision and own content/layout checks only. Compile actual PDF, extract every page and render/inspect ALL four pages, no clipping/overflow/tiny tables/orphan sections, page count check assert <=4. Ensure diagrams accurate and seven services/container behavior present. No substantive business code changes, secrets/cloud/deploy. User authorized branch+push: commit only scoped doc changes/AI log with git identity kavishsathia <43487986+kavishsathia@users.noreply.github.com>, push existing feat/event-bus-tap to existing origin, verify remote hash equals HEAD. Do not stage untracked event-bus-tap-review or event-bus-tap/evidence or unrelated work; preserve them. Return actual PDF path, page count, changed files, commit/remote verification and compact summary.
+- Key response: copied the 33-page guide unchanged to `guide-detailed.tex`/`.pdf`, then
+  rewrote `guide.tex` as a 4-page guide (11pt body, no cover or contents). It covers
+  HTTP vs Pub/Sub, ack, push/pull, fanout vs competing consumers and the outbox; a figure
+  with all six topics and every subscription; the seven services; sign-up and supplier
+  replication; an order-saga sequence figure with the failure paths; and
+  containerization (the common three-stage image, a 7-row per-service table, Compose
+  networking, startup order, persistence). Provenance is one footnote pointing to
+  `CLAIM_MAP.md` and the detailed guide. Updated `BUILD.md`, `RESULT.md` and the
+  `CLAIM_MAP.md` header.
+- Affected files: `docs/service-architecture-guide/guide.tex`, `guide.pdf`,
+  `guide-detailed.tex` (new), `guide-detailed.pdf` (new), `BUILD.md`, `RESULT.md`,
+  `CLAIM_MAP.md`, and this log.
+- Verification (author self-checks only; no independent review): `latexmk` exit 0 with
+  no overfull or underfull boxes; PyMuPDF page count 4 (`<= 4` asserted); all four pages
+  rendered and inspected; text extraction found no broken glyphs and every subscription
+  and service name. Facts were spot-checked against `compose.yaml` and every
+  `Dockerfile`. Nothing was run.
+- Author review: Pending.

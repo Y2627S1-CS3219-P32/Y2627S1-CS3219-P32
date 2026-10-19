@@ -7,11 +7,59 @@ Scope: Result summary for the service architecture teaching guide. Author review
 
 | File | What it is |
 | --- | --- |
-| `guide.pdf` | Compiled teaching guide, **33 A4 pages**, 12 TikZ figures (architecture maps, three sequence diagrams, state machines, outbox, Compose network, startup graph, Cloud topology), 1 table |
-| `guide.tex` | Single-file LaTeX source (no external images) |
-| `BUILD.md` | How to rebuild and visually check the PDF |
-| `CLAIM_MAP.md` | Every architectural claim mapped to `path` + line range (259 ranges, all checked to be in bounds and spot-read for content) |
+| `guide.pdf` | **Canonical short guide, 4 A4 pages**, 11pt body, 2 TikZ figures (topic/subscription map, order saga sequence), 1 compact per-service container table |
+| `guide.tex` | Its single-file LaTeX source |
+| `guide-detailed.pdf` / `.tex` | The original 33-page guide, kept unchanged as the detailed reference (payloads, Cloud Run, gaps, demo appendix) |
+| `CLAIM_MAP.md` | Claim-to-source map (section numbers refer to the detailed guide; the short guide draws only on claims listed there) |
+| `BUILD.md` | How to rebuild and visually check either PDF |
 | `RESULT.md` | This file |
+
+## Short guide revision (2026-10-19)
+
+The user asked for a guide of at most four pages, including title and references, that
+teaches rather than compresses. `guide.tex` was rewritten from scratch; the 33-page
+source and PDF were first copied to `guide-detailed.tex` / `guide-detailed.pdf`
+(byte-identical copies).
+
+**Scope of the four pages.** (1) HTTP vs Pub/Sub, topic, subscription, ack, push vs
+pull, at-least-once and idempotency, ordering keys, filters, independent fanout vs
+competing consumers (notification-service's per-instance and shared subscriptions),
+events vs commands; Figure 1 shows all six topics and all eleven subscription kinds with
+publisher, delivery style and consumer. (2) All seven services (frontend, user,
+supplier, order, saga, credit, notification) and their extra programs. (3) The outbox,
+user-service's publish-instead-of-write exception, status codes as acknowledgements, and
+deduplication per consumer. (4) Sign-up replication, supplier-edit replication, and the
+order saga end to end (Figure 2) with rejection, timeout compensation, release and
+`FAILED`. (5) Containerization: the common three-stage image, a 7-row table of
+per-service differences (image shape, user, ports, extra containers), Compose
+networking and DNS, published vs container ports, startup order via healthchecks and
+`depends_on`, volumes, the dev and tap overrides, and one sentence on Cloud Run.
+Provenance is a single footnote. Left out on purpose (still in the detailed guide):
+payload listings, code excerpts, Cloud transport detail, gaps list, tap notes, demo
+commands, line-number appendix.
+
+**Self-checks (author checks only; no independent verification was run).**
+- `latexmk -pdf -interaction=nonstopmode -halt-on-error guide.tex`: exit 0, 0 overfull
+  and 0 underfull boxes, no undefined references or missing glyphs.
+- Page count asserted with PyMuPDF: **4** (`assert page_count <= 4` passed).
+- All four pages rendered at 110 dpi and inspected individually and as a contact sheet:
+  no clipping, overflow, overlapping diagram labels, orphaned headings or widow lines;
+  body text is 11pt, the table and figure labels are \small (about 10pt), the footnote
+  8.5pt.
+- Extracted text: no replacement characters; all eleven subscription names and all seven
+  service names present; "exactly once" appears only in a negation.
+- Facts were taken from the detailed guide and spot-checked against `compose.yaml`
+  (ports, commands, targets, images, conditions) and every `Dockerfile` (stages, base
+  images, `USER`, `EXPOSE`, `CMD`). `git diff ea16eec HEAD` touches no service code,
+  only the tap and docs, so the pinned snapshot still describes the services.
+- Nothing was run (no Docker, services, emulator or cloud).
+
+---
+
+# Original record for the detailed guide (`guide-detailed.pdf`)
+
+The sections below describe the 33-page guide as first produced and repaired. Where they
+say `guide.pdf` / `guide.tex`, read `guide-detailed.pdf` / `guide-detailed.tex`.
 
 ## Snapshot described
 

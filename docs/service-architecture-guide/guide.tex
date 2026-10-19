@@ -1,53 +1,42 @@
 % AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-10-19.
-% Scope: Learning-support guide explaining the existing Pub/Sub interactions and
-% containerization of the repository at a pinned commit. Documentation only; no
-% implementation, architecture or design decisions. Author review: Pending.
+% Scope: Four-page learning-support guide to the existing Pub/Sub interactions and
+% containerization of the repository. Condensed from guide-detailed.tex (kept in this
+% folder). Documentation only; no implementation or design decisions. Author review: Pending.
 \documentclass[11pt,a4paper]{article}
-
 \PassOptionsToPackage{hyphens,obeyspaces,spaces}{url}
-\usepackage[a4paper,margin=2.2cm,headheight=14pt]{geometry}
+\usepackage[a4paper,margin=1.7cm,top=1.5cm,bottom=1.6cm]{geometry}
 \usepackage[T1]{fontenc}
 \usepackage{lmodern}
 \usepackage{microtype}
 \usepackage{xcolor}
 \usepackage{tikz}
-\usetikzlibrary{arrows.meta,positioning,fit,backgrounds,calc}
-\usepackage{listings}
+\usetikzlibrary{arrows.meta,positioning,calc}
 \usepackage{enumitem}
 \usepackage{booktabs}
-\usepackage{fancyhdr}
 \usepackage{titlesec}
-\usepackage{framed}
 \usepackage[hidelinks]{hyperref}
 
-% ---------- colours ----------
 \definecolor{accent}{HTML}{1F5FAD}
 \definecolor{sync}{HTML}{2E7D32}
 \definecolor{async}{HTML}{C2410C}
 \definecolor{topic}{HTML}{FDE7D6}
 \definecolor{svc}{HTML}{E3EDF9}
-\definecolor{db}{HTML}{EDE7F6}
 \definecolor{infra}{HTML}{F1F1F1}
 \definecolor{note}{HTML}{FFF8E1}
 
-% ---------- layout ----------
 \setlength{\parindent}{0pt}
-\setlength{\emergencystretch}{4em}
-\setlength{\parskip}{5pt plus 2pt}
-\setlist{itemsep=2pt,topsep=3pt,parsep=1pt}
-\titleformat{\section}{\Large\bfseries\color{accent}}{\thesection}{0.6em}{}
-\titleformat{\subsection}{\large\bfseries}{\thesubsection}{0.5em}{}
-\titleformat{\subsubsection}{\normalsize\bfseries}{\thesubsubsection}{0.5em}{}
-\titlespacing*{\section}{0pt}{14pt}{6pt}
-\titlespacing*{\subsection}{0pt}{10pt}{4pt}
-\pagestyle{fancy}
-\fancyhf{}
-\fancyhead[L]{\small FoC guide}
-\fancyhead[R]{\small\nouppercase{\leftmark}}
-\fancyfoot[C]{\small\thepage}
-\renewcommand{\headrulewidth}{0.4pt}
+\setlength{\parskip}{4pt plus 1pt}
+\setlength{\emergencystretch}{3em}
+\setlist{itemsep=1pt,topsep=2pt,parsep=0pt,leftmargin=1.2em}
+\titleformat{\section}{\large\bfseries\color{accent}}{\thesection}{0.5em}{}
+\titlespacing*{\section}{0pt}{8pt}{3pt}
+\pagestyle{plain}
+\setlength{\textfloatsep}{8pt plus 2pt}
+\setlength{\floatsep}{6pt}
+\setlength{\abovecaptionskip}{3pt}
+\setlength{\belowcaptionskip}{0pt}
+\renewcommand{\footnotesize}{\fontsize{8.5}{10}\selectfont}
 
-% inline identifiers that may break across lines
 \urlstyle{tt}
 \makeatletter
 \g@addto@macro\UrlBreaks{\do\-\do\_\do\.\do\:\do\=}
@@ -55,2160 +44,335 @@
 \Urlmuskip=0mu
 \newcommand{\code}[1]{\nolinkurl{#1}}
 
-% "why it matters" call-out
-\newenvironment{why}{%
-  \def\FrameCommand{{\color{accent}\vrule width 2.5pt}\hspace{8pt}}%
-  \MakeFramed{\advance\hsize-\width\FrameRestore}\noindent\textbf{Why it matters.\ }}%
-  {\endMakeFramed}
-\newenvironment{caveat}{%
-  \def\FrameCommand{{\color{async}\vrule width 2.5pt}\hspace{8pt}}%
-  \MakeFramed{\advance\hsize-\width\FrameRestore}\noindent\textbf{Watch out.\ }}%
-  {\endMakeFramed}
-
-% ---------- listings ----------
-\lstdefinestyle{base}{
-  basicstyle=\ttfamily\small,
-  columns=fullflexible, keepspaces=true,
-  breaklines=true, breakatwhitespace=false,
-  frame=single, rulecolor=\color{black!25}, framerule=0.4pt,
-  backgroundcolor=\color{black!3},
-  xleftmargin=3pt, xrightmargin=3pt, framexleftmargin=3pt,
-  aboveskip=6pt, belowskip=6pt,
-  showstringspaces=false, upquote=true,
-  commentstyle=\color{black!55}\itshape,
-  stringstyle=\color{accent!80!black},
-  keywordstyle=\color{async!85!black},
-}
-\lstdefinelanguage{ts}{
-  morekeywords={const,let,await,async,return,if,else,for,of,throw,try,catch,function,export,import,from,new,typeof,true,false,null,undefined},
-  sensitive=true, morecomment=[l]{//}, morecomment=[s]{/*}{*/},
-  morestring=[b]", morestring=[b]', morestring=[b]`,
-}
-\lstdefinelanguage{json}{morestring=[b]", sensitive=true}
-\lstdefinelanguage{yaml}{morecomment=[l]{\#}, morestring=[b]", sensitive=true}
-\lstdefinelanguage{docker}{
-  morekeywords={FROM,AS,WORKDIR,COPY,RUN,CMD,ENV,EXPOSE,USER},
-  morecomment=[l]{\#}, morestring=[b]", sensitive=true}
-\lstset{style=base}
-
-% ---------- tikz styles ----------
 \tikzset{
-  >={Stealth[length=2.4mm]},
+  >={Stealth[length=2.2mm]},
   svcbox/.style={draw=accent!70!black, fill=svc, rounded corners=2pt, align=center,
-    font=\footnotesize, inner sep=3pt, minimum height=8mm},
-  topicbox/.style={draw=async!80!black, fill=topic, rounded corners=6pt, align=center,
-    font=\footnotesize\ttfamily, inner sep=3pt, minimum height=7mm},
-  dbbox/.style={draw=violet!60!black, fill=db, align=center, font=\footnotesize,
-    inner sep=3pt, minimum height=7mm},
-  infrabox/.style={draw=black!50, fill=infra, rounded corners=2pt, align=center,
-    font=\footnotesize, inner sep=3pt, minimum height=7mm},
-  notebox/.style={draw=black!35, fill=note, align=left, font=\footnotesize, inner sep=3pt},
-  synca/.style={->, draw=sync, thick},
+    font=\small, inner sep=2pt},
+  topicbox/.style={draw=async!80!black, fill=topic, rounded corners=5pt, align=center,
+    font=\small\ttfamily, inner sep=2pt},
+  subbox/.style={draw=black!45, fill=infra, rounded corners=1pt, align=left,
+    font=\footnotesize, inner sep=2pt, anchor=west},
   asynca/.style={->, draw=async, thick},
-  lbl/.style={font=\footnotesize, fill=white, inner sep=1pt},
-  life/.style={draw=black!35, dashed},
+  synca/.style={->, draw=sync, thick},
+  lbl/.style={font=\small, fill=white, inner sep=1pt},
+  life/.style={draw=black!30, dashed},
   head/.style={draw=black!60, fill=svc, rounded corners=2pt, align=center,
-    font=\footnotesize\bfseries, minimum width=21mm, minimum height=9mm, inner sep=2pt},
-  m/.style={->, thick},
-  mret/.style={->, dashed, draw=black!60},
-  mlab/.style={font=\footnotesize, above, inner sep=1.5pt},
-  act/.style={font=\footnotesize, align=left, fill=note, draw=black!25, inner sep=2pt},
+    font=\small\bfseries, minimum width=25mm, minimum height=8mm, inner sep=1pt},
+  m/.style={->, thick, draw=async},
+  mh/.style={->, thick, draw=sync},
+  mlab/.style={font=\small, above, inner sep=1pt},
+  act/.style={font=\small, align=left, fill=note, draw=black!25, inner sep=1.5pt},
 }
 
-\hypersetup{pdftitle={FoC services: how they talk over Pub/Sub and how each is containerized},
-  pdfauthor={Learning guide prepared with Claude Code}}
+\hypersetup{pdftitle={FoC services: Pub/Sub interactions and containers (short guide)}}
 
 \begin{document}
 
-% =====================================================================
-\thispagestyle{plain}
-\begin{center}
-{\LARGE\bfseries\color{accent} How the FoC services talk to each other\\[2pt]
-and how each one is packaged into a container\par}
-\vspace{6pt}
-{\large A code-grounded teaching guide to the CS3219 P32 repository\par}
-\vspace{4pt}
-{\normalsize Prepared for Kavish \quad$\cdot$\quad 19 October 2026 \quad$\cdot$\quad
-repository snapshot pinned in Appendix~\ref{app:refs}\par}
-\end{center}
-\vspace{4pt}
+{\raggedright\Large\bfseries\color{accent} How the seven FoC services talk over Pub/Sub, and how each is containerized\par}
+\vspace{2pt}
+{\small A four-page teaching guide to the CS3219 P32 repository, 19 October 2026.\footnote{Grounded
+in the code at \code{ea16eec} (\code{main}); the service code is unchanged at \code{7e8c31b}, which adds
+only the event bus tap and these docs. File and line evidence for every claim is in
+\code{CLAIM_MAP.md}; the full 33-page version, with payload examples and Cloud Run details, is
+\code{guide-detailed.pdf} in the same folder. Nothing was run to write this guide; flows described as
+working come from code reading and earlier logged runs on the local emulator.}\par}
 
-\noindent This guide explains the system that is actually in the repository: which
-programs run, which messages they exchange over Google Cloud Pub/Sub, what each message
-looks like, what each handler writes to which database, and how every program is built
-into a Docker image and started by Docker Compose (locally) or Cloud Run (in Google
-Cloud). It starts from an everyday mental model, introduces the vocabulary only when it
-is needed, and then follows real requests end to end. Where something is configured but
-has no evidence of having run, or where a link in a flow is missing, the text says so.
-File paths and line numbers are collected in Appendix~\ref{app:refs} rather than in the
-running text, so that the explanations stay readable.
+\section{Two ways to talk: phone calls and mailing lists}
 
-{\small\setlength{\parskip}{1pt}\tableofcontents}
+\textbf{Phone calls (HTTP).} Everything a user does starts as a synchronous call: the browser
+calls the Nuxt server, which forwards to \emph{one} backend with the user's JWT and waits for the
+answer. Backends never call each other over HTTP. Each one checks the JWT itself with the shared
+\code{JWT_SECRET}.
 
-% =====================================================================
-\section{A familiar starting point: phone calls and mailing lists}
-\label{sec:mental}
-
-Services in this project communicate in two very different ways, and almost every
-design detail later in the guide follows from the difference.
-
-\textbf{A phone call (synchronous HTTP).} When the browser asks the Nuxt frontend for
-the list of orders, the frontend's server makes an HTTP request to
-\code{order-service} and \emph{waits} for the answer. Both parties must be available at
-the same moment, and the caller learns immediately whether it worked. That is how every
-user-facing read and write in this project starts.
-
-\textbf{A mailing list with personal mailboxes (asynchronous Pub/Sub).} When a student
-signs up, \code{user-service} does not phone the supplier, order and credit services one
-by one. It posts a single letter, a \emph{message}, to a mailing list called
-\code{user-events}. Every service that cares about users has its own mailbox on that
-list, called a \emph{subscription}. The post office (Pub/Sub) puts a copy of the letter
-in every mailbox and keeps it there until the owner says ``got it'', which is called
-\emph{acknowledging}. If a mailbox owner is away, the letter waits; if the owner
-reads it but does not confirm, the post office delivers it again later.
-
-Two consequences follow, and both show up all over the code:
+\textbf{Mailing lists (Pub/Sub).} Everything that other services need to learn happens
+asynchronously. A service \emph{publishes} a message to a \textbf{topic}, which is like a mailing
+list. Each interested reader owns a \textbf{subscription}, which is like a personal mailbox on that
+list. Pub/Sub keeps a copy of every message in every mailbox until the reader
+\textbf{acknowledges} it (``got it''). There are two ways to read a mailbox:
 \begin{itemize}
-  \item The sender does not know when, or whether, each reader has acted on the
-  letter. A freshly registered user can briefly be unknown to \code{order-service}. The
-  code handles this lag explicitly, for example with a ``your account is still being set
-  up'' response.
-  \item The post office may deliver the same letter more than once. Every reader in
-  this repository therefore checks whether it has already applied a letter before
-  changing its database. That property is called \emph{idempotency}.
+  \item \emph{Push:} Pub/Sub POSTs each message to the reader's HTTP endpoint. A 2xx answer is the
+  acknowledgement; any other status, or a timeout, means ``try again later''. Every consumer here
+  uses push, except notification-service.
+  \item \emph{Pull:} the reader fetches messages and calls \code{ack()} or \code{nack()}.
+  Notification-service pulls, as a long-running process that also holds browser WebSockets.
 \end{itemize}
+Two rules shape the rest of the design. First, Pub/Sub puts a message only into subscriptions that
+\emph{already exist} when it is published. Second, delivery is \emph{at least once}: a message can
+arrive twice or late, so every handler checks whether it has already applied a message (it is
+\emph{idempotent}). Messages on a subscription with ordering enabled arrive in publish order per
+\textbf{ordering key}, which here is the user, supplier or order ID.
 
-\begin{figure}[!htbp]
+\textbf{Fanout versus competing consumers.} Several subscriptions on one topic each get every
+message: that is \emph{independent fanout}, and it is how one sign-up reaches four services.
+Several processes reading the \emph{same} subscription share its messages, so each message goes
+to only one of them: that is \emph{competing consumers}. Notification-service uses both on
+\code{order-events}. Every running instance creates its own \code{notification-<uuid>} subscription,
+so all instances see every event and can update the browsers connected to them. All instances also
+share \code{notification-store}, so each notification is stored once. A subscription can also carry
+a \textbf{filter} on message attributes, so unwanted messages never reach it.
+
+There are six topics. Four carry \emph{events}, which report facts that already happened:
+\code{user-events}, \code{supplier-events}, \code{order-events}, and \code{credit-events} for
+credit results. The other two carry \emph{commands}, which ask one service to do something
+(\code{credit-commands}, \code{order-commands}). In the normal workflow only the saga orchestrator
+sends commands. Figure~\ref{fig:map} shows every topic and every subscription.
+
+\begin{figure}[h]
 \centering
-\begin{tikzpicture}[node distance=6mm]
-  \node[svcbox, minimum width=26mm] (pub) {publisher\\\code{user-service}};
-  \node[topicbox, right=14mm of pub, minimum width=28mm] (t) {topic\\user-events};
-  \node[infrabox, right=16mm of t, yshift=18mm, minimum width=36mm] (s1) {subscription\\\code{user-events-worker}};
-  \node[infrabox, right=16mm of t, yshift=6mm, minimum width=36mm] (s2) {subscription\\\code{order-service-user-events}};
-  \node[infrabox, right=16mm of t, yshift=-6mm, minimum width=36mm] (s3) {subscription\\\code{supplier-service-user-events}};
-  \node[infrabox, right=16mm of t, yshift=-18mm, minimum width=36mm] (s4) {subscription\\\code{credit-service-user-events}};
-  \draw[asynca] (pub) -- node[lbl, above=1pt]{publish} (t);
-  \foreach \s in {s1,s2,s3,s4} \draw[asynca] (t.east) -- (\s.west);
-  \node[font=\footnotesize, align=center, below=3mm of t] {each subscription keeps\\its own copy of every message};
-\end{tikzpicture}
-
-\vspace{10pt}
 \begin{tikzpicture}[x=1cm,y=1cm]
-  % independent fanout
-  \node[topicbox, minimum width=22mm] (t1) at (1.1,0) {order-events};
-  \node[infrabox, minimum width=44mm] (a) at (4.9,0.6) {\code{notification-<uuid A>}};
-  \node[infrabox, minimum width=44mm] (b) at (4.9,-0.6) {\code{notification-<uuid B>}};
-  \node[svcbox, minimum width=20mm] (ia) at (8.7,0.6) {instance A};
-  \node[svcbox, minimum width=20mm] (ib) at (8.7,-0.6) {instance B};
-  \draw[asynca] (t1.east) -- (a.west);
-  \draw[asynca] (t1.east) -- (b.west);
-  \draw[asynca] (a) -- (ia);
-  \draw[asynca] (b) -- (ib);
-  \node[font=\footnotesize, anchor=west, text width=60mm, align=left] at (10.1,0)
-    {\textbf{Independent fanout.} Each instance has its own subscription, so both A and B
-     receive every order event and can push it to the browsers connected to them.};
-  % competing consumers
-  \node[topicbox, minimum width=22mm] (t2) at (1.1,-2.6) {order-events};
-  \node[infrabox, minimum width=44mm] (s) at (4.9,-2.6) {\code{notification-store} (shared)};
-  \node[svcbox, minimum width=20mm] (ja) at (8.7,-2.0) {instance A};
-  \node[svcbox, minimum width=20mm] (jb) at (8.7,-3.2) {instance B};
-  \draw[asynca] (t2) -- (s);
-  \draw[asynca] (s.east) -- (ja.west);
-  \draw[asynca] (s.east) -- (jb.west);
-  \node[font=\footnotesize, anchor=west, text width=60mm, align=left] at (10.1,-2.6)
-    {\textbf{Competing consumers.} Both instances read the one shared subscription, so
-     each event is handed to only one of them and stored once.};
+  % columns: publisher (1.5) | topic (5.0) | subscription (7.15 west) | consumer (15.7)
+  \def\rowh{0.62}
+  \newcommand{\sub}[4]{%
+    \node[subbox, text width=70mm, minimum height=5mm] (s#1) at (6.85,#2) {#3};
+    \node[svcbox, font=\footnotesize, text width=29mm, minimum height=5mm, anchor=west] (c#1) at (14.3,#2) {#4};
+    \draw[->, draw=black!55] (s#1.east) -- (c#1.west);}
+  % user-events
+  \sub{1}{0}{\code{user-events-worker}\hfill push, ordered}{user-event-worker}
+  \sub{2}{-\rowh}{\code{supplier-service-user-events}\hfill push, ordered}{supplier-event-worker}
+  \sub{3}{-2*\rowh}{\code{order-service-user-events}\hfill push, ordered}{order-service}
+  \sub{4}{-3*\rowh}{\code{credit-service-user-events}\hfill push}{credit-service}
+  \node[topicbox, minimum width=27mm, minimum height=6mm] (t1) at (4.9,-1.5*\rowh) {user-events};
+  \node[svcbox, minimum width=27mm, minimum height=6mm] (p1) at (1.4,-1.5*\rowh) {user-service API\\[-1pt]{\footnotesize direct publish}};
+  % supplier-events
+  \sub{5}{-4.3*\rowh}{\code{order-service-supplier-events}\hfill push, ordered}{order-service}
+  \node[topicbox, minimum width=27mm, minimum height=6mm] (t2) at (4.9,-4.3*\rowh) {supplier-events};
+  \node[svcbox, minimum width=27mm, minimum height=6mm] (p2) at (1.4,-4.3*\rowh) {supplier-service\\[-1pt]{\footnotesize outbox}};
+  % order-events
+  \sub{6}{-5.6*\rowh}{\code{saga-orchestrator-order-events}\hfill push, filter}{saga-orchestrator}
+  \sub{7}{-6.6*\rowh}{\code{notification-<uuid>} (one per instance)\hfill pull}{notification}
+  \sub{8}{-7.6*\rowh}{\code{notification-store} (shared)\hfill pull}{notification}
+  \node[topicbox, minimum width=27mm, minimum height=6mm] (t3) at (4.9,-6.6*\rowh) {order-events};
+  \node[svcbox, minimum width=27mm, minimum height=6mm] (p3) at (1.4,-6.6*\rowh) {order-service\\[-1pt]{\footnotesize outbox}};
+  % credit-commands
+  \sub{9}{-8.9*\rowh}{\code{credit-service-commands}\hfill push}{credit-service}
+  \node[topicbox, minimum width=27mm, minimum height=6mm] (t4) at (4.9,-8.9*\rowh) {credit-commands};
+  % order-commands
+  \sub{10}{-9.9*\rowh}{\code{order-service-order-commands}\hfill push, ordered}{order-service}
+  \node[topicbox, minimum width=27mm, minimum height=6mm] (t5) at (4.9,-9.9*\rowh) {order-commands};
+  \node[svcbox, minimum width=27mm, minimum height=11mm] (p4) at (1.4,-9.4*\rowh) {saga-orchestrator\\[-1pt]{\footnotesize outbox}};
+  % credit-events
+  \sub{11}{-11.2*\rowh}{\code{saga-orchestrator-credit-events}\hfill push, ordered}{saga-orchestrator}
+  \node[topicbox, minimum width=27mm, minimum height=6mm] (t6) at (4.9,-11.2*\rowh) {credit-events};
+  \node[svcbox, minimum width=27mm, minimum height=6mm] (p6) at (1.4,-11.2*\rowh) {credit-publisher\\[-1pt]{\footnotesize outbox loop}};
+  % arrows
+  \draw[asynca] (p1) -- (t1); \draw[asynca] (p2) -- (t2); \draw[asynca] (p3) -- (t3);
+  \draw[asynca] (p4.east) -- (t4.west); \draw[asynca] (p4.east) -- (t5.west); \draw[asynca] (p6) -- (t6);
+  \foreach \i in {1,2,3,4} \draw[asynca] (t1.east) -- (s\i.west);
+  \draw[asynca] (t2) -- (s5);
+  \foreach \i in {6,7,8} \draw[asynca] (t3.east) -- (s\i.west);
+  \draw[asynca] (t4) -- (s9); \draw[asynca] (t5) -- (s10); \draw[asynca] (t6) -- (s11);
+  \node[font=\footnotesize\bfseries, anchor=south] at (1.4,0.35) {publisher};
+  \node[font=\footnotesize\bfseries, anchor=south] at (4.9,0.35) {topic};
+  \node[font=\footnotesize\bfseries, anchor=south west] at (6.85,0.35) {subscription and delivery};
+  \node[font=\footnotesize\bfseries, anchor=south west] at (14.3,0.35) {consumer};
 \end{tikzpicture}
-\caption{Top: one topic, four mailboxes (subscriptions), each a separate copy. Bottom:
-the notification service uses both patterns on one topic: a private subscription per
-running instance, plus one shared subscription that the instances split between them.}
-\label{fig:mental}
+\caption{Every topic and subscription. ``Ordered'' means message ordering is enabled. The saga's
+filter passes only \code{order.created}, \code{.cancelled}, \code{.expired} and \code{.completed};
+both notification subscriptions accept every \code{order.*} type.}
+\label{fig:map}
 \end{figure}
 
-\begin{why}
-Once you see a topic as ``a mailing list'' and a subscription as ``one reader's
-mailbox'', the rest of the repository becomes predictable: anyone who wants every
-message creates a new subscription; anyone who wants to share the work joins an existing
-one; and anyone who reads mail must cope with letters that arrive late or twice.
-\end{why}
+\section{The seven services and what each sends and receives}
 
-% =====================================================================
-\section{Vocabulary, tied to this codebase}
-\label{sec:terms}
-
-\textbf{Topic.} A named channel that publishers send messages to. The repository uses
-six: \code{user-events}, \code{supplier-events}, \code{order-events},
-\code{order-commands}, \code{credit-commands} and \code{credit-events}. A topic by itself
-stores nothing for anyone; only subscriptions hold messages.
-
-\textbf{Subscription.} A named, durable queue attached to one topic. Pub/Sub only puts a
-message into the subscriptions that \emph{already exist} when the message is
-published. That rule explains several startup dependencies in \code{compose.yaml}
-(Section~\ref{sec:startup}).
-
-\textbf{Message.} A message has four parts that matter here. The \emph{data} is
-the body; every service in this repository puts a JSON document there. The
-\emph{attributes} are small string key--value pairs outside the body, such as
-\code{type=order.created}, which Pub/Sub can filter on. The \emph{ordering key} groups
-related messages, for example all messages about one order. The \emph{message ID} is
-assigned by Pub/Sub. The services do not rely on Pub/Sub's message ID; they put their own
-identifiers (\code{eventId}, \code{commandId}, \code{requestId}) inside the data.
-
-\textbf{Push subscription.} Pub/Sub delivers each message by making an HTTP
-\code{POST} to an endpoint URL owned by the consumer. A success status (this code answers
-\code{204} or \code{200}) acknowledges the message. Any other status, or no answer within
-the acknowledgement deadline, counts as a failure, and Pub/Sub retries later with
-backoff. Every consumer in the repository except the notification service uses push.
-
-\textbf{Pull subscription.} The consumer's client library connects to Pub/Sub and
-receives messages; the code then calls \code{message.ack()} or \code{message.nack()}
-itself. Only \code{notification-service} uses pull. A pull consumer needs no public
-endpoint and can be a long-lived process that also holds WebSocket connections.
-
-\textbf{At-least-once delivery, retries and duplicates.} Pub/Sub may deliver a message
-again even after the handler succeeded, for example if the acknowledgement was lost.
-Publishers in this repository can also send a message twice (Section~\ref{sec:outbox}).
-Nothing in the code relies on exactly-once delivery.
-
-\textbf{Idempotency.} A handler is idempotent if applying the same message twice leaves
-the same state as applying it once. The repository uses four techniques, and it is worth
-learning to spot them:
-\begin{itemize}
-  \item \emph{Version comparison}: ``only overwrite my copy if this message's
-  \code{version} is newer'' (user copies in user-, supplier- and order-service).
-  \item \emph{Natural unique keys}: insert with ``on conflict do nothing'' on a key such
-  as (supplier id, version) or a notification id derived from the event id.
-  \item \emph{A processed-messages table}: the saga orchestrator records each
-  \code{eventId} it has handled and skips repeats.
-  \item \emph{Request identifiers}: credit-service stores every command under its
-  \code{requestId} and returns the stored result when the same request arrives again;
-  order-service refuses to apply the same \code{commandId} twice.
-\end{itemize}
-
-\textbf{Ordering key.} When a subscription has message ordering enabled, Pub/Sub delivers
-messages that share an ordering key in the order they were published, one at a time. If
-a publish fails, the client library pauses that key until the code calls
-\code{resumePublishing(key)}, which every publisher here does in its error path.
-
-\textbf{Filter.} A subscription can be created with a filter on attributes, so unwanted
-messages never reach it. The saga's order-events subscription accepts only four order
-event types; the notification subscriptions accept any type starting with
-\code{order.}.
-
-\textbf{Independent fanout vs competing consumers.} Several subscriptions on one topic
-each receive every message (fanout). Several processes reading the \emph{same}
-subscription share its messages, so each message goes to one of them (competing
-consumers). Figure~\ref{fig:mental} shows both.
-
-\textbf{Events vs commands.} An \emph{event} reports a fact that has already happened
-(\code{order.created}, \code{credit.reserved}); the publisher does not care who listens.
-A \emph{command} asks one specific service to do something (\code{credit.reserve},
-\code{OpenOrder}). In this repository, commands travel on their own topics
-(\code{order-commands}, \code{credit-commands}). In the normal workflow only the saga
-orchestrator sends them. The one exception is an operator test tool outside that
-workflow: credit-service's \code{npm run command:publish}, which publishes a single
-command from a JSON file straight to \code{credit-commands}.
-
-\textbf{Transactional outbox.} Instead of publishing directly, a service writes the
-message as a row in an ``outbox'' table \emph{inside the same database transaction} as
-the business change, and a separate relay later publishes unpublished rows. The business
-change and the record of the message therefore commit or roll back together.
-Section~\ref{sec:outbox} explains exactly what this does and does not guarantee here.
-
-\textbf{Saga and orchestrator.} A saga is a multi-step business process spread across
-services, where each step is a local transaction and a failure later is handled by a
-\emph{compensating} step (for example releasing reserved credits) rather than a global
-rollback. Here a dedicated service, \code{saga-orchestrator}, drives the steps by
-listening to events and sending commands.
-
-\textbf{Projection (local copy).} A table that a service keeps up to date from events so
-that it can answer questions without calling another service. Order-service, for example,
-keeps its own \code{users} and \code{supplier_versions} tables.
-
-% =====================================================================
-\section{The cast: every program that actually runs}
-\label{sec:cast}
-
-The repository has one folder per service. Several folders produce more than one running
-program: a service's image is often started a second time with a different command to
-run a worker. The list below follows \code{compose.yaml}, which is the most complete
-description of what runs together.
-
-\begin{description}[style=nextline, leftmargin=0pt, labelsep=0pt, itemsep=4pt]
-\item[\code{frontend-service} (Nuxt 4)] The only thing the browser loads. Its Vue pages
-call the Nuxt server's own \code{/api/...} routes, and those server routes call the
-backends with the user's token. It owns no database. Inside Compose it listens on port
-3000, published on the host as 3001.
-
-\item[\code{user-service} and \code{user-event-worker}] One image, two programs. The API
-(port 3333) handles registration, login, profiles and administrator user management, and
-signs the JWTs that every other service verifies. It does \emph{not} write users to its
-database itself: it publishes \code{user.created}, \code{user.updated} or
-\code{user.deleted} to \code{user-events}. The worker (port 3334, not published) receives
-those events by push and writes them to the \code{users} table that the API reads.
-Database: \code{user-db}.
-
-\item[\code{supplier-service}, \code{supplier-event-worker} and \code{supplier-ticker}]
-The API (port 3000) serves suppliers, supplier types and buildings, and administrators
-can change them. Each change also writes an outbox row, which is published to
-\code{supplier-events}. The worker (port 3004 inside its container, not published) does
-two jobs: it keeps a local \code{users} copy from \code{user-events}, which the API uses
-for authorization, and it exposes \code{POST /outbox/publish}, which publishes any outbox
-rows the API missed. The ticker is a tiny \code{curl} container that calls that sweep
-every 60 seconds. Database: \code{supplier-db}.
-
-\item[\code{order-service} and \code{order-ticker}] The order API (port 3000, host
-3002). It keeps local copies of users and of every supplier version, records each order
-state change as a row in \code{order_events}, which doubles as its outbox, and publishes
-those rows to \code{order-events}. It also receives saga commands on
-\code{order-commands}. The ticker calls two internal routes every 60 seconds: one expires
-overdue open orders and one republishes leftover outbox rows. Database: \code{order-db}.
-
-\item[\code{saga-orchestrator} and \code{saga-ticker}] Has no user-facing API and no
-host port. It reacts to four order event types and to credit results, keeps one saga row
-per order, and sends commands to \code{credit-commands} and \code{order-commands} through
-its own outbox. Its ticker aborts reservations that credit did not answer in time and
-republishes leftover commands. Database: \code{saga-db}.
-
-\item[\code{credit-service}, \code{credit-publisher} and \code{credit-pubsub-provision}]
-The API (port 3000, host 3004) answers \code{GET /api/v1/credits/me} for the browser and
-receives \code{user-events} and \code{credit-commands} by push. Results go to a
-\code{credit_outbox} table. The publisher is a separate, always-running loop that
-publishes those rows to \code{credit-events} about once a second. The provision container
-runs once at startup and creates credit's topics and push subscriptions. Database:
-\code{credit-db}.
-
-\item[\code{notification-service}] Pulls \code{order-events}, pushes live updates to
-browsers over WebSockets on \code{/ws}, and stores per-user notifications. Port 3000,
-host 3003; the browser connects to it directly for the WebSocket. Database:
-\code{notification-db}.
-
-\item[Infrastructure] \code{pubsub-emulator} (Google's local Pub/Sub emulator on port
-8085, not published to the host); six PostgreSQL 17 containers, one per database
-(\code{supplier-db}, \code{user-db}, \code{order-db}, \code{notification-db},
-\code{credit-db}, \code{saga-db}); one-shot migration containers (\code{*-db-migrate});
-and \code{supplier-db-tools}, which only starts when the \code{tools} profile is
-requested.
+\begin{description}[leftmargin=0pt, labelsep=0.4em, itemsep=2pt, font=\bfseries]
+\item[frontend-service (Nuxt).] The only thing the browser loads. Its server routes keep the JWT in
+an httpOnly cookie and call the backends; it owns no database and uses no Pub/Sub.
+\item[user-service] (API + \code{user-event-worker}). Handles sign-up, login and profiles, and
+signs the JWTs. Unusually, the API does not write users to its database: it publishes
+\code{user.created}, \code{.updated} or \code{.deleted}, carrying a full user snapshot and a
+global \code{version}, and the worker writes the \code{users} table from those events.
+\item[supplier-service] (API + \code{supplier-event-worker} + ticker). Admin edits to suppliers
+are published to \code{supplier-events} through an outbox. The worker keeps a local copy of users
+(for role checks) from \code{user-events} and offers a ``publish leftover outbox rows'' route that
+the ticker calls every minute.
+\item[order-service] (API + ticker). Owns orders and their state machine. It keeps local copies
+of users and of every supplier version, so it can check an order without calling anyone. Every
+state change is a row in \code{order_events}, which is both the order history and its outbox, and
+is published to \code{order-events}. It obeys saga commands from \code{order-commands}.
+\item[saga-orchestrator] (+ ticker). No user API. It reacts to four order event types and to
+credit results, keeps one saga row per order, and sends commands through its own outbox. Its
+ticker aborts reservations that credit has not answered within 60 seconds.
+\item[credit-service] (API + \code{credit-publisher} + one-shot provisioner). Holds balances.
+It receives \code{user-events} (to open an account with 1000 credits) and \code{credit-commands}
+(reserve, release, transfer), and writes each result to \code{credit_outbox}. A separate
+publisher loop sends those rows to \code{credit-events} about once a second.
+\item[notification-service.] Pulls \code{order-events}, pushes live updates to browsers over a
+WebSocket (\code{/ws}), and stores per-user notifications. Nobody is notified about their own
+action.
 \end{description}
+Each service owns one PostgreSQL database, and no service reads another's. That is why services
+learn about each other only through events, and why events carry whole snapshots rather than IDs.
 
-\begin{table}[!htbp]
+\section{Publishing reliably and acknowledging safely}
+
+\textbf{The outbox.} A service cannot commit a database change and publish to Pub/Sub as one
+atomic step. If it tried to do both, a crash in between would lose the message or announce a
+change that never happened. So supplier, order, saga and credit write the message as an
+\emph{outbox row in the same database transaction} as the business change. A relay then
+publishes unpublished rows in order and marks them \code{published_at}. It runs right after
+the commit, at startup and on an every-minute sweep (credit's relay is its own process). An
+advisory lock allows one relay per database, and a key that fails to publish holds back its
+later rows, so per-key order holds. A crash after publishing but before marking the row
+publishes the same row again with the same ID. So the guarantee is ``every committed change is
+announced \emph{at least} once'', never exactly once.
+
+\textbf{The exception: user-service.} It publishes \emph{instead of} writing its database. If
+the publish fails, the request fails and nothing changes. If it succeeds, the user row appears
+only after \code{user-event-worker} applies the event, so a login can briefly lag.
+
+\textbf{What counts as an acknowledgement.} Order-service, the saga and the supplier worker
+answer \textbf{204} on success and also for a malformed message, which can never succeed and
+would otherwise block its ordering key. They answer \textbf{500} when the database fails, so
+Pub/Sub retries later. \code{user-event-worker} and credit-service answer \textbf{400} to
+malformed input. Pub/Sub retries that too, because no dead-letter topic is configured. Credit
+answers \textbf{503} on purpose while waiting for a prerequisite, for example an order's
+reservation before its user's account exists. Pub/Sub's redelivery then acts as the wait loop.
+Notification-service always acks its live subscription, but acks the store one only after
+saving.
+
+\textbf{How duplicates become harmless.} User copies apply an event only if its \code{version}
+is newer than the stored one. Supplier versions and notifications insert with ``on conflict do
+nothing'' on a natural key. The saga records each \code{eventId} in \code{processed_messages}.
+Order-service refuses a second command with the same \code{commandId}. Credit stores every
+command under its \code{requestId} and replays the stored result.
+
+\section{End to end: sign-up, supplier edits and the order saga}
+
+\textbf{Sign-up replicates the user to four places.} \code{POST /register} validates the input
+and reserves a user ID and event version. It publishes \code{user.created} (key = user ID) and
+returns a JWT. Fanout then delivers the event independently, in any order, to four subscriptions.
+\code{user-event-worker} writes the login row. The supplier and order workers each upsert a small
+copy (id, display name, role) if the version is newer. Credit opens an account with 1000
+credits. Until its copy exists, order-service answers \emph{503 ``your account is still being
+set up''}, and credit shows its balance as being set up. Deletion soft-deletes the copies, so old
+orders can still refer to the user.
+
+\textbf{A supplier edit reaches order-service.} An admin's \code{PUT /suppliers/:id} updates the
+row and inserts a \code{supplier.updated} outbox row with the full snapshot in one transaction.
+The relay publishes it (key = supplier ID). Order-service \emph{appends} it to
+\code{supplier_versions} and never edits old rows. New orders use the latest version, and
+existing orders keep the version they were placed against.
+
+\begin{figure}[h]
+\centering
+\begin{tikzpicture}[x=1cm,y=0.5cm]
+  \foreach \x/\t in {1.2/{Nuxt\\(browser)}, 4.9/{order-\\service}, 8.6/{saga-\\orchestrator}, 12.3/{credit-service\\+ publisher}, 16.0/{notification-\\service}} {
+    \node[head] at (\x,0) {\t};
+    \draw[life] (\x,-0.9) -- (\x,-15.2);
+  }
+  \def\N{1.2} \def\O{4.9} \def\S{8.6} \def\C{12.3} \def\T{16.0}
+  \draw[mh] (\N,-1.8) -- node[mlab]{1 \code{POST /orders}} (\O,-1.8);
+  \node[act, anchor=west] at (\O+0.1,-2.5) {PENDING};
+  \draw[m] (\O,-3.6) -- node[mlab]{2 order.created} (\S,-3.6);
+  \draw[m] (\S,-4.8) -- node[mlab]{3 credit.reserve} (\C,-4.8);
+  \node[act, anchor=west] at (\C+0.1,-5.5) {hold reward};
+  \draw[m] (\C,-6.6) -- node[mlab]{4 credit.reserved} (\S,-6.6);
+  \draw[m] (\S,-7.8) -- node[mlab]{5 OpenOrder} (\O,-7.8);
+  \node[act, anchor=east] at (\O-0.1,-8.5) {OPEN};
+  \draw[m] (\O,-9.0) -- node[mlab, pos=0.82]{6 order.opened} (\T,-9.0);
+  \draw[mh] (\N,-10.4) -- node[mlab, align=center]{7 accept, pick up,\\deliver, confirm} (\O,-10.4);
+  \node[act, anchor=east] at (\O-0.1,-11.1) {COMPLETE};
+  \draw[m] (\O,-11.8) -- node[mlab]{8 order.completed} (\S,-11.8);
+  \draw[m] (\S,-13.0) -- node[mlab]{9 credit.transfer} (\C,-13.0);
+  \node[act, anchor=west] at (\C+0.1,-13.7) {requester $\rightarrow$ courier};
+  \draw[m] (\C,-14.0) -- node[mlab, pos=0.5]{10 credit.transferred} (\S,-14.0);
+  \draw[m] (\S,-15.0) -- node[mlab]{11 SettleOrder} (\O,-15.0);
+  \node[act, anchor=east] at (\O-0.1,-15.0) {SETTLED};
+\end{tikzpicture}
+\caption{The order saga. Green arrows are HTTP calls; orange arrows are Pub/Sub messages through
+the topics in Figure~\ref{fig:map}. Notification-service sees every \code{order.*} event, not
+only the one drawn.}
+\label{fig:saga}
+\end{figure}
+
+\textbf{The order saga} (Figure~\ref{fig:saga}). A \emph{saga} is a business process spread over
+several services. Each step is a local transaction, and a later failure is undone by a
+\emph{compensating} step rather than a global rollback. (1) The requester's order is stored as
+\code{PENDING}, and \code{order.created} goes into the outbox. (2) The saga creates its row in
+\code{RESERVING}, with a 60-second deadline, and (3) sends \code{credit.reserve}. Credit checks
+that the available credits cover the reward and holds them. (4) Its publisher emits
+\code{credit.reserved}. The saga matches the \code{requestId}, moves to \code{OPEN} and (5) sends
+\code{OpenOrder}. Order-service opens the order for two hours, and (6) \code{order.opened} reaches
+notification-service, which notifies the requester. (7) A courier accepts, picks up and delivers,
+and the requester confirms, all over HTTP. The saga's filter skips the intermediate events.
+(8)~On \code{order.completed} the saga (9) sends \code{credit.transfer}. Credit moves the held
+credits to the courier, (10) reports success, and (11) \code{SettleOrder} marks the order
+\code{SETTLED}, which notifies the courier.
+
+\textbf{When it goes wrong.} If credits are short, credit answers
+\code{credit.reservation_rejected}, the saga sends \code{RejectOrder}, and nothing needs undoing.
+If credit is down, the command waits in its subscription. After 60 seconds the saga ticker
+compensates: it sends \code{credit.release} \emph{and} \code{AbortOrder}. When credit returns,
+either queued command may run first, because that subscription is unordered. Either way the
+credits end up released, thanks to credit's per-order lock and reservation state. A cancelled or
+expired order makes the saga send \code{credit.release}. If credit refuses a release or a
+transfer, the saga stops in \code{FAILED} with only a log line; nothing retries it.
+
+\section{How each service is containerized}
+
+\textbf{The common pattern.} Every service folder is its own Docker build context, so no image
+can contain another service's code. Supplier, order, saga and notification share a three-stage
+Dockerfile on \code{node:22-bookworm-slim}. \emph{tooling} installs all dependencies and holds
+the TypeScript sources and migrations. \emph{build} compiles to \code{dist/} and drops dev
+dependencies. \emph{runtime} copies only \code{dist/} and production modules, runs as the
+unprivileged \code{node} user, and starts \code{node dist/index.js}. \code{package*.json} is copied
+before the sources, so the slow \code{npm ci} layer is cached when only code changes. Compose
+reuses images in two ways: \code{target: tooling} builds the one-shot \code{*-db-migrate}
+containers, and \code{command:} replaces the image's default command to start a worker or
+publisher from the same image. Table~\ref{tab:containers} lists what differs per service.
+
+\begin{table}[h]
 \centering\small
-\begin{tabular}{@{}llll@{}}
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}p{19mm}p{62mm}p{21mm}p{63mm}@{}}
 \toprule
-Program & Listens in container & Host port & Database it owns\\
+Service & Image & Port $\rightarrow$ host & Extra containers from the same image\\
 \midrule
-frontend-service & 3000 & 3001 & none\\
-user-service / its event worker & 3333 / 3334 & 3333 / none & user-db (users)\\
-supplier-service / its event worker & 3000 / 3004 & 3000 / none & supplier-db (suppliers)\\
-order-service & 3000 & 3002 & order-db (orders)\\
-notification-service & 3000 & 3003 & notification-db (notifications)\\
-credit-service / credit-publisher & 3000 / 3000 (health) & 3004 / none & credit-db (credits)\\
-saga-orchestrator & 3000 & none & saga-db (sagas)\\
-pubsub-emulator & 8085 & none & in memory\\
+frontend & build $\rightarrow$ runtime; ships only Nuxt's \code{.output}; user \code{node}; backend URLs read at start from \code{NUXT_*} env & 3000 $\rightarrow$ 3001 & none\\
+user & one stage; all deps; runs TypeScript with \code{tsx}; root & 3333 $\rightarrow$ 3333 & worker (\code{npm run worker}, 3334, unpublished); migrate (\code{drizzle-kit push})\\
+supplier & common three-stage & 3000 $\rightarrow$ 3000 & worker (\code{node dist/worker.js}, 3004, unpublished); migrate; \code{tools}-profile seeder\\
+order & common three-stage & 3000 $\rightarrow$ 3002 & migrate\\
+saga & common three-stage & 3000, none & migrate\\
+credit & two stages on \code{node:22-alpine}; reinstalls prod deps; root & 3000 $\rightarrow$ 3004 & publisher; one-shot \code{pubsub:provision}; migrate (from runtime image)\\
+notification & common three-stage & 3000 $\rightarrow$ 3003 & migrate\\
 \bottomrule
 \end{tabular}
-\caption{Ports and database ownership in \code{compose.yaml}. PostgreSQL containers are
-also published on the loopback interface only: 5433 supplier, 5434 user, 5435 order,
-5436 notification, 5438 credit, 5439 saga.}
-\label{tab:ports}
+\caption{Per-service differences. Supplier, order and saga each also get a tiny
+\code{curlimages/curl} ticker: a shell loop of \code{sleep 60; curl -X POST} to an internal sweep route.}
+\label{tab:containers}
 \end{table}
 
-\begin{why}
-``One service, one database'' is enforced physically here: each database is a separate
-container that only its own service is configured to reach. That is why services need
-events to learn about each other's data, and why the event payloads carry whole snapshots
-rather than just IDs.
-\end{why}
-
-% =====================================================================
-\section{Synchronous HTTP: who calls whom, and with what credentials}
-\label{sec:http}
-
-\begin{figure}[!htbp]
-\centering
-\begin{tikzpicture}[x=1cm,y=1cm]
-  \node[infrabox, minimum width=24mm, minimum height=12mm] (br) at (1.2,0) {Browser\\(Vue pages)};
-  \node[svcbox, minimum width=34mm, minimum height=14mm] (nx) at (5.3,0) {frontend-service\\Nuxt server routes\\\code{/api/<service>/...}};
-  \node[notebox, anchor=north, text width=34mm, align=center] at (5.3,-1.0) {each call adds\\\code{Authorization: Bearer <JWT>}};
-  \node[svcbox, minimum width=34mm] (us) at (12.6,2.8) {user-service :3333};
-  \node[svcbox, minimum width=34mm] (ss) at (12.6,1.4) {supplier-service :3000};
-  \node[svcbox, minimum width=34mm] (os) at (12.6,0.0) {order-service :3000};
-  \node[svcbox, minimum width=34mm] (cs) at (12.6,-1.4) {credit-service :3000};
-  \node[svcbox, minimum width=34mm] (ns) at (12.6,-2.8) {notification-service :3000};
-  \draw[synca] (br) -- node[lbl, above=2pt]{cookie} (nx);
-  \foreach \t in {us,ss,os,cs,ns} \draw[synca] (nx.east) -- (\t.west);
-  \draw[synca, dashed] (br.south) |- node[lbl, pos=0.72, below=2pt]{WebSocket \code{/ws?ticket=...} (host port 3003)} ($(ns.west)+(0,-0.15)$);
-  \node[infrabox, minimum width=40mm] (tk) at (3.4,-4.4) {tickers, Cloud Scheduler,\\Pub/Sub push deliveries};
-  \node[svcbox, minimum width=34mm] (sg) at (12.6,-4.4) {saga-orchestrator :3000};
-  \draw[->, thick, black!60] (tk) -- node[lbl, above=2pt]{\code{POST /internal/...} only} (sg);
-\end{tikzpicture}
-\caption{All user-initiated HTTP goes browser $\rightarrow$ Nuxt server $\rightarrow$
-backend. No backend calls another backend over HTTP. The only other HTTP callers are
-infrastructure: the tickers or Cloud Scheduler, and Pub/Sub push deliveries.}
-\label{fig:http}
-\end{figure}
-
-\subsection{The browser talks only to Nuxt (and one WebSocket)}
-
-The Vue pages never hold the JWT. When a user logs in, the Nuxt server route forwards
-the email and password to \code{user-service} \code{POST /login}, receives a token, and
-stores it in an \code{httpOnly} cookie named \code{user_access_token}:
-
-\par\noindent\begin{minipage}{\linewidth}
-\begin{lstlisting}[language=ts]
-// frontend-service/server/api/user-service/login.post.ts (excerpt)
-setCookie(event, "user_access_token", response.token, {
-  httpOnly: true, sameSite: "lax",
-  secure: process.env.NODE_ENV === "production", path: "/",
-});
-\end{lstlisting}
-\end{minipage}\par
-
-Every later Nuxt server route reads the cookie and calls the backend with
-\code{Authorization: Bearer <token>}, using a base URL from runtime configuration. In
-Compose those URLs use service names, for example
-\code{NUXT_ORDER_SERVICE_BASE_URL=http://order-service:3000}
-(Section~\ref{sec:network}). The clients use a 5-second timeout and no automatic
-retry. The order, supplier and user clients pass through the statuses the user should
-see (400, 401, 403, 404, 409 and 503); anything else becomes a 502 with a friendly
-message.
-
-\subsection{Each backend verifies the token itself}
-
-The token is an HS256 JWT signed by \code{user-service} with \code{JWT_SECRET}; its
-\code{sub} claim is the numeric user ID and \code{exp} the expiry. Supplier-, order-,
-credit- and notification-service each contain their own copy of the verifier and receive
-the same \code{JWT_SECRET}. They check the signature and expiry locally, without calling
-\code{user-service}.
-
-Supplier-service and order-service then look the caller up in their \emph{local copy}
-of users, which is filled from \code{user-events}:
-
-\par\noindent\begin{minipage}{\linewidth}
-\begin{lstlisting}[language=ts]
-// order-service/src/auth.ts, requireUser (excerpt)
-const [user] = await db.select({ deletedAt: users.deletedAt })
-  .from(users).where(eq(users.id, userId));
-if (!user) {
-  throw new HttpError(503, "Your account is still being set up. Please try again shortly.",
-    { "retry-after": "2" });
-}
-if (user.deletedAt) throw new HttpError(401, "A valid bearer token is required");
-\end{lstlisting}
-\end{minipage}\par
-
-This is the replication lag from Section~\ref{sec:mental} made visible. Just after
-registration the token is valid, but the \code{user.created} event may not have reached
-order-service yet, so the request gets a retryable 503 rather than a confusing 401.
-Supplier-service does the same and also reads the caller's \code{role} from its copy to
-allow administrator actions. Credit-service checks only the token, then answers 503
-\code{ACCOUNT_PENDING} until its own account row exists.
-
-\subsection{The notification WebSocket uses a short-lived ticket}
-
-Because the browser cannot read the httpOnly cookie, it cannot put the JWT in a
-WebSocket URL. Instead the page asks the Nuxt route
-\code{POST /api/notification-service/ticket}, which calls notification-service
-\code{POST /tickets} with the JWT. Notification-service returns a signed, single-use
-ticket that is valid for 30 seconds by default. The browser then opens
-\code{ws://127.0.0.1:3003/ws?ticket=...} directly; in Cloud the scheme is
-\code{wss://}. The server checks the \code{Origin} header against
-\code{ALLOWED_ORIGINS}, redeems the ticket, and closes the socket when the underlying JWT
-would expire.
-
-\subsection{Internal routes}
-
-The saga orchestrator and the \code{/internal/...} routes of order- and credit-service
-are not meant for users. They accept a request only if it carries either a Google-signed
-OIDC token from an allowed service account (Cloud) or, locally, a shared secret in the
-\code{x-internal-secret} header or a \code{token} query parameter
-(Section~\ref{sec:transport}).
-
-\begin{why}
-Keeping synchronous calls to ``frontend $\rightarrow$ one backend'' means a user request
-never fails because some \emph{other} backend is down. The price is eventual
-consistency: the other services learn about changes through events, a little later.
-\end{why}
-
-% =====================================================================
-\section{The asynchronous map: topics, publishers and subscriptions}
-\label{sec:topics}
-
-Figures~\ref{fig:replication} and~\ref{fig:workflow} show every topic and every
-subscription that the code or the deployment script creates. The arrows into a topic are
-publishes; the arrows out are subscriptions, labelled with the subscription name and
-delivery style.
-
-\begin{figure}[!htbp]
-\centering
-\begin{tikzpicture}[x=1cm,y=1cm, sub/.style={infrabox, minimum width=50mm, minimum height=9mm}, con/.style={svcbox, minimum width=31mm, minimum height=9mm}]
-  \node[svcbox, minimum width=22mm, minimum height=11mm] (us) at (1.1,0.6) {user-service\\API (direct\\publish)};
-  \node[topicbox, minimum width=22mm, minimum height=10mm] (ue) at (3.9,0.6) {user-events\\{\rmfamily key: user id}};
-  \node[sub] (s1) at (8.4,2.4) {\code{user-events-worker}\\push, ordered};
-  \node[sub] (s2) at (8.4,1.2) {\code{supplier-service-user-events}\\push, ordered};
-  \node[sub] (s3) at (8.4,0.0) {\code{order-service-user-events}\\push, ordered};
-  \node[sub] (s4) at (8.4,-1.2) {\code{credit-service-user-events}\\push, \emph{unordered}};
-  \node[con] (c1) at (14.1,2.4) {user-event-worker\\$\rightarrow$ user-db \code{users}};
-  \node[con] (c2) at (14.1,1.2) {supplier-event-worker\\$\rightarrow$ supplier \code{users}};
-  \node[con] (c3) at (14.1,0.0) {order-service\\$\rightarrow$ order \code{users}};
-  \node[con] (c4) at (14.1,-1.2) {credit-service\\$\rightarrow$ \code{credit_accounts}};
-  \draw[asynca] (us) -- (ue);
-  \foreach \i in {1,2,3,4} { \draw[asynca] (ue.east) -- (s\i.west); \draw[asynca] (s\i) -- (c\i); }
-  \node[svcbox, minimum width=22mm, minimum height=11mm] (ss) at (1.1,-3.0) {supplier-service\\(outbox +\\worker sweep)};
-  \node[topicbox, minimum width=22mm, minimum height=10mm] (se) at (3.9,-3.0) {supplier-events\\{\rmfamily key: supplier id}};
-  \node[sub] (s5) at (8.4,-3.0) {\code{order-service-supplier-events}\\push, ordered};
-  \node[con] (c5) at (14.1,-3.0) {order-service\\$\rightarrow$ \code{supplier_versions}};
-  \draw[asynca] (ss) -- (se); \draw[asynca] (se) -- (s5); \draw[asynca] (s5) -- (c5);
-\end{tikzpicture}
-\caption{Data replication topics. One user event fans out to four independent
-subscriptions; one supplier event has a single consumer.}
-\label{fig:replication}
-\end{figure}
-
-\begin{figure}[!htbp]
-\centering
-\begin{tikzpicture}[x=1cm,y=1cm]
-  \node[svcbox, minimum width=28mm, minimum height=14mm] (os) at (1.4,0) {order-service\\(outbox:\\\code{order_events})};
-  \node[svcbox, minimum width=28mm, minimum height=14mm] (sg) at (8.2,0) {saga-orchestrator\\(outbox:\\\code{outbox})};
-  \node[svcbox, minimum width=28mm, minimum height=14mm] (cs) at (14.9,0) {credit-service\\+ credit-publisher\\(\code{credit_outbox})};
-  \node[topicbox, minimum width=32mm] (oe) at (4.8,2.4) {order-events};
-  \node[topicbox, minimum width=32mm] (cc) at (11.6,2.4) {credit-commands};
-  \node[topicbox, minimum width=32mm] (ce) at (11.6,-2.4) {credit-events};
-  \node[topicbox, minimum width=32mm] (oc) at (4.8,-2.4) {order-commands};
-  \node[svcbox, minimum width=40mm] (nt) at (4.8,4.6) {notification-service};
-  \draw[asynca] (os.north) |- (oe.west);
-  \draw[asynca] ($(oe.east)+(0,0.1)$) -| node[lbl, pos=0.78, left=2pt]{push, filtered} ($(sg.north)+(-0.5,0)$);
-  \draw[asynca] (oe) -- node[lbl, right=3pt]{pull: per-instance + shared} (nt);
-  \draw[asynca] ($(sg.north)+(0.5,0)$) |- (cc.west);
-  \draw[asynca] (cc.east) -| node[lbl, pos=0.78, left=2pt]{push, unordered} (cs.north);
-  \draw[asynca] (cs.south) |- (ce.east);
-  \draw[asynca] (ce.west) -| node[lbl, pos=0.78, right=2pt]{push} ($(sg.south)+(0.5,0)$);
-  \draw[asynca] ($(sg.south)+(-0.5,0)$) |- (oc.east);
-  \draw[asynca] (oc.west) -| node[lbl, pos=0.78, right=2pt]{push} (os.south);
-\end{tikzpicture}
-\caption{Order workflow topics. Events flow up and to the right; commands come back
-from the saga. Subscription names: \code{saga-orchestrator-order-events},
-\code{credit-service-commands}, \code{saga-orchestrator-credit-events},
-\code{order-service-order-commands}.}
-\label{fig:workflow}
-\end{figure}
-
-The following subsections describe each topic in the same order: who publishes and how,
-then the ordering key and attributes, then the subscriptions, and finally the real
-payload shape with the meaning of every field. Values in the examples are illustrative,
-but the field sets come directly from the code that builds them.
-
-\subsection{\texttt{user-events}}
-
-\textbf{Publisher.} \code{user-service}, directly from the request handler, with no
-outbox. Registration, administrator create/update/delete, self-service profile and
-password changes, and first-administrator bootstrap all call \code{publishUserEvent}.
-The function reserves the next value of the PostgreSQL sequence
-\code{user_event_sequence} as the event's \code{version}, generates a random
-\code{eventId}, and publishes with the user ID as ordering key. It sets no attributes.
-
-\textbf{Subscriptions (all push).} \code{user-events-worker} feeds
-\code{user-event-worker}, \code{supplier-service-user-events} feeds
-\code{supplier-event-worker}, \code{order-service-user-events} feeds
-\code{order-service}, and \code{credit-service-user-events} feeds
-\code{credit-service}.
-
-\par\noindent\begin{minipage}{\linewidth}
-\begin{lstlisting}[language=json]
-{ "type": "user.created",
-  "user": { "id": 7, "name": "Ada Tan", "displayName": "ada",
-            "email": "<university email>", "role": "student",
-            "passwordHash": "scrypt$<salt hex>$<hash hex>" },
-  "eventId": "6f1c...-uuid", "version": 42 }
-
-{ "type": "user.deleted", "userId": 7, "eventId": "...-uuid", "version": 57 }
-\end{lstlisting}
-\end{minipage}\par
-
-\begin{itemize}
-  \item \code{type}: one of \code{user.created}, \code{user.updated} or \code{user.deleted}.
-  \item \code{user}: a full snapshot of the user after the change (\emph{event-carried
-  state transfer}). Consumers never need to call user-service to fill in details.
-  \item \code{passwordHash}: included because \code{user-event-worker} rebuilds the
-  user-service login table from these events. The other three consumers ignore it; the
-  supplier and order copies keep only \code{id}, \code{displayName} and \code{role}.
-  \item \code{version}: comes from one database sequence shared by all users, so it
-  increases across the whole system. Consumers compare it per user: ``apply only if
-  newer than the version I stored for this user''.
-  \item \code{eventId}: a random UUID. Credit-service uses it as the idempotency key for
-  the account allocation.
-\end{itemize}
-
-\subsection{\texttt{supplier-events}}
-
-\textbf{Publisher.} \code{supplier-service}, through the \code{supplier_events} outbox.
-\code{POST}, \code{PUT} and \code{DELETE /suppliers}, renames of a type or a building
-(one \code{supplier.updated} per supplier that uses it), and the seed script all insert
-outbox rows in the same transaction as the change. The ordering key is the supplier ID,
-and the attributes are \code{type} and \code{supplierId}.
-
-\textbf{Subscription.} \code{order-service-supplier-events}, push, ordered.
-
-\par\noindent\begin{minipage}{\linewidth}
-\begin{lstlisting}[language=json]
-{ "eventId": "<outbox row id>", "version": 5, "type": "supplier.updated",
-  "supplier": { "id": "<uuid>", "name": "NUS Co-op", "type": "Retail",
-    "buildingName": "COM2", "floor": "1", "locationDescription": null,
-    "latitude": "1.294100", "longitude": "103.774000", "isActive": true,
-    "imageUrl": null,
-    "operatingHours": [ { "day": 1, "openingHrs": "08:30", "closingHrs": "18:00" } ] } }
-\end{lstlisting}
-\end{minipage}\par
-
-\begin{itemize}
-  \item \code{eventId} is the outbox row's primary key, so a republished row carries the
-  same ID.
-  \item \code{version} is taken from \code{supplier_event_sequence} by the outbox row's
-  default value. It is unique across all suppliers, and order-service stores it as part
-  of the key \code{(supplier_id, version)}.
-  \item \code{latitude} and \code{longitude} are strings because PostgreSQL
-  \code{numeric} columns are returned as strings, and order-service stores them back into
-  numeric columns.
-  \item \code{supplier.deleted} carries only \code{supplierId}, and order-service stores
-  a \emph{tombstone} version.
-\end{itemize}
-
-\subsection{\texttt{order-events}}
-
-\textbf{Publisher.} \code{order-service}, through the \code{order_events} table, which is
-at the same time the order history shown on the details page and the outbox. Every state
-change appends a row and updates the cached \code{orders.current_state} in one
-transaction. The ordering key is the order ID; the attributes are \code{type} and
-\code{orderId}.
-
-\textbf{Subscriptions.} \code{saga-orchestrator-order-events} is a push subscription
-with the filter \code{attributes.type = "order.created" OR ... "order.cancelled" OR
-... "order.expired" OR ... "order.completed"}. Every running notification-service
-instance has its own pull subscription \code{notification-<uuid>}, and all instances
-share one pull subscription \code{notification-store}; both use the filter
-\code{hasPrefix(attributes.type, "order.")}.
-
-\par\noindent\begin{minipage}{\linewidth}
-\begin{lstlisting}[language=json]
-{ "eventId": "<uuid>", "type": "order.created", "orderId": "<uuid>",
-  "sequence": 1, "state": "PENDING", "actorId": 7, "commandId": null,
-  "occurredAt": "2026-10-19T03:15:22.481Z",
-  "order": { "id": "<uuid>", "requesterId": 7, "courierId": null,
-    "supplierId": "<uuid>", "supplierVersion": 5, "title": "Two kopi",
-    "description": "Less sugar", "deliveryLocation": "COM1 foyer",
-    "creditReward": 12, "state": "PENDING", "acceptedAt": null,
-    "expiresAt": null, "createdAt": "2026-10-19T03:15:22.470Z" } }
-\end{lstlisting}
-\end{minipage}\par
-
-\begin{itemize}
-  \item \code{type} is one of \code{order.created}, \code{opened}, \code{rejected},
-  \code{aborted}, \code{accepted}, \code{cancelled}, \code{expired}, \code{picked_up},
-  \code{delivered}, \code{completed}, \code{settled} or \code{edited}, all prefixed with
-  \code{order.}.
-  \item \code{sequence} counts per order (1, 2, 3, \ldots). It is computed as ``last + 1''
-  under the order's row lock, and a unique constraint on \code{(order_id, sequence)}
-  rejects any duplicate.
-  \item \code{actorId} is the user who caused the change, or \code{null} for system
-  changes (saga commands, expiry). Notification-service uses it so that nobody is
-  notified about their own action.
-  \item \code{commandId} is set when a saga command caused the change; it is unique in
-  the table, so the same command cannot be applied twice.
-  \item \code{order} is the full order snapshot after the change, which is why the saga
-  can read \code{requesterId}, \code{courierId} and \code{creditReward} without calling
-  order-service.
-\end{itemize}
-
-\subsection{\texttt{credit-commands}}
-
-\textbf{Publisher.} \code{saga-orchestrator}, through its \code{outbox} table. The
-ordering key is the order ID, and the only attribute is \code{type}.
-
-\textbf{Subscription.} \code{credit-service-commands}, push, created by credit's
-provisioning step \emph{without} message ordering.
-
-\par\noindent\begin{minipage}{\linewidth}
-\begin{lstlisting}[language=json]
-{ "type": "credit.reserve",  "requestId": "<uuid>", "correlationId": "<uuid>",
-  "orderId": "<uuid>", "requesterId": 7, "amount": 12 }
-{ "type": "credit.release",  "requestId": "<uuid>", "correlationId": "<uuid>",
-  "orderId": "<uuid>", "requesterId": 7, "amount": 12, "reason": "Order cancelled" }
-{ "type": "credit.transfer", "requestId": "<uuid>", "correlationId": "<uuid>",
-  "orderId": "<uuid>", "courierId": 9 }
-\end{lstlisting}
-\end{minipage}\par
-
-\begin{itemize}
-  \item \code{requestId} is credit's idempotency key. The saga generates it once per
-  step and stores it (\code{reserve_request_id}, \code{release_request_id},
-  \code{transfer_request_id}), so a republished command carries the same ID.
-  \item \code{correlationId} is fixed per saga and is copied into every credit result.
-  \item A transfer carries no amount. Credit uses the amount and requester it recorded
-  when the reservation was made.
-\end{itemize}
-
-\subsection{\texttt{credit-events}}
-
-\textbf{Publisher.} \code{credit-publisher}, a separate process that reads
-\code{credit_outbox} about once a second. The ordering key is the \code{orderId}, or the
-requester's user ID for account allocations, which have no order. The attributes are
-\code{type} and, when present, \code{orderId}.
-
-\textbf{Subscription.} \code{saga-orchestrator-credit-events}, push, ordered.
-
-\par\noindent\begin{minipage}{\linewidth}
-\begin{lstlisting}[language=json]
-{ "eventId": "<uuid>", "type": "credit.reserved",
-  "occurredAt": "2026-10-19T03:15:23.104Z",
-  "requestId": "<same as the command>", "correlationId": "<same as the command>",
-  "orderId": "<uuid>",
-  "data": { "requestId": "<uuid>", "status": "SUCCEEDED", "httpStatus": 200,
-    "code": "OK", "orderId": "<uuid>", "reservationState": "HELD",
-    "applied": true, "transactionIds": ["<uuid>"], "requesterId": 7, "amount": 12,
-    "deltas": { "requesterTotal": 0, "requesterReserved": 12, "courierTotal": 0 } } }
-\end{lstlisting}
-\end{minipage}\par
-
-\begin{itemize}
-  \item \code{type} is chosen from the outcome. A successful change produces
-  \code{credit.reserved}, \code{credit.released}, \code{credit.transferred} or
-  \code{credit.account_allocated}. A refused reservation produces
-  \code{credit.reservation_rejected}; another refused command produces
-  \code{credit.order_rejected}; a success that changed nothing produces
-  \code{credit.order_succeeded}.
-  \item \code{data.status} (\code{SUCCEEDED} or \code{REJECTED}) and \code{data.code},
-  such as \code{OK} or \code{INSUFFICIENT_CREDITS}, are what the saga actually reads,
-  together with \code{requestId} and \code{orderId}.
-  \item \code{deltas} records how the requester's total and reserved credits and the
-  courier's total changed.
-\end{itemize}
-
-\subsection{\texttt{order-commands}}
-
-\textbf{Publisher.} \code{saga-orchestrator}, through its outbox, with the order ID as
-ordering key and \code{type} as attribute. \textbf{Subscription.}
-\code{order-service-order-commands}, push, ordered.
-
-\par\noindent\begin{minipage}{\linewidth}
-\begin{lstlisting}[language=json]
-{ "commandId": "<uuid>", "type": "OpenOrder", "orderId": "<uuid>" }
-\end{lstlisting}
-\end{minipage}\par
-
-The four types map to fixed transitions in order-service: \code{OpenOrder}
-(PENDING$\rightarrow$OPEN), \code{RejectOrder} (PENDING$\rightarrow$REJECTED),
-\code{AbortOrder} (PENDING$\rightarrow$ABORTED) and \code{SettleOrder}
-(COMPLETE$\rightarrow$SETTLED).
-
-\begin{why}
-Because each payload is a full snapshot with its own identifiers, a consumer can be
-written, tested and restarted on its own: it needs only the message, never a callback to
-the publisher. The identifiers inside the payload (\code{version}, \code{eventId},
-\code{commandId}, \code{requestId}) are what make duplicates harmless.
-\end{why}
-
-% =====================================================================
-\section{How a delivery is handled in code: push, pull and acknowledgements}
-\label{sec:delivery}
-
-\subsection{What a push request looks like}
-
-With push delivery, Pub/Sub sends an HTTP \code{POST} whose JSON body wraps the message.
-The application data arrives base64-encoded in \code{message.data}:
-
-\par\noindent\begin{minipage}{\linewidth}
-\begin{lstlisting}[language=json]
-{ "message": { "data": "eyJ0eXBlIjoidXNlci5jcmVhdGVkIiwi...",
-               "attributes": { "type": "order.created", "orderId": "<uuid>" },
-               "messageId": "...", "publishTime": "...", "orderingKey": "<uuid>" },
-  "subscription": "projects/<project>/subscriptions/<name>" }
-\end{lstlisting}
-\end{minipage}\par
-
-Every push handler in the repository reads only \code{message.data}, decodes the
-base64, and parses the JSON:
-
-\par\noindent\begin{minipage}{\linewidth}
-\begin{lstlisting}[language=ts]
-// order-service/src/events/pubsub.ts (same helper in the saga and supplier worker)
-export function decodePushMessage(body: unknown): unknown {
-  const message = typeof body === "object" && body !== null ? body.message : undefined;
-  const data = typeof message === "object" && message !== null ? message.data : undefined;
-  if (typeof data !== "string") return undefined;
-  try { return JSON.parse(Buffer.from(data, "base64").toString("utf8")); }
-  catch { return undefined; }
-}
-\end{lstlisting}
-\end{minipage}\par
-
-\subsection{The HTTP status is the acknowledgement}
-
-For push subscriptions, the response status decides whether Pub/Sub retries.
-Order-service, the saga orchestrator and the supplier worker share one policy:
-
-\par\noindent\begin{minipage}{\linewidth}
-\begin{lstlisting}[language=ts]
-// order-service/src/app.ts (excerpt)
-function pushHandler(name, handle) {
-  return async (req, res) => {
-    const message = decodePushMessage(req.body);
-    try {
-      if (message === undefined) throw new InvalidMessageError("Push request has no JSON message data");
-      await handle(message);
-    } catch (error) {
-      if (!(error instanceof InvalidMessageError)) throw error;  // -> 500 -> retry
-      console.error(`[order-service] Dropped invalid ${name} message: ...`);
-    }
-    res.status(204).end();                                       // ack
-  };
-}
-\end{lstlisting}
-\end{minipage}\par
-
-Read it causally:
-\begin{itemize}
-  \item If the message is \emph{malformed}, it can never succeed, so the handler logs it
-  and still answers 204. That acknowledges the message and stops it from blocking its
-  ordering key forever.
-  \item If the \emph{database} fails, the error propagates to Express's error handler,
-  which answers 500. Pub/Sub then redelivers later, by which time the database may be
-  back.
-  \item If the request fails the internal-authentication check, the answer is 401, which
-  Pub/Sub also treats as a failure and retries.
-\end{itemize}
-
-The other two push consumers behave differently, and the difference matters:
-\begin{itemize}
-  \item \code{user-event-worker} answers \textbf{400} for a malformed event, 500 for a
-  database error, and 204 on success.
-  \item \code{credit-service} answers 200 or 204 on success, \textbf{400} for an invalid
-  event or command, 409 for an idempotency conflict, and 503 for transient conditions
-  such as \code{ACCOUNT_PENDING}, \code{RESERVATION_NOT_READY} or a database error.
-\end{itemize}
-Pub/Sub treats a 400 exactly like a 500: the message is redelivered. Neither the code nor
-the deployment script configures a dead-letter topic, so a permanently malformed message
-on these two subscriptions is retried until the subscription's retention period ends.
-Credit's provisioning sets that to 7 days. For credit, retrying a 503 is intentional: a
-reservation for a user whose account has not been allocated yet waits, through Pub/Sub's
-redelivery, until the \code{user.created} event has been applied.
-
-\subsection{Pull delivery in notification-service}
-
-Notification-service creates two pull subscriptions when it starts and registers
-message listeners:
-
-\par\noindent\begin{minipage}{\linewidth}
-\begin{lstlisting}[language=ts]
-// notification-service/src/subscription.ts (excerpt)
-const name = `${config.pubsub.subscriptionPrefix}-${randomUUID()}`;   // e.g. notification-1b9e...
-const [live] = await topic.createSubscription(name, {
-  filter: 'hasPrefix(attributes.type, "order.")', enableMessageOrdering: true,
-  messageRetentionDuration: { seconds: 600 },          // live updates only
-  expirationPolicy: { ttl: { seconds: 24 * 60 * 60 } }, // removed if the instance vanishes
-});
-live.on("message", (message) => { routeOrderEvent(parse(message)); message.ack(); });
-
-store.on("message", async (message) => {               // shared "notification-store"
-  try { await storeNotifications(notificationsForOrderEvent(parse(message))); message.ack(); }
-  catch { message.nack(); }                             // redelivered later
-});
-\end{lstlisting}
-\end{minipage}\par
-
-The live subscription is acknowledged whether or not the user is online, because a user
-who connects later re-fetches stored notifications. The store subscription is
-acknowledged only after the insert succeeds. The insert is idempotent because the
-notification ID is a hash of \code{("order", eventId, userId)} and the table has a unique
-key on \code{(source, event_id, user_id)}. On shutdown (\code{SIGTERM}) the instance
-closes its sockets with code 1001 so that browsers reconnect elsewhere, and it deletes
-its own live subscription.
-
-\begin{why}
-For push, ``what status do I return?'' \emph{is} the acknowledgement decision. Reading
-each handler with that question in mind tells you which failures heal themselves through
-retries and which messages could be retried for a long time.
-\end{why}
-
-% =====================================================================
-\section{The outbox pattern as implemented here}
-\label{sec:outbox}
-
-\begin{figure}[!htbp]
-\centering
-\begin{tikzpicture}[x=1cm,y=1cm]
-  \node[svcbox, minimum width=22mm, minimum height=10mm] (api) at (1.1,0) {request\\handler};
-  \node[dbbox, minimum width=32mm] (state) at (5.4,0.55) {business rows};
-  \node[dbbox, minimum width=32mm] (ob) at (5.4,-0.55) {outbox row, unpublished};
-  \begin{scope}[on background layer]
-    \node[draw=violet!60!black, dashed, rounded corners, fit=(state)(ob), inner sep=5pt,
-      label={[font=\footnotesize]above:one PostgreSQL transaction}] (tx) {};
-  \end{scope}
-  \node[svcbox, minimum width=26mm, minimum height=10mm] (relay) at (10.2,-0.55) {relay\\(advisory lock)};
-  \node[topicbox, minimum width=22mm] (t) at (14.6,-0.55) {topic};
-  \node[notebox, align=center, minimum width=40mm] (tick) at (10.2,1.35) {runs after commit, at startup,\\and on the every-minute sweep};
-  \draw[synca] (api) -- node[lbl, above=2pt]{commit} (tx.west |- api);
-  \draw[->, thick] (ob) -- node[lbl, above=2pt]{1 read} (relay);
-  \draw[asynca] (relay) -- node[lbl, above=2pt]{2 publish} (t);
-  \draw[->, thick, black!60] (relay.south) -- ++(0,-0.8) -| node[lbl, pos=0.25, below=2pt]{3 set \code{published_at} on the rows that were published} (ob.south);
-  \draw[->, draw=black!60] (tick) -- (relay);
-\end{tikzpicture}
-\caption{The outbox as used by supplier-, order- and saga-service. Credit-service has
-the same shape, but its relay is a separate process that loops every second and marks each row right after publishing it.}
-\label{fig:outbox}
-\end{figure}
-
-\subsection{Writing: the change and the message row commit together}
-
-Here is supplier creation, the clearest example:
-
-\par\noindent\begin{minipage}{\linewidth}
-\begin{lstlisting}[language=ts]
-// supplier-service/src/index.ts, POST /suppliers (excerpt)
-const newId = await db.transaction(async (tx) => {
-  const row = await toSupplierRow(tx, input);
-  const [created] = await tx.insert(suppliers).values({ ...row, isActive: row.isActive ?? true })
-    .returning({ id: suppliers.id });
-  if (hours.length > 0) await tx.insert(operatingHours).values(/* ... */);
-  await recordSupplierChanges(tx, "supplier.created", eq(suppliers.id, created.id)); // outbox row
-  return created.id;
-});
-requestOutboxPublish();   // start the relay after commit; do not wait for it
-\end{lstlisting}
-\end{minipage}\par
-
-\code{recordSupplierChanges} reads the supplier's snapshot inside the same transaction
-\code{tx} and inserts it into \code{supplier_events}. If anything throws, PostgreSQL rolls
-back the supplier, its hours and the outbox row together. The same structure appears in
-order-service (\code{appendEvent} inserts into \code{order_events} inside the transaction
-that updates \code{orders}), in the saga (each step inserts into \code{outbox} inside the
-transaction that updates \code{sagas}), and in credit-service (\code{enqueueOutcome}
-inserts into \code{credit_outbox} inside the transaction that moves credits).
-
-\subsection{Relaying: at least once, in order per key}
-
-All three HTTP-service relays, \code{publishPendingSupplierEvents},
-\code{publishPendingEvents} and \code{publishPending}, follow the same steps:
-\begin{enumerate}
-  \item Open a transaction and try a PostgreSQL advisory lock
-  (\code{pg_try_advisory_xact_lock}). If another relay holds it, return immediately.
-  That is how only one relay runs per database at a time, which keeps each key's messages
-  in sequence.
-  \item Select up to 100 unpublished rows in order (by \code{version} for suppliers, by
-  creation time and sequence for orders, by creation time for the saga).
-  \item Publish them one by one with their ordering key. If a publish fails, add the key
-  to a \code{blocked} set and skip that key's later rows in this run, so they cannot
-  overtake the failed one.
-  \item Set \code{published_at} for the rows that were published, then commit.
-\end{enumerate}
-
-The relay is started in three ways: right after the API's own commit
-(\code{requestOutboxPublish} or \code{requestPublish}, which runs again if more commits
-arrived during a run), once at process start, and by an every-minute sweep. The sweep
-runs in \code{supplier-ticker}, \code{order-ticker} and \code{saga-ticker} locally, and in
-Cloud Scheduler jobs in Google Cloud.
-
-Credit-service uses a different relay. \code{credit-publisher} is a standalone process
-that loops forever: it takes a session-level advisory lock, publishes up to 100 rows in
-creation order, marks each one immediately after its publish succeeds, and \emph{stops
-the batch at the first failure}. Then it sleeps one second.
-
-\subsection{What this does and does not guarantee}
-
-\begin{itemize}
-  \item \textbf{Guaranteed by the code:} a business change and its outbox row are written
-  in the same PostgreSQL transaction, so a committed change always has a message row and
-  a rolled-back change never does.
-  \item \textbf{Not guaranteed: exactly-once publication.} If the process crashes after
-  Pub/Sub accepted a message but before \code{published_at} is committed, the next run
-  publishes the same row again with the same \code{eventId}. The code comments state
-  this, and the consumers deduplicate.
-  \item \textbf{Not guaranteed: prompt publication.} If the after-commit relay fails,
-  the message waits for the next sweep, which is up to a minute later.
-  \item \textbf{Ordering} holds per ordering key, and only for subscriptions created with
-  ordering enabled. The relays preserve per-key order; Pub/Sub preserves it on delivery.
-\end{itemize}
-
-\textbf{User-service is the exception.} It has no outbox. Its API publishes to Pub/Sub
-\emph{instead of} writing the database; the worker writes the database later from the
-event. If the publish fails, the request fails and nothing changes anywhere. If it
-succeeds, the response is sent, but the user's own row appears only after
-\code{user-event-worker} applies the event. The repository README warns that immediate
-reads or logins can briefly lag. The administrator user page polls
-\code{GET /users/events/version}, the highest version applied so far, to refresh when
-the projection catches up.
-
-\begin{caveat}
-User-service checks e-mail and display-name uniqueness against its projected
-\code{users} table before it publishes. Because the projection lags, two conflicting
-registrations very close together could both pass that check. The worker's upsert is
-keyed by user ID, and the e-mail column has a unique index, so the second insert would
-fail and the worker would answer 500, which Pub/Sub retries. The code has no guard for
-this case. It is worth knowing about when you reason about user-events.
-\end{caveat}
-
-\begin{why}
-``Write the change and the intention to announce it atomically, then announce at least
-once'' is what lets order-service promise that every committed state change eventually
-reaches the saga and the notification service, even if Pub/Sub was unavailable at the
-moment of the request.
-\end{why}
-
-% =====================================================================
-\section{Walkthrough A: a sign-up replicates the user to four services}
-\label{sec:signup}
-
-This flow is fully implemented. It is the prerequisite for everything else: a user can
-create an order only after order-service knows them, and can reserve credits only after
-credit-service has allocated an account.
-
-\begin{figure}[!htbp]
-\centering
-\begin{tikzpicture}[x=1cm,y=1.16cm]
-  \foreach \x/\t in {1.05/{Browser\\+ Nuxt}, 3.45/{user-\\service}, 5.85/{Pub/Sub\\user-events},
-     8.25/{user-event-\\worker}, 10.65/{supplier-\\event-worker}, 13.05/{order-\\service}, 15.45/{credit-\\service}} {
-    \node[head, minimum width=21mm] at (\x,0) {\t};
-    \draw[life] (\x,-0.5) -- (\x,-10.3);
-  }
-  \draw[m] (1.05,-1.0) -- node[mlab]{1 POST /register} (3.45,-1.0);
-  \node[act, anchor=north west] at (3.57,-1.25) {2 validate; uniqueness check in \code{users};\\\phantom{2 }reserve user id and event version};
-  \draw[m, draw=async] (3.45,-2.45) -- node[mlab]{3 publish user.created} (5.85,-2.45);
-  \draw[mret] (5.85,-3.0) -- node[mlab]{accepted} (3.45,-3.0);
-  \draw[mret] (3.45,-3.55) -- node[mlab]{4 201 + JWT} (1.05,-3.55);
-  \node[act, anchor=north west] at (1.17,-3.8) {Nuxt sets cookie};
-  \draw[m, draw=async] (5.85,-4.6) -- node[mlab]{5 push} (8.25,-4.6);
-  \node[act, anchor=north west] at (8.37,-4.85) {\code{user_event_states} (if newer)\\+ upsert \code{users} $\rightarrow$ 204};
-  \draw[m, draw=async] (5.85,-6.0) -- node[mlab, pos=0.3]{6 push} (10.65,-6.0);
-  \node[act, anchor=north west] at (10.77,-6.25) {upsert \code{users} if newer\\$\rightarrow$ 204};
-  \draw[m, draw=async] (5.85,-7.4) -- node[mlab, pos=0.25]{7 push} (13.05,-7.4);
-  \node[act, anchor=north east] at (12.93,-7.65) {upsert \code{users} copy if newer $\rightarrow$ 204};
-  \draw[m, draw=async] (5.85,-8.5) -- node[mlab, pos=0.2]{8 push} (15.45,-8.5);
-  \node[act, anchor=north east] at (15.33,-8.75) {\code{credit_accounts} (1000 credits), \code{credit_orders},\\\code{credit_transactions}, \code{credit_outbox} $\rightarrow$ 200};
-\end{tikzpicture}
-\caption{Registration. Steps 5--8 happen independently and in any order relative to
-each other; the browser already has its token after step 4.}
-\label{fig:signup}
-\end{figure}
-
-\begin{enumerate}
-  \item The sign-up page posts to the Nuxt route, which calls \code{user-service}
-  \code{POST /register} at \code{http://user-service:3333}.
-  \item User-service validates the fields and checks uniqueness against its
-  \code{users} table. It reserves the next user ID from the table's serial sequence and
-  the next event version from \code{user_event_sequence}, and builds the user object,
-  including an scrypt password hash, in memory. Nothing is inserted into \code{users}.
-  \item It publishes \code{user.created} with ordering key \code{"7"} and waits until
-  Pub/Sub accepts it.
-  \item It returns 201 with a JWT. Nuxt stores it in the \code{user_access_token} cookie.
-  \item \code{user-event-worker} receives the push on \code{/pubsub/user-events}. In one
-  transaction it upserts \code{user_event_states(user_id, version, deleted)}, but only if
-  the new version is greater, and then inserts or updates the \code{users} row with the
-  password hash. If the state upsert changed nothing, the event is stale or a duplicate,
-  and it commits without touching \code{users}. From this moment, \code{POST /login} can
-  find the user.
-  \item \code{supplier-event-worker} upserts its \code{users} row (id, display name,
-  role, version) with the condition ``stored version $<$ new version''.
-  \item \code{order-service} does the same in its \code{users} table.
-  \item \code{credit-service} ignores \code{user.updated} entirely. For
-  \code{user.created} it uses the \code{eventId} as request ID. Unless an account already
-  exists, it creates one with \code{INITIAL_CREDITS} (default 1000) and records the grant
-  as a credit order and a ledger transaction. It also writes a
-  \code{credit.account_allocated} outbox row, which \code{credit-publisher} later
-  publishes to \code{credit-events}. The saga ignores that event because it has no
-  \code{orderId}, and no other consumer exists.
-\end{enumerate}
-
-\textbf{Deletion.} \code{user.deleted} carries only \code{userId}. The user-event worker
-deletes the login row. The supplier and order copies \emph{soft-delete}: they set
-\code{deleted_at} and keep the row, so existing orders can still reference the user.
-If a deletion arrives before the creation, it is stored as a tombstone row with a higher
-version, and the older creation is skipped when it arrives. Credit marks the account
-\code{deleted_at}.
-
-\begin{why}
-This one flow explains the 503 ``still being set up'' responses, the credit balance
-showing ``being set up'', and why compose makes \code{user-service} start only after the
-consumers that create subscriptions are healthy (Section~\ref{sec:startup}). A
-subscription created after step 3 would never receive this user.
-\end{why}
-
-% =====================================================================
-\section{Walkthrough B: an order from creation to settlement}
-\label{sec:order}
-
-This is the main implemented business flow. It involves two topics of events, two
-topics of commands, four databases, and the notification service.
-
-\subsection{State machines first}
-
-Order-service owns the order's state. Users can trigger some transitions; saga commands
-trigger the others:
-
-\begin{figure}[!htbp]
-\centering
-\begin{tikzpicture}[x=1cm,y=1cm, st/.style={draw, rounded corners=6pt, fill=svc, font=\footnotesize\ttfamily, minimum height=6mm, inner sep=3pt}]
-  \node[st] (P) at (0.9,0) {PENDING};
-  \node[st] (O) at (4.1,0) {OPEN};
-  \node[st] (A) at (7.3,0) {ACCEPTED};
-  \node[st] (PU) at (10.5,0) {PICKED\_UP};
-  \node[st] (D) at (13.9,0) {DELIVERED};
-  \node[st] (C) at (13.9,-2.0) {COMPLETE};
-  \node[st] (S) at (10.1,-2.0) {SETTLED};
-  \node[st] (R) at (0.0,-2.0) {REJECTED};
-  \node[st] (AB) at (2.2,-2.0) {ABORTED};
-  \node[st] (CA) at (4.5,-2.0) {CANCELLED};
-  \node[st] (E) at (6.9,-2.0) {EXPIRED};
-  \draw[->, async, thick] (P) -- node[lbl, above=1pt]{OpenOrder} (O);
-  \draw[->, async, thick] (P) -- node[lbl, left=1pt, pos=0.4]{RejectOrder} (R);
-  \draw[->, async, thick] (P) -- node[lbl, right=1pt, pos=0.4]{AbortOrder} (AB);
-  \draw[->, sync, thick] (O) -- node[lbl, above=1pt]{accept} (A);
-  \draw[->, sync, thick] (O) -- node[lbl, left=1pt, pos=0.5]{cancel} (CA);
-  \draw[->, black!60, thick] (O) -- node[lbl, right=4pt, pos=0.45]{expiry sweep} (E);
-  \draw[->, sync, thick] (A) -- node[lbl, above=1pt]{pickup} (PU);
-  \draw[->, sync, thick] (PU) -- node[lbl, above=1pt]{deliver} (D);
-  \draw[->, sync, thick] (D) -- node[lbl, right=1pt]{confirm} (C);
-  \draw[->, async, thick] (C) -- node[lbl, above=1pt]{SettleOrder} (S);
-\end{tikzpicture}
-
-\vspace{10pt}
-\begin{tikzpicture}[x=1cm,y=1cm, st/.style={draw, rounded corners=6pt, fill=topic, font=\footnotesize\ttfamily, minimum height=6mm, inner sep=3pt}]
-  \node[st] (RS) at (2.2,0) {RESERVING};
-  \node[st] (OP) at (5.6,0) {OPEN};
-  \node[st] (TR) at (9.8,0) {TRANSFERRING};
-  \node[st] (SE) at (14.2,0) {SETTLED};
-  \node[st] (RJ) at (2.2,-1.9) {REJECTED};
-  \node[st] (RL) at (5.6,-1.9) {RELEASING};
-  \node[st] (RD) at (9.8,-1.9) {RELEASED};
-  \node[st] (F) at (14.2,-1.9) {FAILED};
-  \node[st] (AB) at (2.2,-3.7) {ABORTED};
-  \draw[->, thick] (RS) -- node[lbl, above=1pt]{reserve OK} (OP);
-  \draw[->, thick] (RS) -- node[lbl, left=2pt]{refused} (RJ);
-  \draw[->, thick] (RS.west) -- ++(-0.9,0) |- node[lbl, pos=0.25, left=2pt]{timeout} (AB.west);
-  \draw[->, thick] (OP) -- node[lbl, above=1pt]{order.completed} (TR);
-  \draw[->, thick] (TR) -- node[lbl, above=1pt]{transfer OK} (SE);
-  \draw[->, thick] (TR) -- node[lbl, above right=0pt and 2pt, pos=0.55]{transfer refused} (F);
-  \draw[->, thick] (OP) -- node[lbl, right=2pt, align=left]{cancelled / expired\\(from OPEN or RESERVING)} (RL);
-  \draw[->, thick] (RS.south east) -- (RL.north west);
-  \draw[->, thick] (RL) -- node[lbl, above=1pt]{release OK} (RD);
-  \draw[->, thick] (AB.east) -| node[lbl, pos=0.25, above=1pt]{release OK} (RD.south);
-\end{tikzpicture}
-\caption{Top: order states in order-service (green = user action over HTTP, orange =
-saga command over Pub/Sub, grey = scheduled sweep). Bottom: saga states in
-saga-orchestrator. A refused release also leads to FAILED (not drawn).}
-\label{fig:states}
-\end{figure}
-
-\subsection{Phase 1: creating and opening the order}
-
-\begin{figure}[!htbp]
-\centering
-\begin{tikzpicture}[x=1cm,y=1.16cm]
-  \foreach \x/\t in {1.1/{Nuxt\\(requester)}, 3.95/{order-\\service}, 6.8/{Pub/Sub}, 9.65/{saga-\\orchestrator}, 12.5/{credit-service\\+ publisher}, 15.35/{notification-\\service}} {
-    \node[head, minimum width=22mm] at (\x,0.0) {\t};
-    \draw[life] (\x,-0.5) -- (\x,-13.05);
-  }
-  \def\O{3.95} \def\P{6.8} \def\S{9.65} \def\C{12.5} \def\N{15.35}
-  \draw[m] (1.1,-1.0) -- node[mlab]{1 POST /orders} (\O,-1.0);
-  \node[act, anchor=north west] at (4.07,-1.2) {2 tx: \code{orders} PENDING + \code{order_events} \#1};
-  \draw[mret] (\O,-2.0) -- node[mlab]{3 201, PENDING} (1.1,-2.0);
-  \draw[m, draw=async] (\O,-2.6) -- node[mlab]{4 order.created} (\P,-2.6);
-  \draw[m, draw=async] (\P,-3.2) -- node[mlab]{5 push} (\S,-3.2);
-  \draw[m, draw=async, dashed] (\P,-3.8) -- node[mlab, pos=0.62]{pull: live + store (no notification stored)} (\N,-3.8);
-  \node[act, anchor=north west] at (9.77,-4.0) {6 tx: \code{processed_messages},\\\phantom{6 }\code{sagas} RESERVING (+60 s),\\\phantom{6 }\code{outbox} credit.reserve};
-  \draw[m, draw=async] (\S,-5.55) -- node[mlab]{7 credit.reserve} (\P,-5.55);
-  \draw[m, draw=async] (\P,-6.15) -- node[mlab, pos=0.3]{8 push} (\C,-6.15);
-  \node[act, anchor=north east] at (12.38,-6.35) {9 tx: \code{credit_orders}, reserved += 12,\\\phantom{9 }\code{credit_transactions}, \code{credit_outbox}};
-  \draw[m, draw=async] (\C,-7.55) -- node[mlab, pos=0.62]{10 credit.reserved (publisher loop)} (\P,-7.55);
-  \draw[m, draw=async] (\P,-8.15) -- node[mlab]{11 push} (\S,-8.15);
-  \node[act, anchor=north west] at (9.77,-8.35) {12 tx: \code{sagas} OPEN, \code{outbox} OpenOrder};
-  \draw[m, draw=async] (\S,-9.15) -- node[mlab]{13 OpenOrder} (\P,-9.15);
-  \draw[m, draw=async] (\P,-9.75) -- node[mlab]{14 push} (\O,-9.75);
-  \node[act, anchor=north west] at (4.07,-9.95) {15 tx: OPEN, \code{expires_at} = now + 2 h,\\\phantom{15 }\code{order_events} \#2 with \code{commandId}};
-  \draw[m, draw=async] (\O,-11.15) -- node[mlab]{16 order.opened} (\P,-11.15);
-  \draw[m, draw=async] (\P,-11.75) -- node[mlab, pos=0.62]{17 pull: live + store} (\N,-11.75);
-  \node[act, anchor=north east] at (15.23,-11.95) {18 store requester's notification;\\\phantom{18 }push \code{order.event} + toast};
-\end{tikzpicture}
-\caption{Opening an order. The saga sees \code{order.opened} too, but its subscription
-filter drops it.}
-\label{fig:open}
-\end{figure}
-
-\begin{enumerate}
-  \item The requester submits the form. Nuxt calls \code{POST /orders} with the bearer
-  token. \code{requireUser} needs the requester in order-service's user copy, otherwise
-  it answers 503.
-  \item Order-service looks up the \emph{latest} row for the supplier in
-  \code{supplier_versions}. It refuses if the supplier is unknown, deleted or inactive.
-  Then, in one transaction, it inserts the order as \code{PENDING}, pointing at that
-  supplier version, and appends \code{order_events} row 1 of type \code{order.created}.
-  \item The response is 201 with state \code{PENDING}. The user sees a pending order:
-  the credit check has not happened yet.
-  \item The relay publishes the row to \code{order-events} (key = order ID,
-  \code{type=order.created}).
-  \item The saga's filtered push subscription delivers it to
-  \code{/internal/pubsub/order-events}. The notification instances also pull it; the
-  live subscription pushes an \code{order.event} message to the requester's open sockets
-  so pages refresh, but \code{order.created} creates no stored notification.
-  \item In one transaction the saga records the \code{eventId} in
-  \code{processed_messages} (a repeat would stop here as ``duplicate''). It inserts the
-  saga row in state \code{RESERVING} with a fresh \code{reserve_request_id} and a deadline
-  60 seconds ahead (\code{RESERVE_TIMEOUT_SECONDS}), and inserts a \code{credit.reserve}
-  outbox row.
-  \item The saga relay publishes the command to \code{credit-commands}.
-  \item Credit-service receives it on \code{/internal/pubsub/credit-commands}.
-  \item In one transaction it takes advisory locks on the request, order and account. It
-  returns the stored result if this \code{requestId} was seen before. Otherwise it checks
-  that available credits (total minus reserved) cover the amount, moves 12 credits from
-  available to reserved, records the credit order and a ledger transaction, and inserts
-  a \code{credit_outbox} row. It answers 204.
-  \item Within about a second, \code{credit-publisher} publishes \code{credit.reserved}
-  to \code{credit-events}.
-  \item The saga receives the result on \code{/internal/pubsub/credit-events}.
-  \item It matches \code{requestId} to the saga's \code{reserve_request_id}. Because
-  the saga is still \code{RESERVING} and the status is \code{SUCCEEDED}, it moves the
-  saga to \code{OPEN} and writes an \code{OpenOrder} outbox row.
-  \item The relay publishes \code{OpenOrder} to \code{order-commands}.
-  \item Order-service receives it on \code{/internal/pubsub/order-commands}.
-  \item Under a row lock it checks that no \code{order_events} row has this
-  \code{commandId} and that the order is still \code{PENDING}. It then moves the order to
-  \code{OPEN}, sets \code{expires_at} two hours ahead (\code{ORDER_OPEN_TTL_SECONDS}), and
-  appends event 2 with the \code{commandId}.
-  \item The relay publishes \code{order.opened}.
-  \item Notification-service pulls it on both subscriptions.
-  \item The store subscription inserts a notification for the requester, because
-  \code{order.opened} is a requester event and the actor is \code{null}. The live one
-  sends both the raw \code{order.event} and a toast-ready \code{notification} to the
-  requester's sockets. The order page refreshes and shows \code{OPEN}.
-\end{enumerate}
-
-\subsection{Phase 2: doing the errand and paying the courier}
-
-\begin{figure}[!htbp]
-\centering
-\begin{tikzpicture}[x=1cm,y=1.16cm]
-  \foreach \x/\t in {1.2/{Nuxt (courier,\\requester)}, 4.7/{order-\\service}, 8.2/{Pub/Sub}, 11.7/{saga-\\orchestrator}, 15.2/{credit-service\\+ publisher}} {
-    \node[head, minimum width=23mm] at (\x,0) {\t};
-    \draw[life] (\x,-0.5) -- (\x,-10.7);
-  }
-  \def\N{1.2} \def\O{4.7} \def\P{8.2} \def\S{11.7} \def\C{15.2}
-  \draw[m] (\N,-1.0) -- node[mlab]{1 courier: accept} (\O,-1.0);
-  \node[act, anchor=north west] at (4.82,-1.2) {ACCEPTED; order.accepted (requester notified)};
-  \draw[m] (\N,-2.0) -- node[mlab]{2 courier: pickup, deliver} (\O,-2.0);
-  \draw[m] (\N,-2.6) -- node[mlab]{3 requester: confirm} (\O,-2.6);
-  \node[act, anchor=north west] at (4.82,-2.8) {COMPLETE; \code{order_events}: order.completed};
-  \draw[m, draw=async] (\O,-3.6) -- node[mlab]{4 order.completed} (\P,-3.6);
-  \draw[m, draw=async] (\P,-4.2) -- node[mlab]{5 push} (\S,-4.2);
-  \node[act, anchor=north west] at (11.82,-4.4) {6 \code{sagas} TRANSFERRING,\\\phantom{6 }\code{outbox} credit.transfer};
-  \draw[m, draw=async] (\S,-5.6) -- node[mlab]{7 credit.transfer} (\P,-5.6);
-  \draw[m, draw=async] (\P,-6.2) -- node[mlab, pos=0.3]{8 push} (\C,-6.2);
-  \node[act, anchor=north east] at (15.08,-6.4) {9 requester: total $-12$, reserved $-12$;\\\phantom{9 }courier: total $+12$; \code{credit_outbox}};
-  \draw[m, draw=async] (\C,-7.6) -- node[mlab, pos=0.62]{10 credit.transferred} (\P,-7.6);
-  \draw[m, draw=async] (\P,-8.2) -- node[mlab]{11 push} (\S,-8.2);
-  \node[act, anchor=north east] at (11.58,-8.4) {12 SETTLED, \code{outbox} SettleOrder};
-  \draw[m, draw=async] (\S,-9.2) -- node[mlab]{13 SettleOrder} (\P,-9.2);
-  \draw[m, draw=async] (\P,-9.8) -- node[mlab]{14 push} (\O,-9.8);
-  \node[act, anchor=north west] at (4.82,-10.0) {15 SETTLED; order.settled (courier notified)};
-\end{tikzpicture}
-\caption{Completing an order. The final \code{order.settled} event notifies the courier
-(not drawn).}
-\label{fig:settle}
-\end{figure}
-
-\begin{itemize}
-  \item \textbf{Accept, pickup, deliver, confirm} are ordinary HTTP calls to
-  \code{POST /orders/:orderId/<action>}. Each one locks the order row, checks who may
-  act (you cannot accept your own order; only the courier picks up and delivers; only
-  the requester confirms), checks the current state, and appends an event. An accept
-  after \code{expires_at} is refused even if the expiry sweep has not run yet.
-  \item \textbf{The saga ignores accept, pickup and deliver}; its filter only passes
-  \code{order.completed}. On \code{order.completed} it needs the saga in \code{OPEN} and a
-  \code{courierId} in the snapshot. It then stores the courier, moves to
-  \code{TRANSFERRING} and sends \code{credit.transfer}.
-  \item \textbf{Credit} reads the reservation from its own records (amount and
-  requester), refuses a transfer to the requester themselves, moves the reserved credits
-  from the requester to the courier, and publishes \code{credit.transferred}.
-  \item \textbf{The saga} matches the transfer's request ID, moves to \code{SETTLED}, and
-  sends \code{SettleOrder}. Order-service moves \code{COMPLETE}$\rightarrow$\code{SETTLED}
-  and publishes \code{order.settled}, which notifies the courier.
-\end{itemize}
-
-\begin{why}
-Credits move only through the saga, never through an HTTP call from order-service.
-Order-service therefore never has to know credit balances. When credit is slow or
-unavailable, an order simply stays \code{PENDING} until the saga decides, as the next
-section shows.
-\end{why}
-
-% =====================================================================
-\section{Walkthrough C: refusals, timeouts, compensation and duplicates}
-\label{sec:failure}
-
-\subsection{Not enough credits: the order is rejected}
-
-If the requester's available credits are below the reward, credit's reserve decision
-returns code \code{INSUFFICIENT_CREDITS} with status \code{REJECTED} and changes no
-balance. The publisher emits \code{credit.reservation_rejected}. The saga, still in
-\code{RESERVING}, stores the failure code, moves to \code{REJECTED} and sends
-\code{RejectOrder}. Order-service moves \code{PENDING}$\rightarrow$\code{REJECTED} and
-publishes \code{order.rejected}, which notifies the requester. Nothing needs to be
-compensated, because nothing was reserved.
-
-\subsection{Credit does not answer in time: abort and release}
-
-Suppose credit-service is down. The \code{credit.reserve} command waits in its
-subscription, and the saga row stays \code{RESERVING}. Every minute \code{saga-ticker}
-(Cloud Scheduler in Google Cloud) calls \code{POST /internal/sagas/abort-overdue}:
-
-\par\noindent\begin{minipage}{\linewidth}
-\begin{lstlisting}[language=ts]
-// saga-orchestrator/src/saga.ts, abortOverdueReservations (excerpt)
-const overdue = await tx.select().from(sagas)
-  .where(and(eq(sagas.state, "RESERVING"), lte(sagas.reserveDeadline, now)))
-  .orderBy(asc(sagas.reserveDeadline)).limit(BATCH)
-  .for("update", { skipLocked: true });
-for (const saga of overdue) {
-  await release(tx, saga, "ABORTED", "Credit reservation timed out"); // credit.release command
-  await orderCommand(tx, saga.orderId, "AbortOrder");                  // order-commands
-}
-\end{lstlisting}
-\end{minipage}\par
-
-This is the compensating step. The saga does not know whether the reservation happened,
-so it sends a release either way, and order-service moves the order to \code{ABORTED}.
-When credit comes back, Pub/Sub redelivers the queued commands, and both cases are safe:
-\begin{itemize}
-  \item If the \emph{release} is processed first, credit has no reservation for the
-  order, so it records the order as \code{CANCELLED} and reports success; the saga moves
-  \code{ABORTED}$\rightarrow$\code{RELEASED}. The late reserve is then refused with
-  \code{RESERVATION_CANCELLED}, and the saga ignores that result because it is no longer
-  \code{RESERVING}.
-  \item If the \emph{reserve} is processed first, credits are held. The release then
-  frees them (\code{HELD}$\rightarrow$\code{RELEASED}), and the saga moves
-  \code{ABORTED}$\rightarrow$\code{RELEASED}.
-\end{itemize}
-Because \code{credit-service-commands} is not an ordered subscription, either order can
-happen. Credit's per-order advisory lock and its reservation-state checks make both
-orders safe.
-
-\subsection{Cancelled or expired orders: release}
-
-A requester can cancel only an \code{OPEN} order. Order-service's expiry sweep
-(\code{POST /internal/orders/expire-overdue}, every minute) moves \code{OPEN} orders past
-\code{expires_at} to \code{EXPIRED}, using \code{SKIP LOCKED} so it does not fight a
-concurrent accept. Either event reaches the saga, which moves \code{OPEN} (or
-\code{RESERVING}) to \code{RELEASING} and sends \code{credit.release}. A successful
-release moves the saga to \code{RELEASED}; the order itself stays \code{CANCELLED} or
-\code{EXPIRED}, and no further order command is sent.
-
-\subsection{Waiting for prerequisites through retries}
-
-Two credit conditions are answered with 503 on purpose, so that Pub/Sub keeps retrying
-(between 1 and 30 seconds apart, per credit's subscription settings):
-\begin{itemize}
-  \item \code{ACCOUNT_PENDING}: the account does not exist yet because
-  \code{user.created} has not been applied.
-  \item \code{RESERVATION_NOT_READY}: a transfer arrived before credit had recorded
-  any reservation for the order.
-\end{itemize}
-
-\subsection{Duplicates, layer by layer}
-
-\begin{itemize}
-  \item \textbf{Replicated users} (user, supplier, order copies): ``apply only if the
-  stored version is lower''. A repeat changes nothing.
-  \item \textbf{Supplier versions} (order-service): primary key
-  \code{(supplier_id, version)} with ``on conflict do nothing''.
-  \item \textbf{Saga}: \code{processed_messages} keyed by \code{eventId}. Credit results
-  are also matched against stored request IDs and the current saga state.
-  \item \textbf{Order commands}: unique \code{order_events.command_id}, checked under the
-  order's row lock.
-  \item \textbf{Credit commands}: \code{credit_orders.request_id}. A repeat with the
-  same payload returns the stored result and publishes nothing new; the same
-  \code{requestId} with a different payload is a 409 \code{IDEMPOTENCY_CONFLICT}.
-  \item \textbf{Account allocation}: the \code{user.created} \code{eventId} is the
-  request ID, and a partial unique index allows one successful allocation per user.
-  \item \textbf{Notifications}: ID derived from (source, event, user) plus a unique key.
-\end{itemize}
-
-\subsection{What is not handled automatically}
-
-The saga state \code{FAILED} is reached if credit refuses a release or a transfer, for
-example \code{USER_INACTIVE} for a deleted courier or \code{BALANCE_LIMIT_EXCEEDED}. The
-code logs an error, and the schema comment calls it ``needs attention''. No code path
-retries, alerts or compensates further. The order stays \code{COMPLETE} (for a failed
-transfer) or in its cancelled/expired state.
-
-\begin{why}
-The saga never assumes a message arrived, or arrived once, or arrived in a convenient
-order. Each decision is made from its own stored state plus the identifiers in the
-message. That is what makes the timeout-and-release design safe.
-\end{why}
-
-% =====================================================================
-\section{Walkthrough D: a supplier edit reaches order-service}
-\label{sec:supplier}
-
-\begin{enumerate}
-  \item An administrator saves the edit dialog. Nuxt calls supplier-service
-  \code{PUT /suppliers/:id}. \code{requireAuthentication} verifies the JWT and reads the
-  role from the supplier database's local \code{users} copy;
-  \code{requireAdministrator} demands \code{admin}.
-  \item In one transaction the supplier row is updated, its operating hours are replaced
-  if they were sent, and a \code{supplier.updated} outbox row with the full snapshot is
-  inserted.
-  \item After the commit the API starts its relay, which publishes to
-  \code{supplier-events} with key = supplier ID. If that fails, the row waits for the
-  worker's \code{POST /outbox/publish}, called every minute by \code{supplier-ticker}
-  locally or by the \code{supplier-outbox-sweep} Cloud Scheduler job in Cloud.
-  \item Order-service's \code{/internal/pubsub/supplier-events} handler appends a new row
-  to \code{supplier_versions}. It never updates old rows. Image URLs are deliberately not
-  stored.
-  \item The next \code{POST /orders} for this supplier uses the new latest version.
-  Existing orders keep their \code{supplier_version} foreign key, so they still describe
-  the supplier as it was when they were placed.
-\end{enumerate}
-
-\textbf{Renames} of a type or building lock every supplier row that uses it, then emit
-one \code{supplier.updated} per supplier. \textbf{Deleting} a type or building emits
-nothing; it is allowed only when no supplier uses the row. \textbf{Seeding}
-(\code{npm run db:seed}) inserts outbox rows but publishes nothing itself, so locally the
-seeded suppliers reach order-service on the next \code{supplier-ticker} sweep, within
-about a minute. Until then, creating an order for a seeded supplier fails with
-``Supplier not found''.
-
-% =====================================================================
-\section{Local emulator vs Google Cloud transport}
-\label{sec:transport}
-
-\subsection{Locally: services set up their own topics and subscriptions}
-
-The emulator container starts empty and keeps everything in memory; no volume is
-mounted. Each consumer therefore creates what it needs at startup, but only when
-\code{PUBSUB_EMULATOR_HOST} is set, which the client library also uses to connect to
-\code{pubsub-emulator:8085} instead of Google:
-
-\begin{itemize}
-  \item \code{user-event-worker}: topic \code{user-events} and push subscription
-  \code{user-events-worker} to \code{http://user-event-worker:3334/pubsub/user-events}.
-  \item \code{supplier-event-worker}: topics \code{user-events} and
-  \code{supplier-events}, and push subscription \code{supplier-service-user-events}. If
-  that subscription already exists, it re-points its endpoint.
-  \item \code{order-service}: topics \code{order-events}, \code{user-events},
-  \code{supplier-events} and \code{order-commands}, and three push subscriptions to
-  \code{http://order-service:3000/internal/pubsub/...?token=<secret>}.
-  \item \code{saga-orchestrator}: its four topics, and the two push subscriptions,
-  including the filter on the order-events one.
-  \item \code{credit-pubsub-provision}: credit's three topics and two push
-  subscriptions, with the token in the query string. It retries up to 30 times, one
-  second apart.
-  \item \code{notification-service}: topic \code{order-events}, its own
-  \code{notification-<uuid>} pull subscription and the shared \code{notification-store}.
-\end{itemize}
-
-The emulator cannot attach Google OIDC tokens to push requests. So the push URLs carry
-a local-only shared secret as \code{?token=...}, and the tickers send it in the
-\code{x-internal-secret} header. Compose supplies defaults such as
-\code{local-only-order-internal-secret-0000}. Credit-service accepts the shared secret
-only while \code{PUBSUB_EMULATOR_HOST} is set, and accepts the \code{?token=} form only on
-its push routes.
-\code{user-event-worker} and \code{supplier-event-worker} have no authentication check in
-their code at all; they depend on not being reachable, which holds locally because they
-have no host port, and in Cloud because of Cloud Run IAM.
-
-\subsection{In Google Cloud: \texttt{deploy.sh} creates the transport}
-
-\begin{figure}[!htbp]
-\centering
-\begin{tikzpicture}[x=1cm,y=1cm]
-  \node[infrabox, minimum width=22mm, minimum height=10mm] (inet) at (1.1,0) {Internet\\(browser)};
-  \node[svcbox, minimum width=32mm, minimum height=10mm] (fe) at (4.9,1.2) {frontend-service\\ingress: all};
-  \node[svcbox, minimum width=32mm, minimum height=10mm] (nt) at (4.9,-1.2) {notification-service\\ingress: all, min 1};
-  \node[svcbox, minimum width=40mm, minimum height=12mm] (be) at (10.0,1.8) {user, supplier, order,\\credit, saga APIs\\ingress: internal};
-  \node[svcbox, minimum width=40mm, minimum height=10mm] (wk) at (10.0,0.0) {user- and supplier-event-\\worker: IAM invokers only};
-  \node[topicbox, minimum width=34mm, minimum height=9mm] (ps) at (10.0,-2.3) {Pub/Sub topics};
-  \node[dbbox, minimum width=28mm, minimum height=12mm] (sql) at (14.9,1.8) {Cloud SQL foc-db\\one database\\per service};
-  \node[svcbox, minimum width=28mm, minimum height=10mm] (cp) at (14.9,0.0) {credit-publisher\\1 instance, publishes};
-  \node[infrabox, minimum width=28mm, minimum height=10mm] (sch) at (14.9,-2.3) {Cloud Scheduler\\5 jobs / minute};
-  \draw[synca] (inet) -- (fe);
-  \draw[synca] (inet) -- node[lbl, below left=0pt and 0pt, pos=0.5]{wss} (nt);
-  \draw[synca] (fe.east) -- node[lbl, above=2pt]{VPC} (be.west |- fe.east);
-  \draw[asynca] (ps.north) -- node[lbl, left=2pt, align=right]{push + OIDC\\(also order,\\saga, credit)} (wk.south);
-  \draw[asynca] (ps.west) -| node[lbl, pos=0.3, below=2pt]{pull} (nt.south);
-  \draw[->, thick, black!60] (sch.north west) -- node[lbl, right=3pt, pos=0.5]{HTTP + OIDC} (wk.south east);
-  \draw[->, thick, black!40] (be.east) -- (sql.west);
-\end{tikzpicture}
-\caption{Cloud topology as configured in \code{deploy.sh}. Pub/Sub push and Scheduler
-also call the internal-ingress backends (arrows simplified). The supplier-service and its
-worker reach Cloud SQL over a private IP; the others use the Cloud SQL connector.}
-\label{fig:cloud}
-\end{figure}
-
-\begin{itemize}
-  \item \textbf{Topics} are created by \code{ensure_pubsub} (\code{user-events},
-  \code{supplier-events}) and by \code{ensure_service_resources} (\code{order-events},
-  \code{order-commands}, \code{supplier-events}, \code{credit-commands},
-  \code{credit-events}).
-  \item \textbf{Push subscriptions} are created by \code{deploy.sh} with an OIDC token
-  from the service account \code{user-event-push@<project>} and an audience equal to the
-  service URL. The order and saga subscriptions are also created with an ack deadline of
-  30 seconds and a retry delay of 1--60 seconds. The exceptions are credit's two
-  subscriptions, which the \code{credit-provision} Cloud Run
-  job creates from the credit image with the same push identity. Message ordering is
-  enabled on the order, saga, user-worker and supplier-worker subscriptions; the saga's
-  filter is applied at creation and cannot be changed later.
-  \item \textbf{Verifying push callers.} Order-service and the saga verify the Google ID
-  token's signature and audience (\code{INTERNAL_AUDIENCE}) and require its e-mail to be
-  in \code{INTERNAL_INVOKER_EMAILS}, which holds the push and scheduler accounts. Credit
-  accepts only the push account on its push routes. The two event workers are deployed
-  with \code{--no-allow-unauthenticated}, and the push account is granted
-  \code{roles/run.invoker}, so Cloud Run itself rejects other callers.
-  \item \textbf{Scheduler jobs}: \code{supplier-outbox-sweep},
-  \code{order-expire-overdue}, \code{order-outbox-publish}, \code{saga-abort-overdue} and
-  \code{saga-outbox-publish}, every minute, each with an OIDC token.
-  \item \textbf{Notification-service} pulls, so it needs CPU between requests:
-  \code{--min-instances 1 --no-cpu-throttling --timeout 3600}, the timeout also limiting
-  WebSocket lifetime. It creates and deletes subscriptions itself, so the default compute
-  service account gets \code{roles/pubsub.editor}.
-  \item \textbf{credit-publisher} loops in the background, so it runs as exactly one
-  instance with CPU always on. It answers a trivial HTTP health response on
-  \code{PORT}, which Cloud Run requires.
-\end{itemize}
-
-\subsection{Configured versus actually exercised}
-
-Be precise about what has evidence behind it. For this guide nothing was run: the
-machine it was prepared on has no Docker, and no cloud calls were made. The repository's
-\code{AI_USAGE_LOG.md} records the following earlier checks:
-\begin{itemize}
-  \item \textbf{Reported as run on the local emulator:} supplier create/edit/delete
-  publishing versions that order-service stored; two notification instances both
-  delivering an order event; and the full saga with the real user, order and credit
-  services (opening, rejection for insufficient credits, cancellation release,
-  completion transfer and settlement, and abort after a timeout with credit stopped).
-  \item \textbf{Configured but not recorded as run:} the Cloud Pub/Sub transport. The
-  entries for the order/notification/credit/saga deployment and for supplier events
-  list only \code{bash -n deploy.sh} and config parsing, and say explicitly that
-  ``Cloud deployment was not run''. An earlier Cloud deployment of frontend, user and
-  supplier services is recorded as working, but it predates the Pub/Sub changes.
-\end{itemize}
-
-% =====================================================================
-\section{Containers from first principles}
-\label{sec:containers}
-
-\begin{itemize}
-  \item An \textbf{image} is a frozen filesystem plus a default command. A
-  \textbf{Dockerfile} builds it step by step; each \code{FROM} starts a \emph{stage}, and
-  a later stage can copy files out of an earlier one. Only the final stage, or the stage
-  named by \code{target}, becomes the image.
-  \item The \textbf{build context} is the folder sent to the builder. \code{COPY} can only
-  see files in it, minus those listed in \code{.dockerignore}. Here every context is the
-  service's own folder, so no image can accidentally include another service's code.
-  \item A \textbf{container} is a running instance of an image. Compose's
-  \code{command:} replaces the image's \code{CMD}; that is how one image runs both an API
-  and a worker.
-  \item \textbf{\code{EXPOSE}} in a Dockerfile only documents a port. It opens nothing.
-  \textbf{Publishing} (\code{ports: "3002:3000"} in Compose) is what makes host port
-  3002 forward to container port 3000. Containers on the same Compose network reach each
-  other on the \emph{container} port regardless of publishing.
-  \item A \textbf{named volume} (\code{order-db-data:}) is storage managed by Docker that
-  survives container re-creation. A \textbf{bind mount} (\code{./x:/y}) maps a host
-  folder into the container.
-\end{itemize}
-
-\begin{why}
-Two facts prevent most confusion here. First, the supplier worker listens on 3004 even
-though its image says \code{EXPOSE 3000}; \code{EXPOSE} is only documentation. Second,
-the host's port 3004 is credit-service, not the supplier worker. Host ports and container
-ports are separate namespaces.
-\end{why}
-
-% =====================================================================
-\section{Each Dockerfile, explained}
-\label{sec:dockerfiles}
-
-\subsection{The three-stage pattern: supplier, order, notification, saga}
-
-These four services use the same layout, shown here for order-service:
-
-\par\noindent\begin{minipage}{\linewidth}
-\begin{lstlisting}[language=docker]
-FROM node:22-bookworm-slim AS tooling
-WORKDIR /app
-COPY package.json package-lock.json ./
-RUN npm ci                                   # all dependencies, incl. drizzle-kit, tsx, tsc
-COPY tsconfig.json tsconfig.build.json ./
-COPY drizzle.config.ts ./
-COPY src ./src
-COPY drizzle ./drizzle                       # SQL migrations
-CMD ["npm", "run", "db:migrate"]             # supplier-service: db:check
-
-FROM tooling AS build
-RUN npm run build && npm prune --omit=dev    # tsc -> dist/, then drop dev deps
-
-FROM node:22-bookworm-slim AS runtime
-ENV NODE_ENV=production
-WORKDIR /app
-COPY --from=build --chown=node:node /app/package.json /app/package-lock.json ./
-COPY --from=build --chown=node:node /app/node_modules ./node_modules
-COPY --from=build --chown=node:node /app/dist ./dist
-USER node
-EXPOSE 3000
-CMD ["node", "dist/index.js"]
-\end{lstlisting}
-\end{minipage}\par
-
-\begin{itemize}
-  \item \textbf{Why copy \code{package*.json} before \code{src}?} Docker caches each step.
-  If only source files change, the slow \code{npm ci} layer is reused.
-  \item \textbf{\code{tooling}} keeps TypeScript sources, dev dependencies and migrations.
-  Compose's \code{*-db-migrate} containers use \code{target: tooling} to run
-  \code{drizzle-kit migrate}, and \code{compose.dev.yaml} uses it to run \code{tsx watch}.
-  \item \textbf{\code{runtime}} contains only compiled JavaScript and production
-  dependencies, and runs as the unprivileged \code{node} user. It is the default when no
-  target is named, so \code{build: ./order-service} produces it.
-  \item \textbf{Workers reuse the runtime image}: \code{supplier-event-worker} runs it
-  with \code{command: ["node", "dist/worker.js"]}.
-\end{itemize}
-
-\subsection{credit-service: two stages on Alpine}
-
-\par\noindent\begin{minipage}{\linewidth}
-\begin{lstlisting}[language=docker]
-FROM node:22-alpine AS tooling
-WORKDIR /app
-COPY package*.json ./
-RUN npm ci
-COPY tsconfig.json drizzle.config.ts ./
-COPY src ./src
-COPY migrations ./migrations
-RUN npm run build                      # dist/ built here
-FROM node:22-alpine AS runtime
-WORKDIR /app
-ENV NODE_ENV=production
-COPY --from=tooling /app/package*.json ./
-RUN npm ci --omit=dev                  # reinstall production deps only
-COPY --from=tooling /app/dist ./dist
-COPY --from=tooling /app/migrations ./migrations
-EXPOSE 3000
-CMD ["npm","start"]
-\end{lstlisting}
-\end{minipage}\par
-
-The differences from the pattern above have consequences. The base image is Alpine, not
-Debian slim. Production dependencies are reinstalled rather than pruned. There is no
-\code{USER} line, so the container runs as root. Migrations run with the
-\emph{runtime} image: \code{npm run db:migrate} runs \code{node dist/db/migrate.js},
-which uses Drizzle ORM's migrator (no dev dependency needed) under an advisory lock. The
-same single image therefore serves as API (\code{npm start}), publisher
-(\code{npm run publisher}), provisioner (\code{npm run pubsub:provision}) and migrator,
-both in Compose and in Cloud. Its \code{.dockerignore} also excludes \code{test} and
-\code{docs}.
-
-\subsection{user-service: one stage, TypeScript at runtime}
-
-\par\noindent\begin{minipage}{\linewidth}
-\begin{lstlisting}[language=docker]
-FROM node:22-bookworm-slim
-WORKDIR /app
-COPY package.json package-lock.json ./
-RUN npm ci
-COPY drizzle.config.ts ./
-COPY src ./src
-ENV PORT=3333
-EXPOSE 3333
-CMD ["npm", "start"]                     # = tsx src/index.ts
-\end{lstlisting}
-\end{minipage}\par
-
-There is no build step. The image keeps all dependencies, including dev ones, and runs
-TypeScript directly with \code{tsx}. It runs as root, and the folder has no
-\code{.dockerignore}, so the whole \code{user-service/} folder is the build context. The
-same image runs three ways: API (\code{npm start}), worker (\code{npm run worker} =
-\code{tsx src/worker.ts}), and migration. The migration script is
-\code{drizzle-kit push}, which compares \code{src/db/schema.ts} with the live database
-and applies the difference; there are no migration files in the folder.
-
-\subsection{frontend-service: build, then ship only the output}
-
-\par\noindent\begin{minipage}{\linewidth}
-\begin{lstlisting}[language=docker]
-FROM node:22-bookworm-slim AS build
-WORKDIR /app
-COPY package.json package-lock.json ./
-RUN npm ci
-COPY . .
-RUN npm run build                        # nuxt build -> .output/
-FROM node:22-bookworm-slim AS runtime
-ENV NODE_ENV=production NITRO_HOST=0.0.0.0 NITRO_PORT=3000
-WORKDIR /app
-COPY --from=build --chown=node:node /app/.output ./.output
-USER node
-EXPOSE 3000
-CMD ["node", ".output/server/index.mjs"]
-\end{lstlisting}
-\end{minipage}\par
-
-Nuxt's \code{.output} folder is self-contained, so the runtime stage does not even copy
-\code{node_modules}. Backend URLs are not baked in at build time. They are read when
-the server starts from \code{NUXT_*} environment variables that override the defaults in
-\code{nuxt.config.ts}, which is why the same image works in Compose and Cloud. The
-\code{build} stage doubles as the development target.
-
-\subsection{Images used as-is}
-
-\code{postgres:17} for all six databases,
-\code{gcr.io/google.com/cloudsdktool/google-cloud-cli:emulators} for the Pub/Sub emulator
-(started with \code{gcloud beta emulators pubsub start --project=foc-local
---host-port=0.0.0.0:8085}), and \code{curlimages/curl:8.11.1} for the three tickers,
-whose entrypoint is a shell loop of \code{sleep 60} and \code{curl -X POST}.
-
-% =====================================================================
-\section{Compose: the running system}
-\label{sec:compose}
-
-\subsection{One network, names as addresses}
-\label{sec:network}
-
-\code{compose.yaml} declares no networks, so Compose puts every container on one default
-project network and registers each \emph{service name} in its internal DNS. That is why
-configuration can say \code{postgres://order:order@order-db:5432/orders},
-\code{PUBSUB_EMULATOR_HOST=pubsub-emulator:8085} or
-\code{NUXT_USER_SERVICE_BASE_URL=http://user-service:3333}. Container-to-container
-traffic always uses the container port: 5432 for every database, even though the host
-sees 5433--5439.
-
-\begin{figure}[!htbp]
-\centering
-\begin{tikzpicture}[x=1cm,y=1cm]
-  \draw[black!50, rounded corners] (0,0) rectangle (16.3,-4.4);
-  \node[font=\footnotesize, anchor=south west] at (0.15,-4.35) {Compose default network: containers reach each other by service name and container port};
-  \node[svcbox, minimum width=32mm] (fe) at (2.2,-1.0) {frontend-service :3000};
-  \node[svcbox, minimum width=32mm] (os) at (8.2,-1.0) {order-service :3000};
-  \node[svcbox, minimum width=32mm] (cs) at (14.0,-1.0) {credit-service :3000};
-  \node[svcbox, minimum width=32mm] (sw) at (2.2,-3.0) {supplier worker :3004};
-  \node[dbbox, minimum width=32mm] (od) at (8.2,-3.0) {order-db :5432};
-  \node[infrabox, minimum width=32mm] (em) at (14.0,-3.0) {pubsub-emulator :8085};
-  \draw[synca] (fe) -- node[lbl, above=2pt]{order-service:3000} (os);
-  \draw[->, thick] (os) -- node[lbl, left=2pt]{order-db:5432} (od);
-  \draw[->, thick, async] (os.south east) -- node[lbl, right=6pt, pos=0.45]{pubsub-emulator:8085} (em.north west);
-  \foreach \n/\x/\t in {fe/2.2/host 3001, os/8.2/host 3002, cs/14.0/host 3004} {
-    \node[infrabox, minimum width=22mm, minimum height=6mm] (h\n) at (\x,1.1) {\t};
-    \draw[->, thick, black!60] (h\n) -- node[lbl, right=2pt, pos=0.25]{forwards to 3000} (\n);
-  }
-\end{tikzpicture}
-\caption{Inside the network, services address each other by name and container port. Published
-ports (top) are a separate door from the host. Only a selection is drawn: notification-service is
-also published (3003), as are the databases on 127.0.0.1 (5433--5439); the saga is not.}
-\label{fig:network}
-\end{figure}
-
-\subsection{Startup order: \texttt{depends\_on} is not the same as ``ready''}
-\label{sec:startup}
-
-\code{depends_on} only controls \emph{when Compose starts} a container. By itself it
-waits only for the dependency to have started. This file always adds a condition:
-\begin{itemize}
-  \item \code{service_healthy} waits until the dependency's \code{healthcheck} passes.
-  \item \code{service_completed_successfully} waits until a one-shot container exits
-  with code 0 (all \code{*-db-migrate} jobs and \code{credit-pubsub-provision}).
-\end{itemize}
-A healthcheck is a command Compose runs inside the container. The checks are:
-\begin{itemize}
-  \item \textbf{PostgreSQL}: \code{pg_isready -U <user> -d <db>} every 5 s.
-  \item \textbf{Emulator}: \code{curl -fsS http://127.0.0.1:8085/v1/projects/foc-local/topics}.
-  \item \textbf{user, user-worker, supplier-worker, order, notification, saga}: a
-  one-line \code{node -e "fetch('http://127.0.0.1:<port>/health')..."}. These
-  \code{/health} routes return a fixed \code{ok}, so they prove the server is
-  listening. The services only call \code{listen()} after their startup work is done:
-  a database round trip for user-service and its worker, order, notification and saga;
-  emulator topics and subscriptions for the user worker, supplier worker, order,
-  notification and saga. So
-  ``healthy'' also means ``my subscriptions exist''. The supplier worker does not query
-  the database before listening.
-  \item \textbf{credit-service}: \code{/health/ready}, which runs \code{SELECT 1}, so it
-  also tests the database each time.
-  \item \textbf{credit-publisher}: \code{node dist/events/publisher-health.js}, which
-  queries the database and fetches the \code{credit-events} topic's metadata.
-  \item \code{supplier-service}, \code{frontend-service}, the tickers and the one-shot
-  jobs have \emph{no} healthcheck, so nothing can wait for them to be healthy.
-\end{itemize}
-
-\begin{figure}[!htbp]
-\centering
-\begin{tikzpicture}[x=1cm,y=1cm, n/.style={svcbox, minimum width=28mm, minimum height=7mm},
-  hl/.style={->, thick, accent}, cl/.style={->, thick, dashed, violet!70!black}]
-  \node[infrabox, minimum width=26mm, minimum height=7mm] (em) at (1.3,0.6) {pubsub-emulator};
-  \node[n] (uw) at (5.1,1.8) {user-event-worker};
-  \node[n] (os) at (5.1,0.4) {order-service};
-  \node[n] (nt) at (5.1,-0.8) {notification-service};
-  \node[n] (cp) at (5.1,-2.0) {credit-pubsub-provision};
-  \node[n] (sw) at (9.2,1.8) {supplier-event-worker};
-  \node[n] (ss) at (9.2,0.4) {supplier-service};
-  \node[n] (sg) at (9.2,-0.8) {saga-orchestrator};
-  \node[n] (cs) at (9.2,-2.0) {credit-service, -publisher};
-  \node[n] (ot) at (9.2,-3.2) {order-ticker};
-  \node[n] (us) at (13.4,1.8) {user-service};
-  \node[n] (st) at (13.4,0.4) {supplier-ticker};
-  \node[n] (gt) at (13.4,-0.8) {saga-ticker};
-  \node[n] (fe) at (13.4,-2.0) {frontend-service};
-  \draw[hl] (em.east) -- (uw.west); \draw[hl] (em.east) -- (os.west);
-  \draw[hl] (em.east) -- (nt.west); \draw[hl] (em.east) -- (cp.west);
-  \draw[hl] (em.north) |- (9.2,3.0) -- (sw.north);
-  \draw[hl] (uw.north) |- (13.4,2.6) -- (us.north);
-  \draw[hl] (os) -- (ss);
-  \draw[hl] (os.north east) -- (sw.south west);
-  \draw[hl] (os.south east) -- (sg.north west);
-  \draw[hl] (os.south) -- ++(0,-0.25) -| (7.3,-3.2) -- (ot.west);
-  \draw[hl] ($(os.north)+(0.8,0)$) -- (5.9,1.1) -- (12.9,1.1) -- (12.9,1.45);
-  \draw[hl] (sw) -- (us);
-  \draw[hl] (sw.south east) -- (st.north west);
-  \draw[hl] (sg) -- (gt);
-  \draw[cl] (cp) -- (cs);
-  \draw[cl] (cp.north east) -- (sg.south west);
-  \draw[hl] (us.east) -- ++(0.5,0) |- (fe.east);
-  \node[font=\footnotesize, align=left, anchor=north west, text width=155mm] at (0,-3.9)
-    {\textcolor{accent}{\textbf{solid}}: waits for \code{service_healthy} \qquad
-     \textcolor{violet!70!black}{\textbf{dashed}}: waits for \code{service_completed_successfully}\\
-     Not drawn: each service also waits for its own \code{*-db-migrate} job (completed),
-     which waits for its database (healthy).};
-\end{tikzpicture}
-\caption{Cross-service startup dependencies in \code{compose.yaml}.}
-\label{fig:startup}
-\end{figure}
-
-The arrows are not arbitrary. Each one encodes ``the subscription must exist before the
-first message is published'':
-\begin{itemize}
-  \item \code{user-service} waits for \code{user-event-worker}, \code{order-service} and
-  \code{supplier-event-worker}, because those three create their \code{user-events}
-  subscriptions at startup. Comments in the file say exactly this.
-  \item \code{supplier-service} and \code{supplier-event-worker} wait for
-  \code{order-service}, which creates \code{order-service-supplier-events}.
-  \item \code{saga-orchestrator} waits for \code{order-service} and
-  \code{credit-pubsub-provision}, because its commands need subscribers on both sides.
-\end{itemize}
-
-\begin{caveat}
-\code{user-service} does \emph{not} wait for \code{credit-pubsub-provision}, which
-creates \code{credit-service-user-events}. In practice provisioning finishes in seconds,
-long before anyone registers through the browser, but Compose does not enforce it. Also,
-\code{supplier-service}'s volume entry mounts \code{./supplier-service/db/init} into the
-database's init folder, and that folder does not exist in the repository. Docker
-creates an empty host directory, so no init scripts run.
-\end{caveat}
-
-\subsection{Volumes and persistence}
-
-Each database stores \code{/var/lib/postgresql/data} in a named volume
-(\code{supplier-db-data}, \code{user-db-data}, \code{order-db-data},
-\code{notification-db-data}, \code{credit-db-data}, \code{saga-db-data}). Data survives
-\code{docker compose down} and is lost only with \code{down -v}. The emulator has no
-volume, so topics, subscriptions and undelivered messages live only as long as its
-container. Bind mounts appear in two places: the empty supplier init folder described
-above, and the \code{supplier-db-tools} container (profile \code{tools}), which mounts
-\code{src}, \code{drizzle} and \code{drizzle.config.ts} from the host. That lets
-\code{drizzle-kit generate} write new migration files back into the repository.
-
-\subsection{Environment and secrets}
-
-Compose reads a root \code{.env}, created from \code{.env.example}. \code{JWT_SECRET} is
-mandatory: \texttt{\$\{JWT\_SECRET:?Set JWT\_SECRET in .env\}} aborts startup if it is
-missing, and every service that verifies tokens checks that it is at least 32 bytes.
-Everything else has a default in the file: database URLs with fixed local passwords,
-\code{INITIAL_CREDITS} (1000), \code{RESERVE_TIMEOUT_SECONDS} (60), and the local-only
-internal secrets. Credit's variables are written once as a YAML anchor
-(\texttt{\&credit-environment}) and reused by \code{credit-service},
-\code{credit-publisher} and \code{credit-pubsub-provision}. That shared block sets
-\code{PORT=3000}, so the local publisher also starts its small health server, on port
-3000 inside its own container.
-
-% =====================================================================
-\section{\texttt{compose.dev.yaml}: hot reloading}
-\label{sec:dev}
-
-Run as \code{docker compose -f compose.yaml -f compose.dev.yaml up --watch}. The second
-file \emph{overrides} matching keys in the first:
-\begin{itemize}
-  \item The supplier API and worker, order, notification, credit API and publisher, and
-  saga switch to \code{build.target: tooling}, where sources and \code{tsx} exist, and
-  run \code{npx tsx watch src/<entry>.ts}.
-  \item \code{user-service} and \code{user-event-worker} keep their single-stage image
-  and only change the command to \code{tsx watch}.
-  \item \code{frontend-service} uses the \code{build} stage and runs
-  \code{nuxt dev --host 0.0.0.0 --port 3000} with \code{NODE_ENV=development}.
-  \item Each one has a \code{develop.watch} block: \code{action: sync} copies edited
-  files from \code{./<service>/src} into \code{/app/src} inside the running container,
-  where \code{tsx watch} or Nuxt reloads them, and \code{action: rebuild} rebuilds the
-  image when \code{package.json} changes. This is file syncing, not a bind mount.
-  \item Migrations, databases, the emulator, tickers and \code{credit-pubsub-provision}
-  are not overridden.
-\end{itemize}
-
-% =====================================================================
-\section{Databases: ownership, persistence and migrations}
-\label{sec:dbs}
-
-\begin{description}[style=nextline, leftmargin=0pt, labelsep=0pt, itemsep=4pt]
-\item[user-db (\code{users})] Tables \code{users}, \code{user_bootstrap_reservations},
-\code{user_event_states}, and the sequence \code{user_event_sequence}. Written only by
-\code{user-event-worker}, apart from the bootstrap reservation. Migration:
-\code{drizzle-kit push} from the schema, with no migration files.
-\item[supplier-db (\code{suppliers})] \code{types}, \code{buildings}, \code{suppliers},
-\code{operating_hours}, the user copy \code{users}, and the outbox
-\code{supplier_events} with \code{supplier_event_sequence}. Migrations: three SQL files
-in \code{drizzle/} (0000 schema, 0001 local users, 0002 supplier events), applied with
-\code{drizzle-kit migrate}. Seeding is a separate, repeatable script.
-\item[order-db (\code{orders})] \code{users} (copy), \code{supplier_versions}
-(append-only copy), \code{orders}, and \code{order_events} (history plus outbox). One
-migration file, applied with \code{drizzle-kit migrate}.
-\item[saga-db (\code{sagas})] \code{sagas}, \code{processed_messages} and \code{outbox}.
-One migration file.
-\item[credit-db (\code{credits})] \code{credit_accounts}, \code{credit_orders}, which
-holds each command's request, result and idempotency key, \code{credit_transactions}
-(ledger), and \code{credit_outbox}. One migration file in \code{migrations/}, applied
-by Drizzle ORM's migrator from the runtime image.
-\item[notification-db (\code{notifications})] \code{notifications}. One migration file.
-\end{description}
-
-Locally every database is a separate \code{postgres:17} container with its own named
-volume, and each \code{*-db-migrate} container runs once before its service starts. In
-Cloud, \code{deploy.sh} creates one Cloud SQL instance \code{foc-db} with a separate
-database and database user per service. Each connection URL is stored in Secret Manager
-(for example \code{order-database-url}), and migrations run as Cloud Run jobs
-(\code{order-migrate}, \code{credit-migrate}, \ldots) before the services are deployed.
-
-% =====================================================================
-\section{Cloud Build and Cloud Run packaging}
-\label{sec:cloudbuild}
-
-\code{cloudbuild.yaml} builds eleven images in parallel (\code{waitFor: ["-"]}), each
-from its service folder as build context. They are tagged with the build ID and
-\code{latest} and pushed to Artifact Registry at
-\code{asia-southeast1-docker.pkg.dev/<project>/foc/}. Seven are runtime images: the
-frontend and the six backends (user, supplier, order, notification, credit, saga). Four
-are \code{-tooling} images (\code{--target=tooling}) for supplier, order, notification
-and saga, which carry \code{drizzle-kit} for the migration and seed jobs. User and credit
-have no tooling image because their own images can already migrate.
-
-\code{deploy.sh} maps those images to Cloud Run like this:
-\begin{itemize}
-  \item \textbf{One image, several Cloud Run resources.} \code{user-service} and
-  \code{user-event-worker} (\code{--command npm --args run,worker}); \code{supplier-service}
-  and \code{supplier-event-worker} (\code{node dist/worker.js}); and
-  \code{credit-service}, \code{credit-publisher}, the \code{credit-migrate} job and the
-  \code{credit-provision} job.
-  \item \textbf{Ports.} \code{--port} tells Cloud Run which container port to send
-  traffic to: 3333 for user, 3334 for the user worker, 3004 for the supplier worker, and
-  3000 for the rest. Cloud Run sets \code{PORT} to the same value.
-  \item \textbf{Ingress.} The frontend and notification-service accept traffic from
-  anywhere. The other APIs use \code{--ingress internal} and are reached by the frontend
-  over Direct VPC egress, with Private Google Access enabled on the subnet. The two event
-  workers and credit-publisher are not publicly invokable.
-  \item \textbf{Configuration.} Secrets (\code{DATABASE_URL}, \code{JWT_SECRET},
-  \code{NOTIFICATION_TICKET_SECRET}, optional \code{BOOTSTRAP_SECRET}) come from Secret
-  Manager. Plain settings (\code{PUBSUB_PROJECT_ID}, \code{INTERNAL_AUDIENCE},
-  \code{INTERNAL_INVOKER_EMAILS}, \ldots) come from \code{--set-env-vars}. No
-  \code{PUBSUB_EMULATOR_HOST} is set, so the services talk to real Pub/Sub, skip
-  emulator self-provisioning, and do not accept the shared secret.
-\end{itemize}
-
-% =====================================================================
-\section{Gaps, missing links and things to keep in mind}
-\label{sec:gaps}
-
-These points are visible in the code at the pinned commit. They are described, not
-judged; whether any of them needs changing is a design decision for the team.
-
-\begin{itemize}
-  \item \textbf{\code{credit-events} has one real consumer.} Only the saga subscribes,
-  and it ignores \code{credit.account_allocated}. The notifications table allows a
-  \code{credit} source, but no code produces credit notifications.
-  \item \textbf{Two credit endpoints have no caller.}
-  \code{GET /internal/v1/credit-orders/:requestId} and
-  \code{GET /internal/v1/credit-reservations/:orderId} exist, but nothing in the
-  repository calls them.
-  \item \textbf{\code{FAILED} sagas stop.} A refused release or transfer leaves the
-  saga in \code{FAILED} with only a log line.
-  \item \textbf{No dead-letter topics.} \code{user-event-worker} and credit answer 400
-  to invalid messages, which Pub/Sub retries until retention ends. Order, saga and the
-  supplier worker log and acknowledge them instead.
-  \item \textbf{Credit's subscriptions are unordered}, although publishers set ordering
-  keys. Credit relies on locks and reservation state instead of delivery order.
-  \item \textbf{User-service has no outbox} and checks uniqueness against a lagging
-  projection (Section~\ref{sec:outbox}).
-  \item \textbf{Compose ordering gap}: user-service does not wait for credit's
-  provisioning, and the supplier DB init mount points to a missing folder
-  (Section~\ref{sec:startup}).
-  \item \textbf{Emulator state is ephemeral.} If only \code{pubsub-emulator} is
-  restarted, subscriptions vanish until the services that create them restart too.
-  \item \textbf{Cloud Pub/Sub has no recorded run} (Section~\ref{sec:transport}).
-  \item \textbf{Root README drift.} The repository-structure section lists only four
-  services; the notification service and saga orchestrator, and the order and credit
-  Pub/Sub flows, are described only in the service READMEs and Compose files.
-\end{itemize}
-
-Every frontend proxy route has a matching backend route: users, auth and bootstrap;
-suppliers, types and buildings; orders and actions; credit balance; and notification
-tickets and lists. No frontend call targets an unimplemented endpoint.
-
-% =====================================================================
-\section{Notes for the upcoming event bus tap}
-\label{sec:tap}
-
-The tap itself is a separate, later task. These are observations from the current code
-that its design will have to account for:
-\begin{itemize}
-  \item \textbf{Fanout makes a tap non-invasive.} A new subscription per topic receives
-  every message without taking any away from existing consumers. Joining an existing
-  subscription would instead \emph{compete} with its consumer and steal messages. The
-  six topics are \code{user-events}, \code{supplier-events}, \code{order-events},
-  \code{order-commands}, \code{credit-commands} and \code{credit-events}.
-  \item \textbf{A tap only sees messages published after its subscription exists}, and
-  locally only while the emulator keeps running.
-  \item \textbf{Reachability.} The emulator (8085) is not published to the host; a local
-  tap would run on the Compose network or need a published port. In Cloud, a tap
-  needs subscriber or editor permissions for its own subscriptions;
-  notification-service's pattern of creating and deleting a per-instance subscription
-  with an expiry policy is a working precedent.
-  \item \textbf{Useful message metadata}: \code{type} attributes exist on all topics
-  except \code{user-events}; ordering keys are user, supplier or order IDs; and
-  \code{correlationId} and \code{requestId} link credit commands to results.
-  \item \textbf{Sensitive data}: \code{user-events} payloads contain
-  \code{passwordHash} and e-mail addresses, which a tap should not display or store as
-  they are.
-  \item \textbf{Pull vs push}: pull keeps a tap free of public endpoints and OIDC
-  verification, as notification-service shows; push would need its own authentication.
-\end{itemize}
-
-% =====================================================================
-\appendix
-\section{Running the system locally for a demo}
-\label{app:run}
-
-Commands are run from the repository root. Nothing here contacts Google Cloud.
-
-\par\noindent\begin{minipage}{\linewidth}
-\begin{lstlisting}[language=yaml]
-cp .env.example .env            # then put a long random JWT_SECRET (>= 32 bytes) in .env
-docker compose up -d --build    # whole stack; migrations and provisioning run first
-docker compose ps               # health status of each container
-\end{lstlisting}
-\end{minipage}\par
-
-Seed the supplier directory once, after the databases are migrated. Seeded suppliers
-reach order-service on the next \code{supplier-ticker} sweep, within about a minute:
-
-\par\noindent\begin{minipage}{\linewidth}
-\begin{lstlisting}[language=yaml]
-docker compose --profile tools build supplier-db-tools
-docker compose --profile tools run --rm supplier-db-tools npm run db:seed -- --dry-run
-docker compose --profile tools run --rm supplier-db-tools npm run db:seed
-\end{lstlisting}
-\end{minipage}\par
-
-Then open \url{http://127.0.0.1:3001}. The first administrator needs
-\code{BOOTSTRAP_SECRET} (at least 32 bytes) in \code{.env} and the
-\code{/setup/admin} page.
-
-Watching messages move during a demo:
-
-\par\noindent\begin{minipage}{\linewidth}
-\begin{lstlisting}[language=yaml]
-docker compose logs -f saga-orchestrator order-service credit-service credit-publisher
-docker compose exec order-db psql -U order -d orders \
-  -c "select sequence, type, state, published_at is not null as published from order_events order by created_at desc limit 10;"
-docker compose exec saga-db psql -U saga -d sagas -c "select order_id, state, failure_code from sagas;"
-docker compose exec credit-db psql -U credit -d credits \
-  -c "select user_id, total_credits, reserved_credits from credit_accounts;"
-\end{lstlisting}
-\end{minipage}\par
-
-To see the compensation path, stop credit with \code{docker compose stop credit-service},
-create an order, and wait more than 60 seconds plus one \code{saga-ticker} cycle. The
-order becomes \code{ABORTED}. Start credit again and watch the queued commands drain.
-Hot reloading: \code{docker compose -f compose.yaml -f compose.dev.yaml up --watch}.
-Clean slate, which deletes all local data: \code{docker compose down -v}.
-
-% =====================================================================
-\section{Reference: snapshot and provenance}
-\label{app:refs}
-
-\textbf{Pinned snapshot.} Branch \code{main} of the repository at
-\code{/home/hermes/projects/cs3219-p32}, commit
-\code{ea16eec5baddbcbddd9412eeb219f563a81b8499} (``Merge pull request \#21 from
-Y2627S1-CS3219-P32/supplier-pubsub''), equal to \code{origin/main} when inspected, with a
-clean working tree. Line numbers below refer to that commit. A claim-by-claim map is kept
-in \code{docs/service-architecture-guide/CLAIM_MAP.md}.
-
-\small
-\begin{description}[style=nextline, leftmargin=0pt, labelsep=0pt, itemsep=3pt]
-\item[Programs, ports, databases, startup (Sections~\ref{sec:cast}, \ref{sec:compose})]
-\code{compose.yaml} 4--544 (services), 545--551 (volumes); healthchecks at 14--18,
-56--61, 73--78, 100--109, 136--145, 162--169, 253--262, 312--315, 327--331, 346--350, 376--385,
-405--409, 435--444, 481--485, 509--518; tickers at 273--284, 452--466, 529--543;
-cross-service \code{depends_on} at 110--122, 263--269, 230--236, 519--526;
-\code{.env.example}.
-\item[HTTP and auth (Section~\ref{sec:http})]
-\code{frontend-service/server/api/user-service/login.post.ts} 21--26;
-\code{frontend-service/server/services/order-service/client.ts} 7--31;
-\code{frontend-service/server/services/credit-service/client.ts} 19--40;
-\code{frontend-service/server/api/notification-service/ticket.post.ts};
-\code{frontend-service/nuxt.config.ts} 11--22; \code{user-service/src/auth.ts} 21--76;
-\code{order-service/src/auth.ts} 13--104; \code{supplier-service/src/auth.ts} 37--100;
-\code{credit-service/src/auth.ts} 12--95; \code{notification-service/src/server.ts}
-24--97, \code{auth.ts} 52--85.
-\item[user-events (Sections~\ref{sec:topics}, \ref{sec:signup})]
-\code{user-service/src/events/user-events.ts} 14--89;
-\code{user-service/src/services/auth.service.ts} 43--89, 203, 207--279;
-\code{user-service/src/services/users.service.ts} 130--186;
-\code{user-service/src/repositories/users.repository.ts} 54--85;
-\code{user-service/src/db/schema.ts} 19--42; \code{user-service/src/worker.ts} 26--147;
-\code{supplier-service/src/user-events.ts} 33--67;
-\code{order-service/src/events/consumers.ts} 40--75;
-\code{credit-service/src/credit/accounts.ts} 63--183.
-\item[supplier-events (Sections~\ref{sec:outbox}, \ref{sec:supplier})]
-\code{supplier-service/src/supplier-events.ts} 13--182;
-\code{supplier-service/src/index.ts} 128--186;
-\code{supplier-service/src/reference-routes.ts} 65--97;
-\code{supplier-service/src/db/seed.ts} 87--90; \code{supplier-service/src/worker.ts}
-44--93; \code{supplier-service/src/db/schema.ts} 92--135;
-\code{supplier-service/drizzle/0002_supplier_events.sql};
-\code{order-service/src/events/consumers.ts} 77--124;
-\code{order-service/src/db/schema.ts} 70--96.
-\item[order-events and order-commands (Sections~\ref{sec:topics}, \ref{sec:order})]
-\code{order-service/src/orders/write.ts} 27--240; \code{order-service/src/events/outbox.ts}
-16--93; \code{order-service/src/events/pubsub.ts} 12--92; \code{order-service/src/app.ts}
-40--118; \code{order-service/src/config.ts} 23--44; \code{order-service/src/db/schema.ts}
-98--159; \code{order-service/src/index.ts} 11--19.
-\item[Saga (Sections~\ref{sec:order}, \ref{sec:failure})]
-\code{saga-orchestrator/src/saga.ts} 39--204; \code{messages.ts} 11--56; \code{pubsub.ts}
-54--77; \code{outbox.ts} 13--59; \code{app.ts} 22--58; \code{config.ts} 18--36;
-\code{db/schema.ts} 10--71.
-\item[Credit (Sections~\ref{sec:topics}, \ref{sec:order}, \ref{sec:failure})]
-\code{credit-service/src/app.ts} 26--87; \code{events/provision.ts} 4--83;
-\code{events/publisher.ts} 18--116; \code{events/outbox.ts} 7--42;
-\code{events/commands.ts} 25--71; \code{credit/commands.ts} 24--276;
-\code{credit/queries.ts} 41--98; \code{config.ts} 2--24;
-\code{migrations/0000_credit.sql} 60--63; \code{events/publisher-health.ts}.
-\item[Notification (Sections~\ref{sec:mental}, \ref{sec:delivery})]
-\code{notification-service/src/subscription.ts} 16--93; \code{rules.ts} 23--83;
-\code{order-events.ts} 11--30; \code{store.ts}; \code{db/schema.ts} 9--33;
-\code{index.ts} 14--35.
-\item[Cloud transport (Sections~\ref{sec:transport}, \ref{sec:cloudbuild})]
-\code{deploy.sh} 47--80 (topics, push identity), 89--110 (database URLs), 112--155
-(setup), 181--206 (subscriptions, scheduler), 209--236 (service resources), 238--316
-(event services), 318--420 (deploy); \code{cloudbuild.yaml} 9--146.
-\item[Containers (Sections~\ref{sec:dockerfiles}--\ref{sec:dbs})]
-\code{order-service/Dockerfile} 3--31 (same layout in \code{supplier-service},
-\code{notification-service}, \code{saga-orchestrator}); \code{credit-service/Dockerfile}
-1--17; \code{user-service/Dockerfile} 3--16; \code{frontend-service/Dockerfile} 3--16;
-the \code{.dockerignore} files; \code{compose.dev.yaml} 6--132; every
-\code{package.json} \code{scripts} block; \code{user-service/drizzle.config.ts};
-\code{credit-service/src/db/migrate.ts} 7--24.
-\item[Evidence of earlier runs (Section~\ref{sec:transport})]
-\code{AI_USAGE_LOG.md}: ``Supplier events (transactional outbox)'', ``Saga
-orchestrator'', ``Notification service and live order updates'' and ``Deploying the
-order, notification, credit and saga services'' entries.
-\end{description}
+\textbf{Networking.} \code{compose.yaml} declares no networks, so every container joins one
+default network where each \emph{service name} is a DNS name. Containers therefore reach each
+other at addresses like \code{http://order-service:3000}, \code{order-db:5432} and
+\code{pubsub-emulator:8085}, always on the \emph{container} port. Publishing (\code{"3002:3000"})
+is a separate door from the host, and \code{EXPOSE} only documents a port and opens nothing. For
+example, the supplier worker listens on 3004 although its image says \code{EXPOSE 3000}, and
+\emph{host} port 3004 is credit-service. The browser uses only host ports 3001 (frontend) and 3003
+(the notification WebSocket). The emulator and the saga are not published at all. Locally the
+emulator cannot sign push requests, so push URLs carry a local-only shared secret instead of
+Google's OIDC token.
+
+\textbf{Startup order encodes the subscription rule.} The emulator starts empty and keeps
+everything in memory. When \code{PUBSUB_EMULATOR_HOST} is set, each consumer creates its own
+topics and subscriptions at startup, and only then starts listening. The provisioner does this
+for credit. So a passing \code{/health} check also means ``my subscriptions exist''. Compose uses
+\code{depends_on} with \code{service_healthy}, which waits for that check, and with
+\code{service_completed_successfully}, which waits for a migration or provisioning job to exit
+cleanly. As a result, user-service waits for its worker and for the supplier and order
+consumers, supplier-service waits for order-service, and the saga waits for order-service and
+the credit provisioner. In each case the readers exist before the first message is published.
+One gap: user-service does not wait for the credit provisioner. Restarting only the emulator
+loses every subscription until the consumers restart.
+
+\textbf{Persistence.} Six \code{postgres:17} containers, one per service, keep
+\code{/var/lib/postgresql/data} in named volumes (\code{order-db-data}, \ldots). They survive
+\code{docker compose down}, are deleted by \code{down -v}, and are published only on
+\code{127.0.0.1} (5433--5439). The emulator has no volume, so undelivered messages die with it.
+\code{compose.dev.yaml} adds hot reloading by syncing \code{src/} into \code{tooling}-stage
+containers running \code{tsx watch}. The opt-in \code{compose.tap.yaml} adds the event bus tap
+on the same network, where it can reach the unpublished emulator. In Google Cloud the same images
+run on Cloud Run with real Pub/Sub, set up by \code{deploy.sh}; that transport is configured but
+has no recorded run.
 
 \end{document}
