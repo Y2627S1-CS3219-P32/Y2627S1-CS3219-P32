@@ -26,18 +26,96 @@ The publisher holds one database session lock across loading pending outbox entr
 
 ## Local startup
 
-From the repository root, start the Pub/Sub emulator and Credit database, then migration and provisioning jobs before starting registration traffic.
+Start Docker Desktop and configure the repository root `.env` using
+[the root setup instructions](../README.md#configure-the-root-environment).
+Run these commands from the repository root to start the full application:
 
 ```sh
-docker compose up -d pubsub-emulator credit-db
-docker compose run --rm credit-db-migrate
-docker compose run --rm credit-pubsub-provision
-docker compose up -d credit-service credit-publisher
+docker compose up -d --build
+docker compose ps
+curl -fsS http://127.0.0.1:3004/health/ready
+```
+
+Compose runs Credit migrations and Pub/Sub provisioning before starting Credit.
+The readiness endpoint returns `{"status":"ok"}` once Credit is ready. Open the
+frontend at http://127.0.0.1:3001. No separate startup script is needed.
+
+To start only Credit and its dependencies:
+
+```sh
+docker compose up -d --build credit-service credit-publisher
+```
+
+This also starts the Credit database, emulator, migration, and provisioning jobs.
+Use the full application for registration and the Postman demo.
+
+To inspect Credit logs or stop the full stack while keeping database data:
+
+```sh
+docker compose logs --tail=50 credit-service credit-publisher
+docker compose down
 ```
 
 Credit exposes host port 3004 and PostgreSQL host port 5438. Credit’s PostgreSQL volume preserves data across restarts. `docker compose down -v` deletes that data.
 
 The API listens on port 3000 inside the container. `GET /health/live` checks the process. `GET /health/ready` checks PostgreSQL only. Broker outages leave committed results in the outbox. `node dist/outbox-publisher/publisher-health.js` checks the publisher’s database and broker dependencies. The publisher logs retry failures and processes stored envelopes in order under one database advisory lock. Every retry resumes the failed Pub/Sub ordering key. A crash after acknowledgment can deliver the same event ID again. Consumers deduplicate that ID.
+
+## View credit data
+
+### Drizzle Studio
+
+With the database running, open a new terminal at the repository root:
+
+```sh
+cd credit-service
+npm install
+DATABASE_URL='postgres://credit:credit@127.0.0.1:5438/credits' npx drizzle-kit studio
+```
+
+Open https://local.drizzle.studio. Keep the terminal running while using Studio;
+press Ctrl+C to stop it. The explicit connection URL uses the database's host
+port rather than the Docker-only `credit-db` hostname.
+
+Browse these tables to inspect your Postman demo results:
+
+| Table | Data |
+|---|---|
+| `credit_accounts` | Total and reserved balances per user. |
+| `credit_orders` | Allocation, reserve, release, and transfer operations and saved outcomes. |
+| `credit_transactions` | Credit movements between users and buckets. |
+| `credit_outbox` | Outgoing events and publication timestamps. |
+
+### PostgreSQL terminal
+
+From the repository root:
+
+```sh
+docker compose exec credit-db psql -U credit -d credits
+```
+
+Run these queries inside psql:
+
+```sql
+\pset pager off
+
+SELECT user_id, total_credits, reserved_credits,
+       total_credits - reserved_credits AS available_credits
+FROM credit_accounts
+ORDER BY user_id;
+
+SELECT request_id, order_id, user_id, kind, status, result
+FROM credit_orders
+ORDER BY created_at DESC;
+
+SELECT * FROM credit_transactions;
+
+SELECT event_id, payload->>'type' AS event_type, created_at, published_at
+FROM credit_outbox
+ORDER BY created_at DESC;
+```
+
+Type `\q` to exit. A populated `published_at` records broker acknowledgment;
+it does not prove downstream processing completed.
 
 ## Database migrations
 
