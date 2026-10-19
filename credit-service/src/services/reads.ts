@@ -1,8 +1,13 @@
-import { OPERATION_KIND, RESERVATION_STATE } from "../common/constants.js";
 import { db, type Database, type Transaction } from "../db/index.js";
 import { findAccount } from "../repositories/accounts.js";
 import { findOrder, findHistory } from "../repositories/orders.js";
-import { CreditError, money, type Reservation } from "../common/types.js";
+import {
+  OPERATION_KIND,
+  RESERVATION_STATE,
+  CreditError,
+  money,
+  type Reservation,
+} from '../common/types.js';
 
 export async function getBalance(userId: number) {
   const account = await findAccount(db, userId);

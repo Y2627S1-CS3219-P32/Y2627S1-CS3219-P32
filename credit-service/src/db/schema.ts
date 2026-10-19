@@ -1,4 +1,3 @@
-import { OPERATION_KIND } from '../common/constants.js';
 import { sql } from 'drizzle-orm';
 import {
   bigint,
@@ -13,10 +12,11 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
-import type {
-  operationPayload,
-  Outcome,
-  OutcomeEvent,
+import {
+  OPERATION_KIND,
+  type operationPayload,
+  type Outcome,
+  type OutcomeEvent,
 } from '../common/types.js';
 
 export const creditAccounts = pgTable(

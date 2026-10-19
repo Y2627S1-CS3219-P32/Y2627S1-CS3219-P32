@@ -1,6 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { OPERATION_KIND } from '../common/constants.js';
-import type { Kind, Outcome, OutcomeEvent } from '../common/types.js';
+import { OPERATION_KIND, type Kind, type Outcome, type OutcomeEvent } from '../common/types.js';
 
 export function formatOutcome(
   data: Omit<Outcome, 'status' | 'httpStatus'>,

@@ -1,7 +1,8 @@
-import { OPERATION_KIND, RESERVATION_STATE } from '../common/constants.js';
 import { randomUUID } from 'node:crypto';
 import { db, lock, type Transaction } from '../db/index.js';
 import {
+  OPERATION_KIND,
+  RESERVATION_STATE,
   operationPayload,
   CreditError,
   MAX,

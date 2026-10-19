@@ -1,5 +1,4 @@
-import { CreditError, type CreditOperation } from '../common/types.js';
-import { OPERATION_KIND } from '../common/constants.js';
+import { OPERATION_KIND, CreditError, type CreditOperation } from '../common/types.js';
 import { parseUuid, parsePositiveInt32 } from '../common/validation.js';
 
 export function decodeMessage(body: unknown): unknown {

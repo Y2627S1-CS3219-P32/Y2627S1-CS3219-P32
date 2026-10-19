@@ -1,4 +1,16 @@
-import { OPERATION_KIND, RESERVATION_STATE } from "./constants.js";
+export const OPERATION_KIND = {
+  RESERVE: "RESERVE",
+  RELEASE: "RELEASE",
+  TRANSFER: "TRANSFER",
+} as const;
+
+export const RESERVATION_STATE = {
+  NONE: "NONE",
+  HELD: "HELD",
+  RELEASED: "RELEASED",
+  CANCELLED: "CANCELLED",
+  TRANSFERRED: "TRANSFERRED",
+} as const;
 
 export type Kind = (typeof OPERATION_KIND)[keyof typeof OPERATION_KIND];
 export type State = (typeof RESERVATION_STATE)[keyof typeof RESERVATION_STATE];

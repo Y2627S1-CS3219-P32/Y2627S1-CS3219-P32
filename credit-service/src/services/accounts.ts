@@ -1,8 +1,7 @@
-import { RESERVATION_STATE } from '../common/constants.js';
 import { randomUUID } from 'node:crypto';
 import { config } from '../config.js';
 import { db, lock, type Transaction } from '../db/index.js';
-import { CreditError, MAX, money, type Account } from '../common/types.js';
+import { RESERVATION_STATE, CreditError, MAX, money, type Account } from '../common/types.js';
 import {
   findAccount,
   lockAccount,

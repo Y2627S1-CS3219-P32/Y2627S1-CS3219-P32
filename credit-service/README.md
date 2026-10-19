@@ -15,7 +15,7 @@ Credit owns four PostgreSQL tables. Commands commit the saved JSON result, movem
 | `src/outbox-publisher/` | Publish saved outbox messages and check publisher dependencies. |
 | `src/scripts/` | Pub/Sub provisioning and command publishing tools. |
 | `src/db/` | Connection, transaction and lock primitives, schema, and migrations. |
-| `src/common/types.ts`, `src/common/constants.ts` | Shared business types and operation names. |
+| `src/common/types.ts` | Shared business types and operation names. |
 | `src/common/validation.ts` | Shared UUID and positive-integer validation rules. |
 
 `createApp()` mounts the HTTP and event routers, without injected services. Each handler module defines its own routes. Event handlers authenticate the delivery, decode and validate its message, then map the external payload to business inputs. Both handler boundaries call business functions directly: `initializeAccount`, `deactivateAccount`, `reserveCredits`, `releaseCredits`, and `transferCredits`. The user-event adapter maps event IDs to request IDs; business functions accept operation inputs without knowing which transport delivered them. Account initialization creates the account and grants initial credits in one transaction. Services pass the transaction client to repositories so balances, operation results, movements, and outbox entries commit together. Repositories do not choose business errors or open independent financial transactions.
