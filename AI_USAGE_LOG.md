@@ -1444,3 +1444,20 @@ for context, frontend-service is being set up. The frontend’s supplier screen 
   were removed. No schema migration or deployment.
 
 - Author review: Pending.
+
+# AI usage log (Postman)
+
+## 2026-10-18: Postman collection for the user, order and credit services
+
+- Tool: Claude Code (Opus 5.5). Mode: Boilerplate generation and verification.
+- Exact prompt: `can u make a postman collection for me for the order service and the credit
+  service, and the user service`
+- Key response: a Postman collection (40 requests: user auth and admin routes; order creation,
+  browsing, history, editing and state actions; credit balance; internal Pub/Sub push and
+  scheduler routes with the push format built in a pre-request script) and a local environment.
+  Logging in saves tokens and creating an order saves its id for later requests.
+- Affected files: `postman/foc.postman_collection.json`, `postman/foc-local.postman_environment.json`,
+  and this log.
+- Verification: ran the main flow and the internal push requests with Newman against the local
+  stack on the Pub/Sub emulator; fixed a variable-scope bug this found.
+- Author review: Pending.
