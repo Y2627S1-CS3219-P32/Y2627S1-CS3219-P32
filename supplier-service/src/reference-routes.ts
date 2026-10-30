@@ -2,15 +2,19 @@
 Tool: Claude Code (model: Opus 5.5), date: 2026-10-15
 Scope: CRUD routes shared by /types and /buildings (GET moved from index.ts; administrator-only
 POST, PUT, and DELETE added).
+Author review: Pending.
+Tool: Claude Code (model: Opus 5.5), date: 2026-10-18
+Scope: A rename records supplier.updated for every supplier using the row.
 Author review: Pending. **/
 
 import { asc, eq } from "drizzle-orm";
 import { Router } from "express";
 import { requireAdministrator, requireAuthentication } from "./auth.js";
 import { db } from "./db/index.js";
-import { buildings, types } from "./db/schema.js";
+import { buildings, suppliers, types } from "./db/schema.js";
 import { HttpError } from "./errors.js";
 import { getUuidParam } from "./params.js";
+import { recordSupplierChanges, requestOutboxPublish } from "./supplier-events.js";
 import { requiredText } from "./supplier-input.js";
 
 const UNIQUE_VIOLATION = "23505";
@@ -37,6 +41,7 @@ export function referenceRouter(table: typeof types | typeof buildings, label: s
   const router = Router();
   const columns = { id: table.id, name: table.name };
   const notFound = `${label} not found`;
+  const supplierColumn = table === types ? suppliers.supplierTypeId : suppliers.buildingId;
 
   async function write<T>(name: string, run: () => Promise<T>): Promise<T> {
     try {
@@ -57,12 +62,20 @@ export function referenceRouter(table: typeof types | typeof buildings, label: s
     res.status(201).json(created);
   });
 
-  // Suppliers reference the row by id, so a rename applies to them too.
+  // Suppliers reference the row by id, so a rename applies to them too, and each of
+  // them gets a supplier.updated event. Their rows are locked first so the snapshots
+  // cannot interleave with a concurrent supplier update.
   router.put("/:id", requireAuthentication, requireAdministrator, async (req, res) => {
     const id = getUuidParam(req, notFound);
     const name = parseName(req.body);
-    const [updated] = await write(name, () => db.update(table).set({ name }).where(eq(table.id, id)).returning(columns));
+    const updated = await write(name, () => db.transaction(async (tx) => {
+      await tx.select({ id: suppliers.id }).from(suppliers).where(eq(supplierColumn, id)).for("update");
+      const [row] = await tx.update(table).set({ name }).where(eq(table.id, id)).returning(columns);
+      if (row) await recordSupplierChanges(tx, "supplier.updated", eq(supplierColumn, id));
+      return row;
+    }));
     if (!updated) throw new HttpError(404, notFound);
+    requestOutboxPublish();
     res.status(200).json(updated);
   });
 

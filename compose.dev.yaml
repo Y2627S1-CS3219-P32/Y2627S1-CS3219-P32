@@ -16,6 +16,19 @@ services:
         - action: rebuild
           path: ./supplier-service/package.json
 
+  # Claude Code (Opus 5.5), 2026-10-18: supplier event worker hot reloading. Author review: Pending.
+  supplier-event-worker:
+    build:
+      target: tooling
+    command: ["npx", "tsx", "watch", "src/worker.ts"]
+    develop:
+      watch:
+        - action: sync
+          path: ./supplier-service/src
+          target: /app/src
+        - action: rebuild
+          path: ./supplier-service/package.json
+
   user-service:
     command: ["npx", "tsx", "watch", "src/index.ts"]
     develop:
@@ -96,7 +109,7 @@ services:
   credit-publisher:
     build:
       target: tooling
-    command: ["npx", "tsx", "watch", "src/events/publisher.ts"]
+    command: ["npx", "tsx", "watch", "src/outbox-publisher/publisher.ts"]
     develop:
       watch:
         - action: sync

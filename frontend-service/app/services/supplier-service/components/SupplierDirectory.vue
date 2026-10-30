@@ -3,7 +3,9 @@ Scope: Supplier directory, filtering, and request states; Tailwind styling after
 Claude Code (Opus 5.5), 2026-09-29. Scope: Login redirect on 401 and administrator edit/delete actions. Author review: Done.
 Claude Code (Opus 5.5), 2026-09-30. Scope: Administrator add-supplier button and dialog. Author review: Done.
 Claude Code (Opus 5.5), 2026-09-30. Scope: Delete confirmation for permanent deletes. Author review: Pending.
-Claude Code (Opus 5.5), 2026-10-15. Scope: Reload suppliers after type or building changes. Author review: Pending. -->
+Claude Code (Opus 5.5), 2026-10-15. Scope: Reload suppliers after type or building changes. Author review: Pending.
+Claude Code (Opus 5.5), 2026-10-18. Scope: Account-setup state and automatic retries for supplier-service's 503 while a new
+account reaches its local user copy. Author review: Pending. -->
 <script setup lang="ts">
 import type { Supplier, SupplierFilters } from "#shared/services/supplier-service/types";
 import type { User } from "#shared/services/user-service/types";
@@ -40,9 +42,27 @@ function goToLogin() {
   return navigateTo({ path: "/login", query: { redirect: route.fullPath } });
 }
 
-// The session can expire after the page loads.
+// supplier-service returns 503 until a newly registered account reaches its local
+// copy of users, which usually takes a few seconds, so the list retries on its own.
+const SETUP_RETRY_MS = 2000;
+const MAX_SETUP_RETRIES = 5;
+const isSettingUp = computed(() => statusOf(error.value) === 503);
+let setupRetries = 0;
+let setupRetryTimer: ReturnType<typeof setTimeout> | undefined;
+onBeforeUnmount(() => clearTimeout(setupRetryTimer));
+
+// The session can expire (or the account be deleted) after the page loads.
 watch(error, (value) => {
-  if (statusOf(value) === 401) goToLogin();
+  const status = statusOf(value);
+  if (status === 401) goToLogin();
+  if (!value) setupRetries = 0;
+  if (status === 503 && import.meta.client && setupRetries < MAX_SETUP_RETRIES) {
+    clearTimeout(setupRetryTimer);
+    setupRetryTimer = setTimeout(() => {
+      setupRetries++;
+      refresh();
+    }, SETUP_RETRY_MS);
+  }
 }, { immediate: true });
 
 const editing = ref<Supplier | null>(null);
@@ -69,8 +89,11 @@ async function remove(supplier: Supplier) {
     await $fetch(`/api/supplier-service/suppliers/${encodeURIComponent(supplier.id)}`, { method: "DELETE" });
     actionMessage.value = `Deleted ${supplier.name}.`;
   } catch (deleteError) {
-    if (statusOf(deleteError) === 401) return goToLogin();
-    actionMessage.value = `${supplier.name} could not be deleted. It may have already been removed.`;
+    const status = statusOf(deleteError);
+    if (status === 401) return goToLogin();
+    actionMessage.value = status === 503
+      ? "Your account is still being set up. Please try again shortly."
+      : `${supplier.name} could not be deleted. It may have already been removed.`;
   }
   await refresh();
 }
@@ -133,8 +156,8 @@ const emptyState = "rounded-md bg-white px-5 py-12 text-center shadow-[0_2px_6px
         </div>
       </div>
       <div v-else-if="error" :class="emptyState" role="alert">
-        <h2 class="text-lg font-semibold">We couldn’t load the suppliers.</h2>
-        <p class="mt-1 mb-5 text-sm text-[#5b6570]">Please try again in a moment.</p>
+        <h2 class="text-lg font-semibold">{{ isSettingUp ? 'Your account is still being set up.' : 'We couldn’t load the suppliers.' }}</h2>
+        <p class="mt-1 mb-5 text-sm text-[#5b6570]">{{ isSettingUp ? 'This usually takes a few seconds. The list will load on its own.' : 'Please try again in a moment.' }}</p>
         <button :class="primaryButton" type="button" @click="refresh()">Try again</button>
       </div>
       <div v-else-if="!suppliers.length" :class="emptyState" role="status">
