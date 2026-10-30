@@ -7,6 +7,7 @@
  * Claude Code (Opus 5.5), 2026-10-17: titles, display names, order details, history,
  * editing, and multi-state filters. Author review: Pending.
  * Claude Code (Opus 5.5), 2026-10-17: message attributes. Author review: Pending.
+ * Claude Code (Opus 5.5), 2026-10-18: published before responding. Author review: Pending.
  */
 import assert from "node:assert/strict";
 import { createHmac, randomBytes, randomUUID } from "node:crypto";
@@ -484,4 +485,14 @@ test("PATCH /orders/:orderId lets the requester edit text fields while OPEN", as
 
   await request(`/orders/${order.id}/accept`, { method: "POST", user: COURIER });
   assert.equal((await edit(order.id, { title: "Too late" })).status, 409);
+});
+
+test("events are published before the response is sent", async () => {
+  // No waiting on the relay: Cloud Run throttles CPU once the response has gone.
+  const order = await createOrder();
+  assert.ok(published.some((item) => item.data.orderId === order.id && item.data.type === "order.created"));
+  await command("OpenOrder", order.id);
+  assert.ok(published.some((item) => item.data.orderId === order.id && item.data.type === "order.opened"));
+  await request(`/orders/${order.id}/accept`, { method: "POST", user: COURIER });
+  assert.ok(published.some((item) => item.data.orderId === order.id && item.data.type === "order.accepted"));
 });

@@ -15,7 +15,7 @@ pool.query("select 1")
       if (error) throw error;
       console.log(`Saga orchestrator listening on http://localhost:${config.port}`);
       // Publish anything left from before a restart.
-      requestPublish();
+      void requestPublish();
     });
   })
   .catch(async (error: unknown) => {

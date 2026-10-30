@@ -6,6 +6,7 @@
  * orders transfer the reward to the courier, then settle. Each step locks the saga row and
  * writes its commands to the outbox in the same transaction; redelivered events change
  * nothing. Author review: Pending.
+ * Claude Code (Opus 5.5), 2026-10-18: wait for the publish before returning. Author review: Pending.
  */
 import { randomUUID } from "node:crypto";
 import { and, asc, eq, lte } from "drizzle-orm";
@@ -92,7 +93,7 @@ async function release(tx: Transaction, saga: Saga, state: "RELEASING" | "ABORTE
 
 async function commit(work: (tx: Transaction) => Promise<Outcome>): Promise<Outcome> {
   const outcome = await db.transaction(work);
-  if (outcome === "applied") requestPublish();
+  if (outcome === "applied") await requestPublish();
   return outcome;
 }
 
@@ -199,6 +200,6 @@ export async function abortOverdueReservations(now = new Date()): Promise<number
     total += count;
     if (count < BATCH) break;
   }
-  if (total > 0) requestPublish();
+  if (total > 0) await requestPublish();
   return total;
 }

@@ -1138,6 +1138,23 @@ for context, frontend-service is being set up. The frontend’s supplier screen 
   returned the delayed reserve and the release cancelled out, leaving the balance unchanged.
 - Author review: Pending.
 
+## 2026-10-18: Publish outbox events before responding
+
+- Tool: Claude Code (Opus 5.5). Mode: Debugging and implementation.
+- Exact prompt: `publish before responding and make that a pr`, after the student asked why the
+  credit publisher runs all the time but the order outbox relay does not, and Claude explained
+  that Cloud Run throttles CPU after a response, stalling relays left running in the background.
+- Key response: order-service and saga-orchestrator now await their outbox relay before
+  responding (to users, Pub/Sub pushes and Cloud Scheduler); failures are still logged and left
+  for the every-minute relay.
+- Affected files: `order-service/src/events/outbox.ts`, `order-service/src/orders/write.ts`,
+  `order-service/src/index.ts`, `order-service/test/orders.test.mjs`,
+  `saga-orchestrator/src/outbox.ts`, `saga-orchestrator/src/saga.ts`,
+  `saga-orchestrator/src/index.ts`, `saga-orchestrator/test/saga.test.mjs`, and this log.
+- Verification: order-service (18/18) and saga-orchestrator (9/9) tests, including new checks
+  that events are published by the time the response arrives.
+- Author review: Pending.
+
 ## 2026-10-18: Supplier-service local user copy and event worker
 
 - Tool: Claude Code (Opus 5.5). Mode: Implementation, refactoring, tests, documentation, and verification.
@@ -1425,4 +1442,5 @@ for context, frontend-service is being set up. The frontend’s supplier screen 
   review found no regressions in remaining interfaces. Compose configurations,
   deployment shell syntax, and whitespace checks passed. Disposable containers
   were removed. No schema migration or deployment.
+
 - Author review: Pending.
