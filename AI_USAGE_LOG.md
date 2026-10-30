@@ -1246,6 +1246,24 @@ for context, frontend-service is being set up. The frontend’s supplier screen 
 - Verification: `bash -n deploy.sh`, Cloud Build YAML parsing, and a credit-service typecheck.
 - Author review: Pending.
 
+## 2026-10-18: Production fixes after deploying supplier events
+
+- Tool: Claude Code (Opus 5.5). Mode: Debugging and operations.
+- Exact prompts: `for 1 can we manualy do it`, `ok go ahead`, `ok ive merged it, go ahead and
+  deploy`, and `yes` (after asking whether "Your account is still being set up" came from
+  user-service).
+- Key response: a tested one-off SQL backfill recorded supplier.created for the 21 existing
+  production suppliers in supplier-service's outbox (identical payloads to its own code, safe to
+  repeat); a one-off job republished user.created for existing users through user-service's
+  publisher, so supplier-service, order-service and credit-service (subscribed after those users
+  signed up) caught up; notification-service now accepts WebSockets from https://nusfoc.com, and
+  `deploy.sh` keeps that origin.
+- Affected files: `deploy.sh` and this log (the backfill and republish ran as one-off Cloud Run jobs).
+- Verification: all 21 suppliers and 3 users were delivered (204/200) to each consuming service;
+  supplier-service stopped answering 503; nusfoc.com passes the WebSocket origin check (401
+  without a ticket) while unknown origins get 403.
+- Author review: Pending.
+
 ## 2026-10-18: Refactor Credit commands around financial operations
 
 - Tool: Codex (GPT-6). Mode: Refactoring and verification.
@@ -1460,4 +1478,5 @@ for context, frontend-service is being set up. The frontend’s supplier screen 
   and this log.
 - Verification: ran the main flow and the internal push requests with Newman against the local
   stack on the Pub/Sub emulator; fixed a variable-scope bug this found.
+
 - Author review: Pending.
