@@ -71,7 +71,7 @@ One immutable row per finalized command, not one mutable row per errand. Command
 | `request_id` | UUID primary key | Stable command ID, or source creation eventId |
 | `kind` | Text enum: ALLOCATE, RESERVE, TRANSFER, RELEASE | Requested action |
 | `initial_grant` | Nullable BIGINT, check > 0 and <= MAX_SAFE_INTEGER when present | Actual grant issued; required only for ALLOCATE |
-| `request_payload` | JSONB, not null | Canonical validated business fields for retry comparison |
+| `request_payload` | JSONB, not null | Original validated business fields for audit |
 | `order_id` | Nullable UUID | External errand ID; required except for ALLOCATE |
 | `user_id` | INTEGER, not null, local account foreign key | Grant recipient or errand requester |
 | `status` | Text enum: SUCCEEDED, REJECTED | Final command outcome, distinct from derived errand state |
@@ -83,7 +83,7 @@ Keep the existing JSON result representation. Replacing it with structured outco
 
 Index (order_id, kind, status) for per-errand history. Enforce one successful ALLOCATE per user. Add a unique constraint/index for each balance-changing (order_id, kind), filtered to SUCCEEDED with result.applied=true. Matching fresh-ID repeats remain successful no-ops with applied=false; they create no movement. Every writer also takes the common per-order lock so TRANSFER and RELEASE cannot both settle an errand. Cancellation has applied=false because it changes no balance, but its successful RELEASE record still blocks later reservation.
 
-The original reserve is found by order_id through a successful RESERVE linked to its actual ledger movement. There is no original-request column or separate current-state record.
+The original reserve is found by order_id through a successful RESERVE with result.applied=true. There is no original-request column or separate current-state record.
 
 ### Credit transactions
 
@@ -120,11 +120,11 @@ One outcome per finalized CreditOrder, committed with its effects and published 
 | `created_at` | TIMESTAMPTZ, not null | Time persisted |
 | `published_at` | Nullable TIMESTAMPTZ | Broker publication acknowledged |
 
-Index unpublished rows. Retain CreditOrders and movements for the errand/retry lifetime: they are both the command history and the source of current credit state. Never discard the successful RELEASE record that prevents a late reserve. Published outbox rows may be archived after the recovery window; state lookup must not depend on their retention.
+Index unpublished rows. Retain CreditOrders and movements for the errand/retry lifetime: they are both the command history and the source of current credit state. Never discard the successful RELEASE record that prevents a late reserve. Published outbox rows may be archived after the recovery window; command eligibility checks do not depend on their retention.
 
 ## Derived errand state
 
-There is no reservation table and no stored reservation counter. A shared read function derives current credit state from CreditOrders and their linked movements for one order_id. Only SUCCEEDED commands affect state; rejected attempts are ignored.
+There is no reservation table and no stored reservation counter. Each operation queries the saved records needed for its own decisions: applied reserve/transfer outcomes and successful releases, including cancellation without movement. The following states describe committed financial evidence and outcome snapshots; there is no reservation read model or state lookup API. Only SUCCEEDED commands affect that evidence; rejected attempts are ignored.
 
 | Committed evidence for the errand | Derived state |
 |---|---|
@@ -134,9 +134,9 @@ There is no reservation table and no stored reservation counter. A shared read f
 | Successful RELEASE without any reserve movement | CANCELLED |
 | Transfer movement | TRANSFERRED |
 
-Find reserve/transfer evidence through the ledger joined to its successful parent command. This excludes fresh-ID no-ops without relying on timestamps or replaying balance changes. A successful RELEASE counts even without a movement, so cancellation remains visible. A transfer and a successful release for the same errand violate the state rules and must not be treated as a normal history.
+Find reserve/transfer evidence in successful saved outcomes with result.applied=true. This excludes fresh-ID no-ops without relying on timestamps or replaying balance changes. A successful RELEASE counts even without a movement, so cancellation remains visible. A transfer and a successful release for the same errand violate the state rules and must not be treated as a normal history.
 
-For HELD, derive requester and amount from the actual reserve movement. For TRANSFERRED, derive the paid courier from the transfer movement. For CANCELLED, derive requester and amount from the successful RELEASE request_payload. Matching repeats must agree with those facts. State lookup returns current state, participants, and amount; saved command results retain their own historical snapshots.
+For HELD, recover requester and amount from the applied reserve outcome. For TRANSFERRED, recover the paid courier from the applied transfer outcome. For CANCELLED, recover requester and amount from the successful RELEASE outcome. Matching repeats must agree with those facts. Saved command results retain their own historical snapshots; operation-specific lookups recover the participants and amount needed for subsequent commands.
 
 | Current derived state | New RESERVE | New RELEASE | New TRANSFER |
 |---|---|---|---|
@@ -153,9 +153,9 @@ This table applies after request replay and participant checks. A successful res
 ### Shared command transaction
 
 1. Authenticate Pub/Sub delivery and validate the command envelope. No command or balance read provisions an account.
-2. Begin transaction and take a transaction-scoped request_id lock. Return the saved result for a matching finalized request. Changed canonical fields, including correlationId, return IDEMPOTENCY_CONFLICT without another command or event.
-3. Take a transaction-scoped order_id lock even if no CreditOrder exists yet. Read the committed command/movement history and derive state. All command handlers share this locking scheme.
-4. Resolve participants from the history and input, then lock user/account keys in sorted user-ID order, including missing accounts. The user-event consumer uses the same per-user lock. Global lock order is request → errand → account.
+2. Begin transaction and take a transaction-scoped request_id lock. Return the saved result when request_id and order_id match, regardless of other payload changes. A different order_id returns IDEMPOTENCY_CONFLICT without another command or event. Preserve the original payload for audit.
+3. Take a transaction-scoped order_id lock even if no CreditOrder exists yet. The individual operation then queries the committed records needed for its decisions. All command handlers share this locking scheme.
+4. Resolve participants from the saved operations and input, then lock user/account keys in sorted user-ID order, including missing accounts. The user-event consumer uses the same per-user lock. Global lock order is request → errand → account.
 5. Require active accounts for new reserve/transfer. Deleted participants produce a durable USER_INACTIVE rejection and outbox outcome. Missing accounts return retryable 503 ACCOUNT_PENDING without finalizing a command. RELEASE permits a deleted account only if an allocation exists, allowing existing obligations to close. A deleted pre-provisioning tombstone produces a durable USER_INACTIVE rejection; an absent requester returns ACCOUNT_PENDING. Same-ID replays were already handled in step 2.
 6. Validate state, requester, courier, amount, available balance, and recipient limits. Apply any movement and insert the finalized CreditOrder, ledger entry, and outbox outcome in the same transaction. Definitive business rejection records REJECTED without a movement; successful repeats and cancellation record SUCCEEDED without a movement.
 7. Commit before acknowledging delivery or publishing an outcome. Technical failure rolls back all command writes; retry with the same requestId.
@@ -243,7 +243,7 @@ Credit defines three flat command envelopes on `credit-commands`. Each carries U
 | `credit.release` | `requesterId`, `amount`, `reason` |
 | `credit.transfer` | `courierId`. Derive requester and amount from committed reserve history. |
 
-User IDs and amounts are positive integers at most 2147483647. Release reason must contain a non-whitespace character and be at most 200 characters. The validated envelope is canonicalized before idempotency comparison. Preserve all fields, including correlationId, on retries. A broker message ID is not a command identity.
+User IDs and amounts are positive integers at most 2147483647. Release reason must contain a non-whitespace character and be at most 200 characters. Idempotency compares requestId and orderId only; other validated fields do not affect replay. A broker message ID is not a command identity.
 
 ```json
 {
@@ -256,9 +256,9 @@ User IDs and amounts are positive integers at most 2147483647. Release reason mu
 }
 ```
 
-`npm run command:publish -- command.json` validates and publishes an envelope with `orderId` as its ordering key. The CLI reports broker acceptance only. Business completion arrives through `credit-events`, with diagnostic lookup available for recovery. The future saga can use this contract without implementing order lifecycle logic inside Credit.
+`npm run command:publish -- command.json` validates and publishes an envelope with `orderId` as its ordering key. The CLI reports broker acceptance only. Business completion arrives through `credit-events`, correlated by `requestId`. The future saga can use this contract without implementing order lifecycle logic inside Credit.
 
-Pub/Sub pushes use Google OIDC with the configured audience and dedicated `PUBSUB_PUSH_SERVICE_ACCOUNT`. Internal diagnostic reads use the service-account allowlist. Local emulator delivery accepts `INTERNAL_SHARED_SECRET` through the push URL token parameter. User JWTs do not authorize ingestion. Production deployment grants command-topic publish access only to authorized producers.
+Pub/Sub pushes use Google OIDC with the configured audience and dedicated `PUBSUB_PUSH_SERVICE_ACCOUNT`. Local emulator delivery accepts `INTERNAL_SHARED_SECRET` through the push URL token parameter. User JWTs do not authorize ingestion. Production deployment grants command-topic publish access only to authorized producers.
 
 Balance reads verify HS256 bearer JWTs locally with `JWT_SECRET`, including the JWT header, expiry, and positive integer string `sub`. Derive the owner from `sub`. Deleted accounts receive 401. Missing provisioning receives retryable 503 ACCOUNT_PENDING. JWT validation never creates an account. Deletion takes effect when its event commits locally.
 
@@ -267,8 +267,6 @@ Balance reads verify HS256 bearer JWTs locally with `JWT_SECRET`, including the 
 | `POST /internal/pubsub/user-events` | Authenticated Pub/Sub push | Standard wrapper containing the existing user-event envelope |
 | `POST /internal/pubsub/credit-commands` | Authenticated Pub/Sub push | Standard wrapper containing base64 command JSON |
 | `GET /api/v1/credits/me` | Account owner | `totalCredits`, `reservedCredits`, `availableCredits` |
-| `GET /internal/v1/credit-orders/{requestId}` | Authorized internal caller | Committed CreditOrder and result, or 404 |
-| `GET /internal/v1/credit-reservations/{orderId}` | Authorized internal caller | Derived reservation state, or 404 |
 | `GET /health/live`, `GET /health/ready` | Deployment checks | Process health and database readiness |
 
 Direct HTTP reserve, release, and transfer routes are removed. The command push endpoint returns 204 after the final result and outbox commit, including REJECTED outcomes. The saved `Outcome.httpStatus` remains historical metadata and does not set the push response code. Same-ID redelivery acknowledges the saved result without creating a new event.
@@ -291,7 +289,7 @@ Publish to the Google Pub/Sub `credit-events` topic. Follow Order’s shared fie
 | Other definitive rejection | `credit.order_rejected` |
 | Successful no-op | `credit.order_succeeded` |
 
-Fresh-ID no-ops set `applied=false`, zero deltas, and current state. Cancellation before reserve uses credit.order_succeeded with applied=false and reservationState=CANCELLED. Same-ID replays create no new event. Event snapshots can arrive late; consumers correlate by requestId and use state lookup to resolve stale or conflicting outcomes rather than treating delivery order as current state.
+Fresh-ID no-ops set `applied=false`, zero deltas, and current state. Cancellation before reserve uses credit.order_succeeded with applied=false and reservationState=CANCELLED. Same-ID replays create no new event. Event snapshots can arrive late. Consumers correlate each outcome by requestId and deduplicate by eventId; delivery order does not establish current reservation state. Credit does not provide an operation or reservation lookup API.
 
 ```json
 {
@@ -320,7 +318,7 @@ Start one publisher. Read committed unpublished outbox rows and publish their st
 
 On publication failure, retain the row and retry; resume a failed Pub/Sub ordering key before retrying. Do not publish later outcomes for the same key ahead of the failed outcome. A broker outage does not roll back committed credit effects or make the API unready.
 
-Consumers must deduplicate by `eventId`. Consumers of credit outcomes and saga advancement are outside this implementation; the user-event and command consumers belong to Credit. Credit exposes operation and reservation lookup so callers can recover uncertain results independently of event delivery.
+Consumers must deduplicate by `eventId`. Consumers of credit outcomes and saga advancement are outside this implementation; the user-event and command consumers belong to Credit. Callers observe command completion through credit-events and correlate by requestId. Recovery of missing outcomes depends on retained Pub/Sub deliveries and outbox publication; no separate lookup or reconciliation API is provided. Missing account creation and reserve dependencies still require delivery of the corresponding upstream events or commands.
 
 | Failure | Credit behavior |
 |---|---|
@@ -337,24 +335,24 @@ Release cannot reverse a completed transfer; refunds are outside current scope.
 
 Follow Order’s Node.js 22, TypeScript ESM, Express, Drizzle, and pg conventions and multi-stage image. The API hosts authenticated user-event and command push endpoints; the publisher uses the same image with a distinct startup command. Add Credit’s isolated PostgreSQL database, migration job, and named volume to Compose; reuse the existing Pub/Sub emulator. Only Credit writes its schema. Use the existing `@google-cloud/pubsub` client and emulator configuration; no Redis service is needed.
 
-Supply `DATABASE_URL`, `INITIAL_CREDITS`, `PORT`, `JWT_SECRET`, `INTERNAL_AUDIENCE`, `INTERNAL_INVOKER_EMAILS`, and the local-only `INTERNAL_SHARED_SECRET` through environment/secrets. Use `PUBSUB_PROJECT_ID`, `PUBSUB_EMULATOR_HOST` locally, `PUBSUB_PUSH_BASE_URL`, `USER_EVENTS_TOPIC` (default `user-events`), `USER_EVENTS_SUBSCRIPTION` (default `credit-service-user-events`), `CREDIT_COMMANDS_TOPIC` (default `credit-commands`), `CREDIT_COMMANDS_SUBSCRIPTION` (default `credit-service-commands`), and `CREDIT_EVENTS_TOPIC` (default `credit-events`). Commit placeholders only. Migrate and create both durable subscriptions before registration or command traffic; demo users are provisioned through user events. Keep both subscriptions across restarts. Provisioning configures retention and retries for new subscriptions and refreshes push configuration on existing ones. Configure Cloud dead-letter forwarding, Pub/Sub service-agent IAM, and monitoring, and repair failed events before retention expires. Local emulator delivery is for development; it is not the recovery store for existing users. Volumes survive restart/recreation; deleting volumes deletes data.
+Supply `DATABASE_URL`, `INITIAL_CREDITS`, `PORT`, `JWT_SECRET`, `INTERNAL_AUDIENCE`, `PUBSUB_PUSH_SERVICE_ACCOUNT`, and the local-only `INTERNAL_SHARED_SECRET` through environment/secrets. Use `PUBSUB_PROJECT_ID`, `PUBSUB_EMULATOR_HOST` locally, `PUBSUB_PUSH_BASE_URL`, `USER_EVENTS_TOPIC` (default `user-events`), `USER_EVENTS_SUBSCRIPTION` (default `credit-service-user-events`), `CREDIT_COMMANDS_TOPIC` (default `credit-commands`), `CREDIT_COMMANDS_SUBSCRIPTION` (default `credit-service-commands`), and `CREDIT_EVENTS_TOPIC` (default `credit-events`). Commit placeholders only. Migrate and create both durable subscriptions before registration or command traffic; demo users are provisioned through user events. Keep both subscriptions across restarts. Provisioning configures retention and retries for new subscriptions and refreshes push configuration on existing ones. Configure Cloud dead-letter forwarding, Pub/Sub service-agent IAM, and monitoring, and repair failed events before retention expires. Local emulator delivery is for development; it is not the recovery store for existing users. Volumes survive restart/recreation; deleting volumes deletes data.
 
 Health checks plus bounded runtime retries handle startup/outages. API readiness needs the database. The outbox retains committed events during broker outages. Publisher health needs both. Graceful shutdown commits or rolls back current work; unpublished rows survive.
 
-Build schema/atomic handlers, then command consumer, read APIs, publisher, and Compose. Use real PostgreSQL integration tests:
+Build schema/atomic handlers, then command consumer, balance API, publisher, and Compose. Use real PostgreSQL integration tests:
 
 1. Concurrent/redelivered creation, including different eventIds for one user, commits one account, ALLOCATE, movement, and outbox outcome. Profile updates arriving first never suppress allocation.
 2. Creation then deletion retains balances/history and blocks new use. Deletion then creation retains a zero-balance tombstone and never allocates. Repeated deletion preserves deleted_at. No counters, undelete, or ID reuse are used.
-3. Two concurrent 700-credit reserves against 1,000 permit one movement. Same-ID success/rejection replays the saved result even after balances/state change; changed payload conflicts.
-4. Fresh-ID reserve/transfer/release repeats create no duplicate movements. Deriving state ignores rejected commands and distinguishes successful no-ops from actual reserve/transfer movements.
-5. Test NONE, HELD, RELEASED, CANCELLED, and TRANSFERRED derivation. CANCELLED survives solely through successful RELEASE history with no movement. It remains effective after published outbox rows are archived.
+3. Two concurrent 700-credit reserves against 1,000 permit one movement. Same-ID success/rejection replays the saved result even after balances/state change; changed payload replays the original result without overwriting its audit record; a changed order ID conflicts.
+4. Fresh-ID reserve/transfer/release repeats create no duplicate movements. Operation-specific lookups ignore rejected commands and distinguish successful no-ops from applied reserve/transfer outcomes.
+5. Test behavior for no prior operation, held credits, release, cancellation, and completed transfer. CANCELLED survives solely through successful RELEASE history with no movement. It remains effective after published outbox rows are archived.
 6. Test both serialized outcomes of concurrent reserve/release and transfer/release. There is no separate row to lock for reservation state: every handler must take the errand-key lock before reading history.
 7. Failure between debit and credit rolls back balances, CreditOrder, movement, and outbox. Provisioning failure rolls back the account, allocation, issuance movement, and event together.
 8. Transfer-before-reserve is retryable. Transfer/reserve after cancellation is definitive rejection. Deleted allocated accounts can have existing holds released; tombstone-only accounts produce durable USER_INACTIVE rejections without a movement.
 9. Assert ledger/balance agreement, nonnegative balances, HELD sums, and supply conservation. Histories may not contain both transfer and successful release for one errand.
 10. Broker outage/restart eventually publishes; publish-before-mark crash repeats the same eventId. Payloads contain no schemaVersion or reservationVersion; existing upstream user events with extra version metadata remain accepted.
 11. Before provisioning, balance/reserve/transfer return ACCOUNT_PENDING without creating an account or finalized command. Retrying after the creation event works. Backfill/live traffic cannot regrant or reactivate deleted accounts.
-12. Reject forged event pushes, unauthorized reads and command pushes, self-transfer, invalid amounts, and conflicting participants. Internal lookup admits configured callers without requiring the originating service.
+12. Reject forged event pushes, unauthorized reads and command pushes, self-transfer, invalid amounts, and conflicting participants.
 13. Verify amount boundaries and exact JSON-number balance output; recipient overflow rejects atomically. Container restart preserves data. A publisher drives all operations through Pub/Sub without an orchestrator.
 
 D3 evidence includes balances, command outcomes, order/ledger rows, duplicate command, and interrupted dependency. Log request/transaction/event/task/correlation IDs, outcome, and retry reason, never credentials. Inspect unpublished event age and logged worker errors; no separate dashboard.

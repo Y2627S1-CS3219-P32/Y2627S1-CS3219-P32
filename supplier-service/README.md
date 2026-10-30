@@ -7,7 +7,9 @@ Claude Code (Opus 5.5), 2026-09-30: POST operatingHours documentation. Author re
 Claude Code (Opus 5.5), 2026-10-01: operatingHours in GET and PUT documentation. Author review: Pending.
 Claude Code (Opus 5.5), 2026-09-30: In-place PUT and hard DELETE documentation. Author review: Pending.
 ChatGPT (GPT-6), 2026-09-30: Docker Compose migration startup documentation. Author review: Done.
-Claude Code (Opus 5.5), 2026-10-15: POST, PUT, and DELETE /types and /buildings documentation. Author review: Pending. -->
+Claude Code (Opus 5.5), 2026-10-15: POST, PUT, and DELETE /types and /buildings documentation. Author review: Pending.
+Claude Code (Opus 5.5), 2026-10-18: Local token verification, local user copy, and event worker documentation. Author review: Pending.
+Claude Code (Opus 5.5), 2026-10-18: Supplier events and outbox documentation. Author review: Pending. -->
 
 # Supplier Service
 
@@ -38,15 +40,92 @@ such as `process`. `npm run build` uses `tsconfig.build.json` to compile only
 ## Authentication
 
 Every `/suppliers`, `/types`, and `/buildings` route requires an `Authorization: Bearer <token>` header carrying
-a user-service access token. supplier-service forwards the header to user-service
-`GET /me` (at `USER_SERVICE_BASE_URL`, default `http://127.0.0.1:3333`) to resolve
-the caller and their role.
+a user-service access token. supplier-service does not call user-service: it verifies
+the token's signature and expiry with `JWT_SECRET` (the same secret as user-service,
+at least 32 bytes), then reads the caller's role from its local `users` table, which
+the event worker keeps up to date (see below).
 
 | Situation | Response |
 | --- | --- |
-| Missing, malformed, expired, or rejected token | 401 `{ "error": "A valid bearer token is required" }` |
+| Missing, malformed, expired, or wrongly signed token, or a deleted user | 401 `{ "error": "A valid bearer token is required" }` |
 | Non-admin calling `POST`, `PUT`, or `DELETE` | 403 `{ "error": "Administrator access is required" }` |
-| user-service unreachable or failing | 502 |
+| Valid token whose `user.created` event has not reached the local copy yet | 503 with `Retry-After: 2` |
+
+A role change or deletion takes effect once its event is applied; until then the
+previous role is used.
+
+## Event worker
+
+`src/worker.ts` (`npm run worker` after a build, or `npm run dev:worker`) is the
+service's Pub/Sub worker, a separate process from the API that serves `GET /health`
+and uses the same `DATABASE_URL`. It receives the `user-events` topic through a
+Pub/Sub push subscription at `POST /pubsub/user-events`, and sweeps the
+supplier-events outbox at `POST /outbox/publish` (see Supplier events below).
+
+| Event | Effect on `users` |
+| --- | --- |
+| `user.created`, `user.updated` | Upsert `id`, `displayName`, and `role`; clears `deletedAt` |
+| `user.deleted` | Sets `deletedAt` (the row is kept as a tombstone) |
+
+The password hash and other user fields are not stored. Each row keeps the
+event `version`; an event whose version is not newer than the stored one (a
+redelivery, or a creation that arrives after its deletion) is skipped. A deletion
+that arrives first is stored as a row with only the id, so the older creation
+cannot restore the user. Malformed messages are logged and acknowledged (204) so
+they do not block their ordering key; database failures return 500 so Pub/Sub
+redelivers.
+
+| Variable | Default |
+| --- | --- |
+| `PORT` | `3004` |
+| `PUBSUB_PROJECT_ID` | `GOOGLE_CLOUD_PROJECT`, then `foc-local` |
+| `USER_EVENTS_TOPIC` | `user-events` |
+| `PUBSUB_SUBSCRIPTION` | `supplier-service-user-events` |
+| `SUPPLIER_EVENTS_TOPIC` | `supplier-events` (also read by the API) |
+| `PUBSUB_EMULATOR_HOST` | unset; when set, the worker creates both topics and its push subscription at startup |
+| `PUBSUB_PUSH_ENDPOINT` | required with the emulator, e.g. `http://supplier-event-worker:3004/pubsub/user-events` |
+
+Only events published after the subscription exists are delivered. Users created
+before then are not in the local copy and receive 503 until they are updated
+(for example, by editing their profile).
+
+## Supplier events
+
+Every change to a supplier is published to the `supplier-events` topic, ordered by
+supplier id (the ordering key), with the attributes `type` and `supplierId` for
+subscription filters:
+
+| Change | Events |
+| --- | --- |
+| `POST /suppliers`, or a supplier inserted by the seed | `supplier.created` |
+| `PUT /suppliers/:id` | `supplier.updated` |
+| `DELETE /suppliers/:id` | `supplier.deleted` |
+| `PUT /types/:id`, `PUT /buildings/:id` (rename) | `supplier.updated` for each supplier using it |
+
+```ts
+type SupplierEvent = { eventId: string; version: number } & (
+  | { type: "supplier.created" | "supplier.updated"; supplier: SupplierSnapshot }
+  | { type: "supplier.deleted"; supplierId: string }
+);
+```
+
+`SupplierSnapshot` is the supplier after the change: `id`, `name`, `type` (name),
+`buildingName`, `floor`, `locationDescription`, `latitude` and `longitude` (strings,
+as stored), `isActive`, `imageUrl`, and `operatingHours` in the request format.
+`version` comes from `supplier_event_sequence` and increases with every event.
+
+Events use a transactional outbox: each change writes its rows to `supplier_events`
+in the same transaction, so a change is never committed without its events. After
+the commit the API publishes unpublished rows in version order and marks them
+published. Rows that fail (for example, while Pub/Sub is unavailable) stay in the
+outbox, and later events of the same supplier wait behind them; the worker's
+`POST /outbox/publish`, called every minute by Cloud Scheduler (locally by the
+`supplier-ticker` container), retries them. Delivery is at least once, so consumers
+should dedupe by `eventId` or by supplier and `version`.
+
+The API reads `PUBSUB_PROJECT_ID` and `SUPPLIER_EVENTS_TOPIC` as the worker does.
+Suppliers that existed before supplier events were added have no events; consumers
+learn about them on their next change.
 
 Errors are JSON objects with an `error` message.
 
@@ -173,8 +252,10 @@ npm test
 The PostgreSQL role must have permission to create databases. Tests create a
 uniquely named disposable database, apply migrations, check HTTP responses and
 opening-time boundaries, then drop that test database. Application data is not
-used for test fixtures. A stub user-service started by the tests maps fixed tokens
-to a student and an administrator.
+used for test fixtures. The route tests sign their own tokens with a test
+`JWT_SECRET` and insert a student, an administrator, and a deleted user into the
+local `users` table. `test/user-events.test.mjs` posts push messages to the worker, and
+`test/supplier-events.test.mjs` checks the outbox with an in-memory publisher.
 
 ## Docker
 

@@ -2,7 +2,18 @@
 // Scope: The sentence shown for each notification type. Author review: Pending.
 import type { AppNotification } from "#shared/services/notification-service/types";
 
-export function notificationText({ type, payload }: AppNotification): string {
+export function notificationText(notification: AppNotification): string {
+  if (notification.source === "credit") {
+    const { type, payload: { amount } } = notification;
+    switch (type) {
+      case "credit.account_allocated": return `${amount} credits were added to your account.`;
+      case "credit.reserved": return `${amount} credits were reserved for your order.`;
+      case "credit.released": return `${amount} reserved credits were released back to you.`;
+      case "credit.transferred": return `A payment of ${amount} credits was completed for your order.`;
+      default: return "Your credits were updated.";
+    }
+  }
+  const { type, payload } = notification;
   const title = `“${payload.title}”`;
   switch (type) {
     case "order.opened": return `Your order ${title} is now open for couriers.`;
