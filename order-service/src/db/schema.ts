@@ -4,6 +4,8 @@
  * append-only supplier copies, orders, and the order event log / outbox.
  * Author review: Pending.
  * Claude Code (Opus 5.5), 2026-10-17: student-requested title column. Author review: Pending.
+ * Claude Code (Opus 5.5), 2026-10-17: group orders (SYNCHRONISING state, group flag and
+ * order_members). Author review: Pending.
  */
 import { sql } from "drizzle-orm";
 import {
@@ -25,6 +27,7 @@ import {
 } from "drizzle-orm/pg-core";
 
 export const ORDER_STATES = [
+  "SYNCHRONISING",
   "PENDING",
   "OPEN",
   "REJECTED",
@@ -107,6 +110,7 @@ export const orders = pgTable(
     description: text("description").notNull(),
     deliveryLocation: text("delivery_location").notNull(),
     creditReward: integer("credit_reward").notNull(),
+    isGroupOrder: boolean("is_group_order").notNull().default(false),
     // Cached from the latest order_events row; always updated in the same transaction.
     currentState: text("current_state").$type<OrderState>().notNull(),
     acceptedAt: timestamp("accepted_at", { withTimezone: true }),
@@ -157,3 +161,18 @@ export const orderEvents = pgTable(
     index("order_events_unpublished_idx").on(table.createdAt).where(sql`${table.publishedAt} is null`),
   ],
 );
+
+// Everyone who joined a group order through its link, other than the requester.
+export const orderMembers = pgTable(
+  "order_members",
+  {
+    orderId: uuid("order_id").notNull().references(() => orders.id),
+    userId: integer("user_id").notNull().references(() => users.id),
+    joinedAt: timestamp("joined_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.orderId, table.userId] }),
+    index("order_members_user_idx").on(table.userId),
+  ],
+);
+

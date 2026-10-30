@@ -1,6 +1,7 @@
 <!-- AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-10-17.
 Scope: Notification-service setup and protocol documentation. Author review: Pending.
-Claude Code (Opus 5.5), 2026-10-17: stored notifications and their endpoints. Author review: Pending. -->
+Claude Code (Opus 5.5), 2026-10-17: stored notifications and their endpoints. Author review: Pending.
+Claude Code (Opus 5.5), 2026-10-17: group order recipients. Author review: Pending. -->
 # Notification Service
 
 Pushes order events and credit notifications to the browsers of the people involved
@@ -45,8 +46,10 @@ re-fetch their data after connecting, since events sent while offline are not re
 
 ## Who is notified
 
-- The requester: `order.opened`, `order.rejected`, `order.aborted`, `order.accepted`,
-  `order.picked_up`, `order.delivered`, `order.expired`.
+- The requester, and for group orders every member: `order.member_joined`, `order.created`,
+  `order.cancelled`, `order.opened`, `order.rejected`, `order.aborted`, `order.accepted`,
+  `order.picked_up`, `order.delivered`, `order.expired`. (The requester causes creation,
+  placing and cancelling, so for normal orders those notify nobody.)
 - The courier receives `order.completed`.
 - Order notifications exclude the user who performed the action (`actorId`).
 - The requester receives `credit.account_allocated`, `credit.reserved`, `credit.released`,

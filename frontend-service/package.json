@@ -16,9 +16,15 @@
     "postinstall": "nuxt prepare"
   },
   "dependencies": {
+    "@codemirror/commands": "^6.11.1",
+    "@codemirror/state": "^6.7.6",
+    "@codemirror/view": "^6.43.14",
     "nuxt": "^4.5.2",
     "vue": "^3.5.43",
-    "vue-router": "^5.3.1"
+    "vue-router": "^5.3.1",
+    "y-codemirror.next": "^0.3.6",
+    "y-websocket": "^3.1.0",
+    "yjs": "^13.6.33"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.3",

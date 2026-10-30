@@ -2,6 +2,7 @@
 // Scope: Nuxt runtime and frontend configuration. Author review: Done.
 // Claude Code (Opus 5.5), 2026-10-17: order-service base URL. Author review: Pending.
 // Claude Code (Opus 5.5), 2026-10-17: notification-service URLs. Author review: Pending.
+// Claude Code (Opus 5.5), 2026-10-17: sync-service URLs. Author review: Pending.
 import tailwindcss from "@tailwindcss/vite";
 
 export default defineNuxtConfig({
@@ -15,9 +16,12 @@ export default defineNuxtConfig({
     orderServiceBaseUrl: "http://127.0.0.1:3002",
     // Server-side, for issuing tickets.
     notificationServiceBaseUrl: "http://127.0.0.1:3003",
+    syncServiceBaseUrl: "http://127.0.0.1:3005",
     public: {
       // Browser-side WebSocket base URL (wss://… in Cloud).
       notificationServiceUrl: "ws://127.0.0.1:3003",
+      // Browser-side base for group order documents (wss://… in Cloud).
+      syncServiceUrl: "ws://127.0.0.1:3005",
     },
   },
   nitro: { preset: "node-server" },

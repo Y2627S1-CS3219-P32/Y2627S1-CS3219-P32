@@ -1,0 +1,10 @@
+// AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-10-17.
+// Scope: Source-only build settings copied from notification-service. Author review: Pending.
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "./src",
+    "noEmit": false
+  },
+  "include": ["src/**/*.ts"]
+}

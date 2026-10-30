@@ -1,5 +1,6 @@
 <!-- AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-10-17.
-Scope: Order card after the student's mockups, with the viewer's action and status. Author review: Pending. -->
+Scope: Order card after the student's mockups, with the viewer's action and status. Author review: Pending.
+Claude Code (Opus 5.5), 2026-10-17. Scope: Group order members. Author review: Pending. -->
 <script setup lang="ts">
 import type { Order, OrderAction } from "#shared/services/order-service/types";
 import { availableAction, canEdit, formatDateTime, personName, stateAccent, stateLabel, statusText } from "../order-view";
@@ -10,6 +11,8 @@ const props = defineProps<{
   // The details page shows every action and links to editing; the list only offers Accept.
   detailed?: boolean;
   busy?: boolean;
+  // The group editor shows the live description instead.
+  hideDescription?: boolean;
 }>();
 const emit = defineEmits<{ action: [action: OrderAction] }>();
 
@@ -43,7 +46,11 @@ const supplierName = computed(() => props.order.supplier.name || "Unknown suppli
         <span class="shrink-0" aria-hidden="true">⟶</span>
         <span class="wrap-anywhere"><span class="sr-only">to</span>{{ order.deliveryLocation }}</span>
       </p>
-      <p class="wrap-anywhere whitespace-pre-line">{{ order.description }}</p>
+      <p v-if="order.isGroupOrder" class="flex items-center gap-1.5 text-[#7a5cc2]">
+        <svg class="size-4 shrink-0" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M16 11a4 4 0 1 0-3.46-6A5 5 0 0 1 14 9a5 5 0 0 1-.46 2.1A4 4 0 0 0 16 11ZM9 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm7 1c-.53 0-1.1.04-1.69.12A5.9 5.9 0 0 1 17 18v3h6v-3c0-2.66-4.33-5-7-5ZM9 14c-3.33 0-8 1.67-8 4v3h16v-3c0-2.33-4.67-4-8-4Z"/></svg>
+        Group order · {{ order.members.length + 1 }} {{ order.members.length === 0 ? "person" : "people" }}
+      </p>
+      <p v-if="!hideDescription" class="wrap-anywhere whitespace-pre-line">{{ order.description }}</p>
       <div class="mt-auto pt-4">
         <p>Reward: <strong class="font-semibold text-[#4a4f55]">{{ order.creditReward }}</strong></p>
         <p v-if="order.state === 'OPEN' && order.expiresAt">Expires In: <strong class="font-semibold text-[#4a4f55]">{{ formatDateTime(order.expiresAt) }}</strong></p>

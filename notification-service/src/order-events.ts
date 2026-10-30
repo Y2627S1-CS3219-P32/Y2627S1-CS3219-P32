@@ -4,6 +4,7 @@
  * Author review: Pending.
  * Claude Code (Opus 5.5), 2026-10-17: also pushes the notifications the rules produce,
  * for toasts. Author review: Pending.
+ * Claude Code (Opus 5.5), 2026-10-17: group members' pages refresh too. Author review: Pending.
  */
 import { sendToUser } from "./connections.js";
 import { notificationsForOrderEvent } from "./rules.js";
@@ -19,9 +20,10 @@ export function routeOrderEvent(event: unknown): number[] {
   if (typeof event !== "object" || event === null) return [];
   const order = (event as Record<string, unknown>).order;
   if (typeof order !== "object" || order === null) return [];
-  const { requesterId, courierId } = order as Record<string, unknown>;
+  const { requesterId, courierId, memberIds } = order as Record<string, unknown>;
+  const members = Array.isArray(memberIds) ? memberIds.map(userId) : [];
 
-  const recipients = new Set([userId(requesterId), userId(courierId)].filter((id) => id !== undefined));
+  const recipients = new Set([userId(requesterId), userId(courierId), ...members].filter((id) => id !== undefined));
   const delivered = [...recipients].filter((id) => sendToUser(id, { type: "order.event", event }) > 0);
   for (const notification of notificationsForOrderEvent(event)) {
     sendToUser(notification.userId, { type: "notification", notification });
