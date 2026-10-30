@@ -34,6 +34,7 @@ Author review: Checked for correctness. -->
   and the student confirmed the supplier directory loads on the deployed frontend.
 - Author review: Pending.
 
+
 # AI usage log (User Service)
 
 ## 2026-10-15: User-service Pub/Sub event architecture
@@ -1137,6 +1138,23 @@ for context, frontend-service is being set up. The frontend’s supplier screen 
   returned the delayed reserve and the release cancelled out, leaving the balance unchanged.
 - Author review: Pending.
 
+## 2026-10-18: Publish outbox events before responding
+
+- Tool: Claude Code (Opus 5.5). Mode: Debugging and implementation.
+- Exact prompt: `publish before responding and make that a pr`, after the student asked why the
+  credit publisher runs all the time but the order outbox relay does not, and Claude explained
+  that Cloud Run throttles CPU after a response, stalling relays left running in the background.
+- Key response: order-service and saga-orchestrator now await their outbox relay before
+  responding (to users, Pub/Sub pushes and Cloud Scheduler); failures are still logged and left
+  for the every-minute relay.
+- Affected files: `order-service/src/events/outbox.ts`, `order-service/src/orders/write.ts`,
+  `order-service/src/index.ts`, `order-service/test/orders.test.mjs`,
+  `saga-orchestrator/src/outbox.ts`, `saga-orchestrator/src/saga.ts`,
+  `saga-orchestrator/src/index.ts`, `saga-orchestrator/test/saga.test.mjs`, and this log.
+- Verification: order-service (18/18) and saga-orchestrator (9/9) tests, including new checks
+  that events are published by the time the response arrives.
+- Author review: Pending.
+
 ## 2026-10-18: Supplier-service local user copy and event worker
 
 - Tool: Claude Code (Opus 5.5). Mode: Implementation, refactoring, tests, documentation, and verification.
@@ -1244,4 +1262,221 @@ for context, frontend-service is being set up. The frontend’s supplier screen 
 - Verification: all 21 suppliers and 3 users were delivered (204/200) to each consuming service;
   supplier-service stopped answering 503; nusfoc.com passes the WebSocket origin check (401
   without a ticket) while unknown origins get 403.
+- Author review: Pending.
+
+## 2026-10-18: Refactor Credit commands around financial operations
+
+- Tool: Codex (GPT-6). Mode: Refactoring and verification.
+- Exact prompt: `ok lets go`, approving the preceding operation-based refactor plan.
+- Key response: Moved account eligibility and financial-history checks into private
+  reserve, release, and transfer handlers. Replaced internal reservation-state
+  branching with recorded reserve, release, and transfer facts. Each handler describes
+  its movement once for balance writes, ledger entries, and outcome deltas. Kept
+  reservation states in existing responses and retained the four-table schema.
+- Affected files: Credit command and query modules, PostgreSQL tests, README, and this log.
+- Verification: All 37 PostgreSQL and transport tests passed against both the original
+  implementation and the refactor, including 16 new characterization cases with
+  ledger and outbox assertions. Typechecking passed. Real Pub/Sub checks passed for
+  commands, replay, rejection, prerequisite retries, cancellation, authentication,
+  broker outage, and stable event replay after publish-before-mark failure. Tests used
+  a disposable database and separate emulator. Independent review found no regressions
+  for valid financial histories. Provisioning recovery and correlation-ID policy were
+  left unchanged.
+- Author review: Pending.
+
+## 2026-10-18: Separate Credit boundaries and remove testing-driven service wiring
+
+- Tool: Codex (GPT-6). Mode: Refactoring and verification.
+- User instructions: Create a new branch, separate HTTP handlers, business logic,
+  and database access; remove the Credit services contract and testing-driven
+  wiring; rename business methods and inputs so they do not depend on events.
+  Follow-up: Rename authentication helpers and the branch to
+  `lucius/refactor-credit-service`.
+- Key response: Created `codex/credit-service-layers`. Replaced the `credit/`
+  folder with HTTP controllers/routes, business services, and SQL repositories.
+  `createApp()` takes no arguments; controllers import business functions directly.
+  Removed aggregate service contracts, controller factories, and the publisher's
+  test-only callback. Account initialization and deactivation accept request and
+  user IDs; only the adapter parses user events. Credit operations expose reserve,
+  release, and transfer functions. Account creation and its initial grant remain
+  atomic. HTTP error mapping stays at the boundary, and financial transactions
+  retain replay, locking, ledger, and outbox guarantees.
+  Renamed the branch as requested and replaced `internal(req, true)` / `internal(req)`
+  with `requirePubSubCaller(req)` / `requireInternalCaller(req)`; shared credential
+  verification remains private. Build and architecture checks passed after renaming.
+- Affected files: Credit source modules, PostgreSQL/HTTP/Pub/Sub tests,
+  architecture checks, test script, README, and this log.
+- Verification: All 41 tests passed against a disposable PostgreSQL database,
+  including real HTTP requests. Actual Pub/Sub push delivery passed provisioning,
+  reserve/replay/rejection/transfer/release, dependency retries, cancellation,
+  authentication, broker outage, and publish-before-mark recovery. Independent
+  review found no confirmed regressions. The architecture check prevents transport
+  inputs and aggregate service contracts from returning to business services.
+  No schema changes or deployment. Provisioning recovery and correlation-ID policy
+  remain unchanged.
+- Author review: Pending.
+
+## 2026-10-19: Group Credit interfaces into event and HTTP handlers
+
+- Tool: Codex (GPT-6). Mode: Refactoring and verification.
+- User instruction: `ok fix it then`, approving separate event-handler and
+  http-handler folders, with message parsing owned by the event boundary and
+  both interfaces calling shared services.
+- Key response: Moved incoming message handlers and combined parsers into
+  `event-handler/`; moved HTTP read/health handlers, auth, and error mapping into
+  `http-handler/`. App registers routes directly. Shared UUID and positive-int32
+  parsing lives in `validation.ts`, preserving boundary-specific error codes.
+  Outcome construction lives with services; outgoing publishing lives in
+  `messaging/`; provisioning and command tools live in `scripts/`. Updated package,
+  Compose, development, test, and README paths. No new forwarding contracts.
+- Verification: All 41 tests passed on disposable PostgreSQL, strict typechecking
+  and Compose configuration validation passed, and real Pub/Sub verification
+  passed account provisioning, CLI commands, duplicate delivery, business
+  rejections, dependency retries, cancellation, authentication, broker outage,
+  and publish-before-mark recovery. Independent review found no regressions.
+  Disposable verification containers were removed. No deployment or schema change.
+- Author review: Pending.
+
+## 2026-10-19: Let Credit handler modules own their routes
+
+- Tool: Codex (GPT-6). Mode: Refactoring.
+- User instruction: Have app initialize the two handlers and define routes inside
+  the handler modules.
+- Key response: HTTP and event handler modules export their own Express routers.
+  App mounts both routers between JSON parsing and error handling. Fixed remaining
+  imports after the shared modules were moved into `common/`; updated README and
+  the transport test import accordingly.
+- Verification: Build and architecture test passed. Real local HTTP requests
+  exercised all seven routes across both routers, checking liveness, caller
+  rejection, and readiness error handling against an unavailable database.
+  Whitespace checks passed. Financial transaction code was unchanged.
+- Author review: Pending.
+
+## 2026-10-19: Name the outbox publisher folder explicitly
+
+- Tool: Codex (GPT-6). Mode: Refactoring.
+- User instruction: `yeah outbox publisher`.
+- Key response: Renamed `src/messaging/` to `src/outbox-publisher/` and updated
+  package scripts, Compose/development entrypoints, Pub/Sub test import, and README.
+- Verification: Build, architecture test, and both Compose configuration checks
+  passed. Publisher behavior was unchanged.
+- Author review: Pending.
+
+## 2026-10-19: Clarify Credit database handle names
+
+- Tool: Codex (GPT-6). Mode: Naming refactor.
+- User instruction: `ok use the clearer name`.
+- Key response: Renamed transaction parameters and callbacks to `tx`, handles
+  accepting Database or Transaction to `db`, and the publisher's checked-out
+  PostgreSQL client to `connection`. No transaction behavior changed.
+- Verification: Build, architecture test, and whitespace checks passed.
+- Author review: Pending.
+
+## 2026-10-19: Prepare the Credit refactor pull request
+
+- Tool: Codex (GPT-6). Mode: Verification and PR preparation.
+- User instruction: Create a PR in the team repository, not its upstream template.
+- Destination: `Y2627S1-CS3219-P32/Y2627S1-CS3219-P32`, base `main`, branch
+  `lucius/refactor-credit-service`.
+- Verification: Reran all 41 PostgreSQL/HTTP/architecture tests on the final
+  source. Real Pub/Sub checks passed provisioning, CLI command delivery,
+  reserve/release/transfer, replay, rejection, authentication, dependency retries,
+  cancellation, broker outage, and publish-before-mark recovery. Both Compose
+  configurations and whitespace checks passed. Independent final review found no
+  concrete behavioral regressions; comment review found no actionable additions.
+  These checks cover Credit service integration, not a full registration-to-order
+  flow across all services. No database migration or deployment.
+- Scope: Credit refactor, runtime entrypoint changes, tests, README, and this log.
+  The separate untracked demo runbook is excluded.
+- Author review: Pending.
+
+## 2026-10-19: Remove Credit operation double dispatch
+
+- Tool: Codex (GPT-6). Mode: Refactoring and verification.
+- User instruction: Simplify the reserve/release/transfer wrappers that dispatch
+  back to private operation functions; consider clearer invariants.
+- Key response: Each public credit operation contains its business decision body.
+  One private transaction helper owns normalization, replay, lock ordering, fact
+  loading, and atomic balance/ledger/result/outbox persistence. Removed the second
+  operation switch and three private operation functions. Capture business inputs
+  before database waits to preserve the original input snapshot. Existing
+  history source, guard precedence, schema, and wire outcomes remain unchanged.
+- Design: Compared inline operation callbacks with duplicated explicit transaction
+  setup. Selected the shared concrete helper to keep the concurrency protocol in
+  one place. Deferred saved-result-based fact reads pending historical consistency
+  verification. Preserved the user's concurrent constants/type consolidation.
+- Verification: All 41 tests passed before and after the change on disposable
+  PostgreSQL. Actual Pub/Sub checks passed provisioning, operations, replay,
+  rejection, dependency retries, cancellation, authentication, broker outage, and
+  publish-before-mark recovery. Independent review identified the snapshot edge
+  case, fixed before final verification. Disposable containers removed afterwards.
+- Author review: Pending.
+
+## 2026-10-19: Give Credit operations their own saved-record lookups
+
+- Tool: Codex (GPT-6). Mode: Refactoring and verification.
+- User instruction: Remove shared order-history loading from the operation flow
+  and fold `outcomes.ts` into an existing module.
+- Key response: Added specific applied/successful operation queries returning
+  saved outcomes. Reserve, release, and transfer own their lookups and stop when
+  terminal records make further reads unnecessary. Successful release lookups
+  include cancellation without movement. The transaction helper no longer knows
+  the history shape; history reconstruction is private to the read endpoint.
+  Moved outcome data constructors beside Outcome/OutcomeEvent in `common/types.ts`
+  and deleted `services/outcomes.ts`. Preserved lock ordering, request replay,
+  guard precedence, saved result fields, and atomic financial/outbox persistence.
+- Invariants: Applied transfer is terminal; successful releases preserve the same
+  requester/amount and cancellation or release snapshot. Existing service locking
+  enforces these rules. The read endpoint retains contradictory-history detection;
+  command lookups rely on the terminal invariant instead of rebuilding all facts.
+- Verification: All 41 PostgreSQL/HTTP/architecture tests and real Pub/Sub checks
+  passed. Built the previous committed implementation separately, used it to write
+  12 saved outcomes including duplicate no-ops and cancellations, then verified
+  exact replay and continuation from held/released/cancelled/transferred orders
+  with the revised implementation. Applied flags matched ledger presence in this
+  compatibility fixture. Independent review found no valid-history regressions.
+  Disposable verification containers were removed. No schema migration.
+- Author review: Pending.
+
+## 2026-10-19: Remove Credit's diagnostic order and reservation read APIs
+
+- Tool: Codex (GPT-6). Mode: Removal and verification.
+- User instruction: Remove GET /internal/v1/credit-orders/:requestId and
+  GET /internal/v1/credit-reservations/:orderId because they are outside main flows.
+- Key response: Removed both routes, handlers, read-model queries, unused read
+  result type, error mappings, and diagnostic-caller authentication/allowlist.
+  Deleted services/reads.ts and moved its remaining balance function into accounts.
+  Retained transaction-only request lookup for account initialization and
+  operation-owned saved-result lookups. Simplified Pub/Sub authentication to its
+  sole remaining caller policy. Removed the Credit-only deployment allowlist
+  setting and updated README/technical design. No runtime callers outside Credit
+  were found. Command completion is observed through correlated credit-events.
+- Verification: All 41 PostgreSQL/HTTP/architecture tests passed. Removed routes
+  return 404 for existing/missing/malformed IDs with and without former auth
+  headers. Financial assertions use actual saved rows, balances, ledger, and
+  outbox. Real Pub/Sub proof passed account provisioning, commands, replay,
+  rejection, dependency retries, cancellation, authentication, JWT balance,
+  removed routes, broker outage, and publish-before-mark recovery. Independent
+  review found no regressions in remaining interfaces. Compose configurations,
+  deployment shell syntax, and whitespace checks passed. Disposable containers
+  were removed. No schema migration or deployment.
+
+- Author review: Pending.
+
+# AI usage log (Postman)
+
+## 2026-10-18: Postman collection for the user, order and credit services
+
+- Tool: Claude Code (Opus 5.5). Mode: Boilerplate generation and verification.
+- Exact prompt: `can u make a postman collection for me for the order service and the credit
+  service, and the user service`
+- Key response: a Postman collection (40 requests: user auth and admin routes; order creation,
+  browsing, history, editing and state actions; credit balance; internal Pub/Sub push and
+  scheduler routes with the push format built in a pre-request script) and a local environment.
+  Logging in saves tokens and creating an order saves its id for later requests.
+- Affected files: `postman/foc.postman_collection.json`, `postman/foc-local.postman_environment.json`,
+  and this log.
+- Verification: ran the main flow and the internal push requests with Newman against the local
+  stack on the Pub/Sub emulator; fixed a variable-scope bug this found.
+
 - Author review: Pending.

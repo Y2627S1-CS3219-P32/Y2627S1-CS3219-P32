@@ -3,6 +3,7 @@
  * Scope: Integration tests for the saga orchestrator: reserve then open or reject,
  * timeouts, cancellations and expiry releasing credits, completion transferring and
  * settling, duplicates, and the commands it publishes. Author review: Pending.
+ * Claude Code (Opus 5.5), 2026-10-18: published before responding. Author review: Pending.
  */
 import assert from "node:assert/strict";
 import { randomBytes, randomUUID } from "node:crypto";
@@ -237,4 +238,15 @@ test("unrelated, unknown and malformed messages are acknowledged without changes
   assert.equal(unknown.status, 204);
   assert.deepEqual(published, []);
   assert.equal(await saga(orderId), undefined);
+});
+
+test("commands are published before the push is acknowledged", async () => {
+  // No waiting on the relay: Cloud Run throttles CPU once the response has gone.
+  const orderId = randomUUID();
+  const response = await push("order-events", {
+    eventId: randomUUID(), type: "order.created", orderId,
+    order: { id: orderId, requesterId: 1, courierId: null, creditReward: 5 },
+  });
+  assert.equal(response.status, 204);
+  assert.equal(lastCredit(orderId)?.type, "credit.reserve");
 });

@@ -7,12 +7,12 @@
 import { config } from "./config.js";
 import { pool } from "./db/index.js";
 import { createNotificationServer } from "./server.js";
-import { subscribeToOrderEvents } from "./subscription.js";
+import { subscribeToEvents } from "./subscription.js";
 
 const { server, closeAll } = createNotificationServer();
 
 pool.query("select 1")
-  .then(subscribeToOrderEvents)
+  .then(subscribeToEvents)
   .then((subscription) => {
     server.listen(config.port, "0.0.0.0", () => {
       console.log(`Notification service listening on http://localhost:${config.port} (subscription ${subscription.name})`);

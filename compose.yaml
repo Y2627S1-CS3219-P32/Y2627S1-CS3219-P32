@@ -71,7 +71,7 @@ services:
     environment: *credit-environment
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "node", "dist/events/publisher-health.js"]
+      test: ["CMD", "node", "dist/outbox-publisher/publisher-health.js"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -301,7 +301,7 @@ services:
   supplier-db:
     image: postgres:17
     ports:
-      - "127.0.0.1:5433:5432"
+      - "127.0.0.1:${SUPPLIER_DB_PORT:-5433}:5432"
     environment:
       POSTGRES_USER: supplier
       POSTGRES_PASSWORD: supplier

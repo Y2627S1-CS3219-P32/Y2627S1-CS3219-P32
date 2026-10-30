@@ -15,7 +15,7 @@ pool.query("select 1")
       if (error) throw error;
       console.log(`Order service listening on http://localhost:${config.port}`);
       // Publish anything left from before a restart.
-      requestOutboxPublish();
+      void requestOutboxPublish();
     });
   })
   .catch(async (error: unknown) => {
