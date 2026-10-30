@@ -9,6 +9,7 @@
  * Claude Code (Opus 5.5), 2026-10-17: group orders (start in SYNCHRONISING, members join,
  * placed by the sync service), member ids in snapshots, transitions from several states,
  * and cancelling before acceptance. Author review: Pending.
+ * Claude Code (Opus 5.5), 2026-10-18: wait for the publish before returning. Author review: Pending.
  */
 import { and, asc, desc, eq, lte } from "drizzle-orm";
 import { config } from "../config.js";
@@ -126,7 +127,7 @@ export async function createOrder(requesterId: number, input: OrderInput): Promi
     });
     return order.id;
   });
-  requestOutboxPublish();
+  await requestOutboxPublish();
   return id;
 }
 
@@ -184,7 +185,7 @@ export async function performUserAction(action: UserAction, orderId: string, use
     const updates: OrderUpdates = action === "accept" ? { courierId: userId, acceptedAt: new Date() } : {};
     await appendEvent(tx, order, transition, { actorId: userId, updates });
   });
-  requestOutboxPublish();
+  await requestOutboxPublish();
 }
 
 const EDIT = { from: ["OPEN"], to: "OPEN", type: "order.edited" } as const satisfies Transition;
@@ -199,7 +200,7 @@ export async function editOrder(orderId: string, userId: number, edit: OrderEdit
     if (!allows(EDIT, order.currentState)) throw new HttpError(409, `Order cannot be edited while ${order.currentState}`);
     await appendEvent(tx, order, EDIT, { actorId: userId, updates: edit });
   });
-  requestOutboxPublish();
+  await requestOutboxPublish();
 }
 
 const JOIN = { from: ["SYNCHRONISING"], to: "SYNCHRONISING", type: "order.member_joined" } as const satisfies Transition;
@@ -224,7 +225,7 @@ export async function joinOrder(orderId: string, userId: number): Promise<void> 
     });
     return true;
   });
-  if (joined) requestOutboxPublish();
+  if (joined) await requestOutboxPublish();
 }
 
 const PLACE = { from: ["SYNCHRONISING"], to: "PENDING", type: "order.created" } as const satisfies Transition;
@@ -245,7 +246,7 @@ export async function placeGroupOrder(placed: { eventId: string; orderId: string
     });
     return "applied";
   });
-  if (result === "applied") requestOutboxPublish();
+  if (result === "applied") await requestOutboxPublish();
   return result;
 }
 
@@ -279,7 +280,7 @@ export async function handleSagaCommand(command: { commandId: string; type: Saga
     await appendEvent(tx, order, transition, { actorId: null, commandId: command.commandId, updates });
     return "applied";
   });
-  if (result === "applied") requestOutboxPublish();
+  if (result === "applied") await requestOutboxPublish();
   return result;
 }
 
@@ -303,6 +304,6 @@ export async function expireOverdueOrders(now = new Date()): Promise<number> {
     total += count;
     if (count < EXPIRY_BATCH) break;
   }
-  if (total > 0) requestOutboxPublish();
+  if (total > 0) await requestOutboxPublish();
   return total;
 }

@@ -22,7 +22,7 @@ TEST_DATABASE_URL=postgres://postgres@127.0.0.1:5432/postgres npm test
 | `SYNC_TICKET_SECRET` | Signs WebSocket tickets; at least 32 bytes and the same on every instance |
 | `TICKET_TTL_SECONDS` | Ticket lifetime; defaults to `30` |
 | `ALLOWED_ORIGINS` | Browser origins allowed to connect; empty allows any |
-| `PORT` | Defaults to `3000` (Compose publishes it on host port `3004`) |
+| `PORT` | Defaults to `3000` (Compose publishes it on host port `3005`) |
 | `PUBSUB_*`, `ORDER_EVENTS_TOPIC`, `SYNC_EVENTS_TOPIC`, `SYNC_UPDATES_TOPIC`, `ORDER_EVENTS_SUBSCRIPTION`, `RELAY_SUBSCRIPTION_PREFIX` | Pub/Sub settings |
 
 ## Lifecycle

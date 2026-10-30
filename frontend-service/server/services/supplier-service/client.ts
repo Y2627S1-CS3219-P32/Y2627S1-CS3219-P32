@@ -1,10 +1,15 @@
 // AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-28; Claude Code (Opus 5.5), 2026-09-29.
 // Scope: Server-side client for the supplier service, forwarding the user's bearer token. Author review: Done.
 // Claude Code (Opus 5.5), 2026-09-30. Scope: Types, buildings, and create calls. Author review: Done.
+// Claude Code (Opus 5.5), 2026-10-15. Scope: Type and building create, rename, and delete calls. Author review: Pending.
+// Claude Code (Opus 5.5), 2026-10-18. Scope: Forward supplier-service's 503 while a new account has not
+// reached its local user copy. Author review: Pending.
 import type { H3Event } from "h3";
-import type { Supplier, SupplierCreate, SupplierFilters, SupplierReference, SupplierUpdate } from "#shared/services/supplier-service/types";
+import type { Supplier, SupplierCreate, SupplierFilters, SupplierReference, SupplierReferenceKind, SupplierUpdate } from "#shared/services/supplier-service/types";
 
-const FORWARDED_STATUSES = new Set([400, 401, 403, 404, 409]);
+// 503: supplier-service authorizes callers from a local copy of users, which a new
+// account reaches shortly after registering.
+const FORWARDED_STATUSES = new Set([400, 401, 403, 404, 409, 503]);
 
 function options(baseURL: string, token: string) {
   return {
@@ -55,4 +60,16 @@ export function updateSupplier(baseURL: string, token: string, id: string, body:
 
 export function deleteSupplier(baseURL: string, token: string, id: string) {
   return $fetch(`/suppliers/${encodeURIComponent(id)}`, { ...options(baseURL, token), method: "DELETE" });
+}
+
+export function createSupplierReference(baseURL: string, token: string, kind: SupplierReferenceKind, name: string) {
+  return $fetch<SupplierReference>(`/${kind}`, { ...options(baseURL, token), method: "POST", body: { name } });
+}
+
+export function renameSupplierReference(baseURL: string, token: string, kind: SupplierReferenceKind, id: string, name: string) {
+  return $fetch<SupplierReference>(`/${kind}/${encodeURIComponent(id)}`, { ...options(baseURL, token), method: "PUT", body: { name } });
+}
+
+export function deleteSupplierReference(baseURL: string, token: string, kind: SupplierReferenceKind, id: string) {
+  return $fetch(`/${kind}/${encodeURIComponent(id)}`, { ...options(baseURL, token), method: "DELETE" });
 }

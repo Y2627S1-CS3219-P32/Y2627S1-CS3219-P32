@@ -12,15 +12,16 @@ export default defineNuxtConfig({
   runtimeConfig: {
     supplierServiceBaseUrl: "http://127.0.0.1:3000",
     userServiceBaseUrl: "http://127.0.0.1:3333",
+    creditServiceBaseUrl: "http://127.0.0.1:3004",
     orderServiceBaseUrl: "http://127.0.0.1:3002",
     // Server-side, for issuing tickets.
     notificationServiceBaseUrl: "http://127.0.0.1:3003",
-    syncServiceBaseUrl: "http://127.0.0.1:3004",
+    syncServiceBaseUrl: "http://127.0.0.1:3005",
     public: {
       // Browser-side WebSocket base URL (wss://… in Cloud).
       notificationServiceUrl: "ws://127.0.0.1:3003",
       // Browser-side base for group order documents (wss://… in Cloud).
-      syncServiceUrl: "ws://127.0.0.1:3004",
+      syncServiceUrl: "ws://127.0.0.1:3005",
     },
   },
   nitro: { preset: "node-server" },

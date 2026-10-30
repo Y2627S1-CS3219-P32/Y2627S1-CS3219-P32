@@ -1,0 +1,34 @@
+{
+  "name": "credit-service",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "rm -rf dist && tsc",
+    "typecheck": "tsc --noEmit",
+    "start": "node dist/index.js",
+    "command:publish": "node dist/scripts/send-command.js",
+    "publisher": "node dist/outbox-publisher/publisher.js",
+    "db:migrate": "node dist/db/migrate.js",
+    "test": "npm run build && node --test --test-concurrency=1 test/*.test.mjs",
+    "pubsub:provision": "node dist/scripts/provision-pubsub.js",
+    "test:pubsub": "npm run build && node test/pubsub.mjs",
+    "db:generate": "drizzle-kit generate"
+  },
+  "dependencies": {
+    "@google-cloud/pubsub": "^6.3.0",
+    "dotenv": "^18.0.8",
+    "drizzle-orm": "^0.45.4",
+    "express": "^5.3.0",
+    "google-auth-library": "^11.3.1",
+    "pg": "^8.23.1"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.6.5",
+    "@types/pg": "^8.23.1",
+    "drizzle-kit": "^0.31.11",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  }
+}

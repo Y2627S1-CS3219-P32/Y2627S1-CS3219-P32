@@ -1,5 +1,6 @@
 <!-- AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-28.
-Scope: Nuxt frontend setup and service organisation. Author review: Done. -->
+Scope: Nuxt frontend setup and service organisation. Author review: Done.
+Claude Code (Opus 5.5), 2026-10-18: supplier-service 503 while a new account replicates. Author review: Pending. -->
 # Frontend service
 
 Nuxt frontend for Friend on Campus. The supplier directory uses the existing
@@ -17,7 +18,10 @@ docker compose up -d --build frontend-service
 Open **http://127.0.0.1:3001**. The frontend has no Compose dependency on
 supplier-service, so it starts on its own. Start supplier-service separately
 (`docker compose up -d supplier-service`) for supplier data; until it responds,
-the directory shows its error state with a retry button. The frontend image has its own dependencies, lockfile, and multi-stage build;
+the directory shows its error state with a retry button. supplier-service
+authorizes callers from its own copy of users, so for a few seconds after
+registering it returns 503; the directory then shows that the account is being
+set up and retries every 2 seconds (up to 5 times). The frontend image has its own dependencies, lockfile, and multi-stage build;
 its runtime contains only Nuxt's generated `.output` and runs as the Node user.
 
 Requests follow this path:

@@ -18,11 +18,20 @@
  * AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-10-01.
  * Scope: Operating hours in GET responses and PUT replacement checks.
  * Author review: Pending.
+ * AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-10-15.
+ * Scope: POST, PUT, and DELETE /types and /buildings checks.
+ * Author review: Pending.
+ * AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-10-18.
+ * Scope: Signed test tokens and local user rows in place of the stub user-service, and
+ * checks for deleted and not-yet-replicated callers.
+ * Author review: Pending.
+ * AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-10-18.
+ * Scope: In-memory supplier-events publisher, so route writes do not reach Pub/Sub.
+ * Author review: Pending.
  */
 import assert from "node:assert/strict";
-import { randomBytes } from "node:crypto";
+import { createHmac, randomBytes } from "node:crypto";
 import { once } from "node:events";
-import { createServer } from "node:http";
 import { after, before, test } from "node:test";
 import { eq, inArray } from "drizzle-orm";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
@@ -35,32 +44,31 @@ if (!process.env.TEST_DATABASE_URL) {
 const admin = new pg.Client({ connectionString: process.env.TEST_DATABASE_URL });
 const databaseName = `supplier_routes_test_${randomBytes(8).toString("hex")}`;
 let createdDatabase = false;
-let db, pool, schema, openingHoursMatch, server, baseUrl, userService;
+let db, pool, schema, openingHoursMatch, server, baseUrl, outboxIdle;
 let foodId, coffeeId, shoppingId;
 
-// Stub user-service GET /me: each bearer token maps to a fixed caller.
-const users = {
-  "student-token": { id: 1, name: "Student", email: "student@example.com", role: "student" },
-  "admin-token": { id: 2, name: "Admin", email: "admin@example.com", role: "admin" },
+const jwtSecret = "test-jwt-secret-that-is-at-least-32-bytes";
+process.env.JWT_SECRET = jwtSecret;
+
+// Same format as user-service createAccessToken.
+function accessToken(userId, { secret = jwtSecret, exp = Math.floor(Date.now() / 1000) + 900 } = {}) {
+  const content = [{ alg: "HS256", typ: "JWT" }, { sub: String(userId), exp }]
+    .map(part => Buffer.from(JSON.stringify(part)).toString("base64url")).join(".");
+  return `${content}.${createHmac("sha256", secret).update(content).digest("base64url")}`;
+}
+
+// Tests name callers by these keys; request() sends the matching signed token.
+// Users 1-3 are in the local user copy; user 4's user.created has not arrived yet.
+const tokens = {
+  "student-token": accessToken(1),
+  "admin-token": accessToken(2),
+  "deleted-token": accessToken(3),
+  "pending-token": accessToken(4),
+  "expired-token": accessToken(2, { exp: Math.floor(Date.now() / 1000) - 1 }),
+  "wrong-secret-token": accessToken(2, { secret: "another-secret-that-is-at-least-32-bytes" }),
 };
 
 before(async () => {
-  userService = createServer((req, res) => {
-    const token = req.headers.authorization?.replace(/^Bearer /i, "");
-    if (req.url !== "/me") {
-      res.writeHead(404).end();
-    } else if (token === "broken-token") {
-      res.writeHead(500).end();
-    } else if (users[token]) {
-      res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify(users[token]));
-    } else {
-      res.writeHead(401, { "content-type": "application/json" }).end(JSON.stringify({ error: "A valid bearer token is required" }));
-    }
-  });
-  userService.listen(0, "127.0.0.1");
-  await once(userService, "listening");
-  process.env.USER_SERVICE_BASE_URL = `http://127.0.0.1:${userService.address().port}`;
-
   await admin.connect();
   await admin.query(`CREATE DATABASE "${databaseName}"`);
   createdDatabase = true;
@@ -72,6 +80,14 @@ before(async () => {
   schema = await import("../dist/db/schema.js");
   ({ openingHoursMatch } = await import("../dist/db/opening-hours.js"));
   await migrate(db, { migrationsFolder: "./drizzle" });
+  await db.insert(schema.users).values([
+    { id: 1, displayName: "Student", role: "student", version: 1 },
+    { id: 2, displayName: "Admin", role: "admin", version: 2 },
+    { id: 3, displayName: "Deleted", role: "admin", version: 4, deletedAt: new Date() },
+  ]);
+  let setPublisher;
+  ({ setPublisher, outboxIdle } = await import("../dist/supplier-events.js"));
+  setPublisher(async () => {});
   const { app } = await import("../dist/index.js");
   server = app.listen(0, "127.0.0.1");
   await once(server, "listening");
@@ -112,9 +128,9 @@ before(async () => {
 after(async () => {
   try {
     if (server) await new Promise((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
-    if (userService) await new Promise((resolve, reject) => userService.close(error => error ? reject(error) : resolve()));
   } finally {
     try {
+      if (outboxIdle) await outboxIdle();
       if (pool) await pool.end();
       if (createdDatabase) await admin.query(`DROP DATABASE "${databaseName}"`);
     } finally {
@@ -127,7 +143,7 @@ function request(path, { token, method = "GET", body } = {}) {
   return fetch(`${baseUrl}${path}`, {
     method,
     headers: {
-      ...(token ? { authorization: `Bearer ${token}` } : {}),
+      ...(token ? { authorization: `Bearer ${tokens[token] ?? token}` } : {}),
       ...(body === undefined ? {} : { "content-type": "application/json" }),
     },
     body: body === undefined ? undefined : JSON.stringify(body),
@@ -230,8 +246,8 @@ test("Singapore opening periods handle boundaries, gaps, overnight hours, and Sa
   }
 });
 
-test("GET requires a bearer token that user-service accepts", async () => {
-  for (const token of [undefined, "unknown-token"]) {
+test("GET requires a valid, unexpired bearer token signed with the shared secret", async () => {
+  for (const token of [undefined, "unknown-token", "expired-token", "wrong-secret-token"]) {
     const response = await request("/suppliers", { token });
     assert.equal(response.status, 401);
     assert.deepEqual(await response.json(), { error: "A valid bearer token is required" });
@@ -240,8 +256,16 @@ test("GET requires a bearer token that user-service accepts", async () => {
   assert.equal(malformed.status, 401);
 });
 
-test("GET returns 502 when user-service fails", async () => {
-  assert.equal((await request("/suppliers", { token: "broken-token" })).status, 502);
+test("GET rejects a deleted user's token with 401", async () => {
+  const response = await request("/suppliers", { token: "deleted-token" });
+  assert.equal(response.status, 401);
+  assert.deepEqual(await response.json(), { error: "A valid bearer token is required" });
+});
+
+test("GET returns a retryable 503 while a new user has not reached the local copy", async () => {
+  const response = await request("/suppliers", { token: "pending-token" });
+  assert.equal(response.status, 503);
+  assert.equal(response.headers.get("retry-after"), "2");
 });
 
 test("students do not see inactive suppliers; admins do", async () => {
@@ -485,6 +509,72 @@ test("POST can create an inactive supplier", async () => {
   assert.equal(response.status, 201);
   assert.equal((await response.json()).isActive, false);
   assert.equal((await getSuppliers({ name: "Hidden New Cafe" }, "student-token")).length, 0);
+});
+
+for (const [path, label] of [["/types", "type"], ["/buildings", "building"]]) {
+  test(`${path} writes are administrator-only`, async () => {
+    const body = { name: `Guarded ${label}` };
+    assert.equal((await request(path, { method: "POST", body })).status, 401);
+    assert.equal((await request(path, { method: "POST", body, token: "student-token" })).status, 403);
+    const listed = await (await request(path, { token: "admin-token" })).json();
+    assert.equal(listed.some(row => row.name === body.name), false);
+    const [first] = listed;
+    assert.equal((await request(`${path}/${first.id}`, { method: "PUT", body, token: "student-token" })).status, 403);
+    assert.equal((await request(`${path}/${first.id}`, { method: "DELETE", token: "student-token" })).status, 403);
+  });
+
+  test(`${path} supports create, rename, and delete`, async () => {
+    const created = await request(path, { method: "POST", token: "admin-token", body: { name: `  New ${label}  ` } });
+    assert.equal(created.status, 201);
+    const row = await created.json();
+    assert.equal(typeof row.id, "string");
+    assert.equal(row.name, `New ${label}`);
+
+    const renamed = await request(`${path}/${row.id}`, { method: "PUT", token: "admin-token", body: { name: `Renamed ${label}` } });
+    assert.equal(renamed.status, 200);
+    assert.deepEqual(await renamed.json(), { id: row.id, name: `Renamed ${label}` });
+
+    assert.equal((await request(`${path}/${row.id}`, { method: "DELETE", token: "admin-token" })).status, 204);
+    assert.equal((await request(`${path}/${row.id}`, { method: "DELETE", token: "admin-token" })).status, 404);
+    assert.equal((await request(`${path}/${row.id}`, { method: "PUT", token: "admin-token", body: { name: "Gone" } })).status, 404);
+    assert.equal((await request(`${path}/not-a-uuid`, { method: "DELETE", token: "admin-token" })).status, 404);
+  });
+
+  test(`${path} rejects blank, long, and duplicate names`, async () => {
+    for (const body of [{ name: "" }, { name: "   " }, { name: "x".repeat(257) }, {}, []]) {
+      const response = await request(path, { method: "POST", token: "admin-token", body });
+      assert.equal(response.status, 400);
+      assert.equal(typeof (await response.json()).error, "string");
+    }
+    const existing = path === "/types" ? "Food" : "COM2";
+    assert.equal((await request(path, { method: "POST", token: "admin-token", body: { name: existing } })).status, 409);
+
+    const other = await (await request(path, { method: "POST", token: "admin-token", body: { name: `Other ${label}` } })).json();
+    const clash = await request(`${path}/${other.id}`, { method: "PUT", token: "admin-token", body: { name: existing } });
+    assert.equal(clash.status, 409);
+    assert.match((await clash.json()).error, /already exists/);
+    assert.equal((await request(`${path}/${other.id}`, { method: "DELETE", token: "admin-token" })).status, 204);
+  });
+}
+
+test("renaming a type or building updates its suppliers, and in-use rows cannot be deleted", async () => {
+  const [type] = await db.insert(schema.types).values({ name: "Laundry" }).returning();
+  const [building] = await db.insert(schema.buildings).values({ name: "UTown Residence" }).returning();
+  await db.insert(schema.suppliers).values({
+    name: "Wash Corner", supplierTypeId: type.id, buildingId: building.id, isActive: true, latitude: "1.3", longitude: "103.7",
+  });
+
+  for (const [path, id] of [["/types", type.id], ["/buildings", building.id]]) {
+    const response = await request(`${path}/${id}`, { method: "DELETE", token: "admin-token" });
+    assert.equal(response.status, 409);
+    assert.match((await response.json()).error, /still used/);
+  }
+  assert.equal((await request(`/types/${type.id}`, { method: "PUT", token: "admin-token", body: { name: "Laundromat" } })).status, 200);
+  assert.equal((await request(`/buildings/${building.id}`, { method: "PUT", token: "admin-token", body: { name: "UTown" } })).status, 200);
+
+  const [supplier] = await getSuppliers({ name: "Wash Corner" });
+  assert.equal(supplier.type, "Laundromat");
+  assert.equal(supplier.buildingName, "UTown");
 });
 
 test("POST stores operating hours, including 24-hour and overnight periods", async () => {

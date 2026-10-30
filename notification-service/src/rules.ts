@@ -9,16 +9,19 @@
 import { createHash } from "node:crypto";
 import type { Source } from "./db/schema.js";
 
-export interface Notification {
+interface NotificationBase {
   id: string;
   userId: number;
-  source: Source;
   eventId: string;
   orderId: string | null;
   type: string;
-  payload: { title: string; creditReward: number; group: boolean; memberName?: string | null };
   createdAt: string;
 }
+
+export type Notification = NotificationBase & (
+  | { source: "order"; payload: { title: string; creditReward: number; group: boolean; memberName?: string | null } }
+  | { source: "credit"; payload: { amount: number } }
+);
 
 // The requester (and, for group orders, every member) hears about the order's progress;
 // the courier about confirmation and payment. Creation, placing and cancelling are done by
@@ -35,7 +38,7 @@ const REQUESTER_EVENTS = new Set([
   "order.delivered",
   "order.expired",
 ]);
-const COURIER_EVENTS = new Set(["order.completed", "order.settled"]);
+const COURIER_EVENTS = new Set(["order.completed"]);
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -100,4 +103,43 @@ export function notificationsForOrderEvent(event: unknown): Notification[] {
       },
       createdAt: new Date(occurredAt).toISOString(),
     }));
+}
+
+const CREDIT_EVENTS = new Set([
+  "credit.account_allocated", "credit.reserved", "credit.released", "credit.transferred",
+]);
+
+export function notificationsForCreditEvent(event: unknown): Notification[] {
+  if (typeof event !== "object" || event === null) return [];
+  const { eventId, type, orderId, occurredAt, data } = event as Record<string, unknown>;
+  if (
+    typeof eventId !== "string" || !UUID.test(eventId) ||
+    typeof type !== "string" || !CREDIT_EVENTS.has(type) ||
+    typeof occurredAt !== "string" || Number.isNaN(Date.parse(occurredAt)) ||
+    (orderId !== undefined && (typeof orderId !== "string" || !UUID.test(orderId))) ||
+    (type !== "credit.account_allocated" && orderId === undefined) ||
+    typeof data !== "object" || data === null
+  ) return [];
+
+  const { status, applied, requesterId, courierId, amount } = data as Record<string, unknown>;
+  const requester = positiveInteger(requesterId);
+  const courier = positiveInteger(courierId);
+  if (
+    status !== "SUCCEEDED" || applied !== true || !requester ||
+    typeof amount !== "number" || !Number.isSafeInteger(amount) || amount <= 0 ||
+    (type === "credit.transferred" && !courier)
+  ) return [];
+
+  const recipients = new Set([requester]);
+  if (type === "credit.transferred" && courier) recipients.add(courier);
+  return [...recipients].map((userId) => ({
+    id: notificationId("credit", eventId.toLowerCase(), userId),
+    userId,
+    source: "credit",
+    eventId: eventId.toLowerCase(),
+    orderId: typeof orderId === "string" ? orderId.toLowerCase() : null,
+    type,
+    payload: { amount },
+    createdAt: new Date(occurredAt).toISOString(),
+  }));
 }

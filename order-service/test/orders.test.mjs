@@ -9,6 +9,9 @@
  * Claude Code (Opus 5.5), 2026-10-17: message attributes. Author review: Pending.
  * Claude Code (Opus 5.5), 2026-10-17: group orders and cancelling before acceptance.
  * Author review: Pending.
+ * Claude Code (Opus 5.5), 2026-10-18: published before responding. Author review: Pending.
+ * Claude Code (Opus 5.5), 2026-10-30: group joins and placing published before responding.
+ * Author review: Pending.
  */
 import assert from "node:assert/strict";
 import { createHmac, randomBytes, randomUUID } from "node:crypto";
@@ -573,4 +576,22 @@ test("group orders can be cancelled by the requester while SYNCHRONISING", async
   assert.equal((await (await request(`/orders/${order.id}/cancel`, { method: "POST", user: REQUESTER })).json()).state, "CANCELLED");
   await placed(order.id); // too late: ignored
   assert.equal((await (await request(`/orders/${order.id}`, { user: REQUESTER })).json()).state, "CANCELLED");
+});
+
+test("events are published before the response is sent", async () => {
+  // No waiting on the relay: Cloud Run throttles CPU once the response has gone.
+  const order = await createOrder();
+  assert.ok(published.some((item) => item.data.orderId === order.id && item.data.type === "order.created"));
+  await command("OpenOrder", order.id);
+  assert.ok(published.some((item) => item.data.orderId === order.id && item.data.type === "order.opened"));
+  await request(`/orders/${order.id}/accept`, { method: "POST", user: COURIER });
+  assert.ok(published.some((item) => item.data.orderId === order.id && item.data.type === "order.accepted"));
+});
+
+test("group joins and placing are published before the response is sent", async () => {
+  const order = await createOrder({ isGroupOrder: true });
+  await request(`/orders/${order.id}/join`, { method: "POST", user: COURIER });
+  assert.ok(published.some((item) => item.data.orderId === order.id && item.data.type === "order.member_joined"));
+  await placed(order.id);
+  assert.ok(published.some((item) => item.data.orderId === order.id && item.data.type === "order.created"));
 });

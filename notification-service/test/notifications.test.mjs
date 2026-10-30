@@ -26,7 +26,7 @@ process.env.JWT_SECRET = JWT_SECRET;
 process.env.NOTIFICATION_TICKET_SECRET = randomBytes(32).toString("hex");
 process.env.ALLOWED_ORIGINS = ORIGIN;
 
-let server, baseUrl, wsUrl, routeOrderEvent, notificationsForOrderEvent, storeNotifications, db, pool;
+let server, baseUrl, wsUrl, routeOrderEvent, routeCreditEvent, notificationsForOrderEvent, notificationsForCreditEvent, storeNotifications, db, pool;
 const admin = new pg.Client({ connectionString: process.env.TEST_DATABASE_URL });
 const databaseName = `notification_test_${randomBytes(8).toString("hex")}`;
 let createdDatabase = false;
@@ -78,7 +78,8 @@ before(async () => {
   process.env.DATABASE_URL = url.href;
   ({ db, pool } = await import("../dist/db/index.js"));
   await migrate(db, { migrationsFolder: "./drizzle" });
-  ({ notificationsForOrderEvent } = await import("../dist/rules.js"));
+  ({ notificationsForOrderEvent, notificationsForCreditEvent } = await import("../dist/rules.js"));
+  ({ routeCreditEvent } = await import("../dist/credit-events.js"));
   ({ storeNotifications } = await import("../dist/store.js"));
 
   const { createNotificationServer } = await import("../dist/server.js");
@@ -194,7 +195,7 @@ test("rules: requesters hear about progress, couriers about payment, nobody abou
   assert.deepEqual(recipients("order.delivered", { actorId: 20 }), [10]);
   assert.deepEqual(recipients("order.expired"), [10]);
   assert.deepEqual(recipients("order.completed", { actorId: 10 }), [20]);
-  assert.deepEqual(recipients("order.settled"), [20]);
+  assert.deepEqual(recipients("order.settled"), []);
   assert.deepEqual(recipients("order.created", { actorId: 10, courierId: null }), []);
   assert.deepEqual(recipients("order.edited", { actorId: 10, courierId: null }), []);
   assert.deepEqual(recipients("order.cancelled", { actorId: 10, courierId: null }), []);
@@ -310,4 +311,43 @@ test("live: group members' pages get order events", async () => {
   assert.equal((await member.next()).type, "order.event");
   assert.equal((await member.next()).type, "notification");
   member.socket.close();
+});
+
+function creditEvent(requesterId, courierId) {
+  return {
+    eventId: randomUUID(), type: "credit.transferred", occurredAt: new Date().toISOString(),
+    orderId: "6f1c2e0a-8a43-4c1e-9d6f-2b7f9e1a4c55",
+    data: { status: "SUCCEEDED", applied: true, requesterId, courierId, amount: 5 },
+  };
+}
+
+test("credit transfers push only recipient notifications and store redeliveries once", async () => {
+  const requester = await connect(await ticketFor(701));
+  const courier = await connect(await ticketFor(702));
+  const bystander = await connect(await ticketFor(703));
+  try {
+    const event = creditEvent(701, 702);
+    routeCreditEvent(event);
+    for (const client of [requester, courier]) {
+      const message = await client.next();
+      assert.equal(message.type, "notification");
+      assert.equal(message.notification.source, "credit");
+      assert.deepEqual(message.notification.payload, { amount: 5 });
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    for (const client of [requester, courier, bystander]) assert.equal(client.pending(), 0);
+
+    await storeNotifications(notificationsForCreditEvent(event));
+    await storeNotifications(notificationsForCreditEvent(event));
+    for (const user of [701, 702]) {
+      const { items } = await (await api("/notifications", user)).json();
+      assert.equal(items.length, 1);
+      assert.equal(items[0].source, "credit");
+      assert.deepEqual(items[0].payload, { amount: 5 });
+      assert.equal((await (await api("/notifications/unread-count", user)).json()).count, 1);
+    }
+    assert.deepEqual((await (await api("/notifications", 703)).json()).items, []);
+  } finally {
+    for (const client of [requester, courier, bystander]) client.socket.close();
+  }
 });
