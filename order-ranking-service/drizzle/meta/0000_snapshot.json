@@ -1,5 +1,5 @@
 {
-  "id": "c1036338-fc79-4e65-a8dd-509e77959b50",
+  "id": "7cc15673-871f-4081-9208-aca86f197370",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -102,6 +102,12 @@
         "embedding_error": {
           "name": "embedding_error",
           "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "embedding_retry_at": {
+          "name": "embedding_retry_at",
+          "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
         },
@@ -222,6 +228,12 @@
           "primaryKey": false,
           "notNull": true,
           "default": 0
+        },
+        "note_embedding_retry_at": {
+          "name": "note_embedding_retry_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
         },
         "updated_at": {
           "name": "updated_at",

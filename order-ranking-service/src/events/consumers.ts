@@ -100,6 +100,7 @@ export async function applyOrderEvent(message: unknown): Promise<boolean> {
         embedding: sql`case when ${textUnchanged} then ${orders.embedding} else null end`,
         embeddingAttempts: sql`case when ${textUnchanged} then ${orders.embeddingAttempts} else 0 end`,
         embeddingError: sql`case when ${textUnchanged} then ${orders.embeddingError} else null end`,
+        embeddingRetryAt: sql`case when ${textUnchanged} then ${orders.embeddingRetryAt} else null end`,
         updatedAt: sql`now()`,
       },
       setWhere: sql`${orders.sequence} < excluded.sequence`,

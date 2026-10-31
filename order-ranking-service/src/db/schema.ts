@@ -59,6 +59,8 @@ export const orders = pgTable(
     embedding: vector("embedding", { dimensions: EMBEDDING_DIMENSIONS }),
     embeddingAttempts: integer("embedding_attempts").notNull().default(0),
     embeddingError: text("embedding_error"),
+    // After a failure, not retried before this time (backing off 1, 2, 4… minutes).
+    embeddingRetryAt: timestamp("embedding_retry_at", { withTimezone: true }),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [
@@ -80,6 +82,7 @@ export const preferences = pgTable(
     note: varchar("note", { length: 500 }),
     noteEmbedding: vector("note_embedding", { dimensions: EMBEDDING_DIMENSIONS }),
     noteEmbeddingAttempts: integer("note_embedding_attempts").notNull().default(0),
+    noteEmbeddingRetryAt: timestamp("note_embedding_retry_at", { withTimezone: true }),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [

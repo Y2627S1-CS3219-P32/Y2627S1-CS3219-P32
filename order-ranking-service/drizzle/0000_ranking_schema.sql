@@ -18,6 +18,7 @@ CREATE TABLE "orders" (
 	"embedding" vector(1536),
 	"embedding_attempts" integer DEFAULT 0 NOT NULL,
 	"embedding_error" text,
+	"embedding_retry_at" timestamp with time zone,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
@@ -29,6 +30,7 @@ CREATE TABLE "preferences" (
 	"note" varchar(500),
 	"note_embedding" vector(1536),
 	"note_embedding_attempts" integer DEFAULT 0 NOT NULL,
+	"note_embedding_retry_at" timestamp with time zone,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "preferences_min_reward_check" CHECK ("preferences"."min_reward" is null or "preferences"."min_reward" > 0)
 );

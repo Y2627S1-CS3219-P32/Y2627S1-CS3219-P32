@@ -73,6 +73,7 @@ export async function savePreferences(userId: number, input: PreferencesInput): 
         note: input.note,
         noteEmbedding: sql`case when ${preferences.note} is not distinct from excluded.note then ${preferences.noteEmbedding} else null end`,
         noteEmbeddingAttempts: sql`case when ${preferences.note} is not distinct from excluded.note then ${preferences.noteEmbeddingAttempts} else 0 end`,
+        noteEmbeddingRetryAt: sql`case when ${preferences.note} is not distinct from excluded.note then ${preferences.noteEmbeddingRetryAt} else null end`,
         updatedAt: sql`now()`,
       },
     });

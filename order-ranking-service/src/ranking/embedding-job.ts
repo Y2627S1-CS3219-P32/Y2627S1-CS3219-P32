@@ -2,14 +2,20 @@
  * AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-10-31.
  * Scope: Background embedding of orders and preference notes. Events only store the
  * order; embedding happens here, outside the push handler, so an embedding outage
- * never holds up order events. Failures are retried up to EMBEDDING_MAX_ATTEMPTS.
+ * never holds up order events. Failures are retried with back-off, up to
+ * EMBEDDING_MAX_ATTEMPTS times.
  * Author review: Pending.
  */
-import { and, asc, eq, isNotNull, isNull, lt, sql } from "drizzle-orm";
+import { and, asc, eq, isNotNull, isNull, lt, or, sql, type AnyColumn } from "drizzle-orm";
 import { config } from "../config.js";
 import { db } from "../db/index.js";
 import { orders, preferences, suppliers } from "../db/schema.js";
 import { embed, orderText } from "./embeddings.js";
+
+// Due now: never failed, or its back-off has passed.
+const due = (retryAt: AnyColumn) => or(isNull(retryAt), sql`${retryAt} <= now()`);
+// 1, 2, 4, 8… minutes after the 1st, 2nd, 3rd, 4th… failure.
+const backOff = (attempts: AnyColumn) => sql`now() + make_interval(mins => power(2, ${attempts})::int)`;
 
 function message(error: unknown): string {
   return (error instanceof Error ? error.message : String(error)).slice(0, 500);
@@ -26,7 +32,7 @@ async function embedOrders(): Promise<number> {
     })
     .from(orders)
     .leftJoin(suppliers, eq(orders.supplierId, suppliers.id))
-    .where(and(isNull(orders.embedding), lt(orders.embeddingAttempts, config.embedding.maxAttempts)))
+    .where(and(isNull(orders.embedding), lt(orders.embeddingAttempts, config.embedding.maxAttempts), due(orders.embeddingRetryAt)))
     .orderBy(asc(orders.updatedAt))
     .limit(config.embedding.batchSize);
   if (pending.length === 0) return 0;
@@ -39,7 +45,7 @@ async function embedOrders(): Promise<number> {
     console.error(`[order-ranking-service] Embedding ${pending.length} orders failed: ${message(error)}`);
     for (const order of pending) {
       await db.update(orders)
-        .set({ embeddingAttempts: sql`${orders.embeddingAttempts} + 1`, embeddingError: message(error) })
+        .set({ embeddingAttempts: sql`${orders.embeddingAttempts} + 1`, embeddingError: message(error), embeddingRetryAt: backOff(orders.embeddingAttempts) })
         .where(eq(orders.id, order.id));
     }
     return 0;
@@ -65,6 +71,7 @@ async function embedNotes(): Promise<number> {
       isNotNull(preferences.note),
       isNull(preferences.noteEmbedding),
       lt(preferences.noteEmbeddingAttempts, config.embedding.maxAttempts),
+      due(preferences.noteEmbeddingRetryAt),
     ))
     .limit(config.embedding.batchSize);
   if (pending.length === 0) return 0;
@@ -76,7 +83,7 @@ async function embedNotes(): Promise<number> {
     console.error(`[order-ranking-service] Embedding ${pending.length} preference notes failed: ${message(error)}`);
     for (const row of pending) {
       await db.update(preferences)
-        .set({ noteEmbeddingAttempts: sql`${preferences.noteEmbeddingAttempts} + 1` })
+        .set({ noteEmbeddingAttempts: sql`${preferences.noteEmbeddingAttempts} + 1`, noteEmbeddingRetryAt: backOff(preferences.noteEmbeddingAttempts) })
         .where(eq(preferences.userId, row.userId));
     }
     return 0;
