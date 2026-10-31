@@ -182,10 +182,16 @@ services:
       # Claude Code (Opus 5.5), 2026-10-17. Author review: Pending.
       NUXT_NOTIFICATION_SERVICE_BASE_URL: http://notification-service:3000
       NUXT_PUBLIC_NOTIFICATION_SERVICE_URL: ws://127.0.0.1:3003
+      # Claude Code (Opus 5.5), 2026-10-31. Author review: Pending.
+      NUXT_ORDER_RANKING_SERVICE_BASE_URL: http://order-ranking-service:3000
     ports:
       - "3001:3000"
     depends_on:
       user-service:
+        condition: service_healthy
+      # Claude Code (Opus 5.5), 2026-10-31: order-events published before its subscription
+      # exists would never reach order-ranking-service. Author review: Pending.
+      order-ranking-service:
         condition: service_healthy
         
   # AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-28.
@@ -234,6 +240,9 @@ services:
       # published earlier would never reach it.
       order-service:
         condition: service_healthy
+      # Claude Code (Opus 5.5), 2026-10-31: likewise for order-ranking-service. Author review: Pending.
+      order-ranking-service:
+        condition: service_healthy
 
   # AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-10-18.
   # Scope: supplier-service Pub/Sub worker: copies user-events into the supplier database
@@ -266,6 +275,9 @@ services:
       pubsub-emulator:
         condition: service_healthy
       order-service:
+        condition: service_healthy
+      # Claude Code (Opus 5.5), 2026-10-31. Author review: Pending.
+      order-ranking-service:
         condition: service_healthy
 
   # Claude Code (Opus 5.5), 2026-10-18: publishes supplier-events the API's relay missed,
@@ -542,6 +554,82 @@ services:
       saga-orchestrator:
         condition: service_healthy
 
+  # AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-10-31.
+  # Scope: Order ranking service (pgvector database, migrations, and a ticker standing in
+  # for Cloud Scheduler to retry failed embeddings). Without OPENAI_API_KEY in .env it
+  # uses the keyless hashing embedder. Author review: Pending.
+  order-ranking-db:
+    image: pgvector/pgvector:pg17
+    ports:
+      - "127.0.0.1:5440:5432"
+    environment:
+      POSTGRES_USER: ranking
+      POSTGRES_PASSWORD: ranking
+      POSTGRES_DB: rankings
+    volumes:
+      - order-ranking-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ranking -d rankings"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  order-ranking-db-migrate:
+    build:
+      context: ./order-ranking-service
+      target: tooling
+    command: ["npm", "run", "db:migrate"]
+    environment:
+      DATABASE_URL: postgres://ranking:ranking@order-ranking-db:5432/rankings
+    depends_on:
+      order-ranking-db:
+        condition: service_healthy
+
+  order-ranking-service:
+    build: ./order-ranking-service
+    environment:
+      PORT: "3000"
+      DATABASE_URL: postgres://ranking:ranking@order-ranking-db:5432/rankings
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      # Local only: the emulator and the ticker cannot send Google OIDC tokens.
+      INTERNAL_SHARED_SECRET: ${ORDER_RANKING_INTERNAL_SECRET:-local-only-ranking-internal-secret-000}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      PUBSUB_EMULATOR_HOST: pubsub-emulator:8085
+      PUBSUB_PROJECT_ID: foc-local
+      PUBSUB_PUSH_BASE_URL: http://order-ranking-service:3000
+    ports:
+      - "3006:3000"
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/health').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    depends_on:
+      order-ranking-db-migrate:
+        condition: service_completed_successfully
+      pubsub-emulator:
+        condition: service_healthy
+
+  order-ranking-ticker:
+    image: curlimages/curl:8.11.1
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        while true; do
+          sleep 60
+          curl -fsS -X POST -H "x-internal-secret: $$SECRET" http://order-ranking-service:3000/internal/embeddings/process
+        done
+    environment:
+      SECRET: ${ORDER_RANKING_INTERNAL_SECRET:-local-only-ranking-internal-secret-000}
+    depends_on:
+      order-ranking-service:
+        condition: service_healthy
+
 volumes:
   supplier-db-data:
   user-db-data:
@@ -549,3 +637,4 @@ volumes:
   notification-db-data:
   credit-db-data:
   saga-db-data:
+  order-ranking-db-data:
