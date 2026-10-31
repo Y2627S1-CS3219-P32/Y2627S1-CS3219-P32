@@ -1,0 +1,34 @@
+{
+  "//": "AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-10-31. Scope: Order-ranking-service dependencies and scripts, mirroring order-service; package-lock.json is npm-generated. Author review: Pending.",
+  "name": "order-ranking-service",
+  "version": "1.0.0",
+  "description": "Order Ranking Service",
+  "main": "dist/index.js",
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "test": "npm run build && node --test test/*.test.mjs"
+  },
+  "license": "ISC",
+  "dependencies": {
+    "@google-cloud/pubsub": "^6.3.0",
+    "dotenv": "^18.0.8",
+    "drizzle-orm": "^0.45.4",
+    "express": "^5.3.0",
+    "google-auth-library": "^11.3.1",
+    "pg": "^8.23.1"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.6.5",
+    "@types/pg": "^8.23.1",
+    "drizzle-kit": "^0.31.11",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  }
+}

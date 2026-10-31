@@ -1228,6 +1228,31 @@ for context, frontend-service is being set up. The frontend’s supplier screen 
   1-3 and order-service stored them in `supplier_versions` (ending in a tombstone); the test
   supplier and type were removed afterwards. Cloud deployment was not run.
 
+# AI usage log (Order Ranking Service)
+
+## 2026-10-31: Smart request-to-courier ranking with explanations
+
+- Tool: Claude Code (Opus 5.5). Mode: Design discussion and implementation.
+- Exact prompt: `order-ranking-service makes sense, and for openai key ill give it to you later, just build it first, and then also you can start docker if u want to, and also finally one mroe question: is it possible to make it explainable, like having a threshold for time and coordinates and semantic similarity and if the similarity is high, then we show why we suggested that?`
+  (following the student's design: a separate service keeping a local copy of orders from
+  order events and embedding each order on creation, with time of day and coordinates
+  added to the embedding).
+- Key response: Added `order-ranking-service`, which copies orders from `order-events` and
+  suppliers from `supplier-events`, embeds orders in the background (OpenAI, or a keyless
+  hashing fallback) with retry back-off, and ranks open orders per courier from separate
+  parts (meaning, distance, time of day as a circular feature, preferences, reward). Each
+  part that reaches its threshold becomes a reason. The parts are kept separate instead of
+  one longer vector so each can be explained and weighted. Added a For You tab, reasons on
+  order cards, browser location, a preferences dialog, and Compose services.
+- Affected files: `order-ranking-service/`, `compose.yaml`, `.env.example`,
+  `frontend-service/` (order board, order card, ranking components, Nuxt endpoints, types,
+  config), and this log.
+- Verification: 17 unit and integration tests pass against PostgreSQL with pgvector and a
+  stand-in OpenAI server; the frontend passes `nuxt typecheck`. Not yet run end to end in
+  Docker Compose (the build failed because the machine's disk was full) and not yet run
+  with a real OpenAI key. Not added to `deploy.sh` or `cloudbuild.yaml`.
+- Author review: Pending.
+
 # AI usage log (Deployment)
 
 ## 2026-10-18: Deploying the order, notification, credit and saga services
