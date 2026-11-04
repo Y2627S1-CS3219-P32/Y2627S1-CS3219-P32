@@ -54,6 +54,8 @@ function senderName(senderId: number): string {
   if (!order.value) return "Unknown user";
   if (senderId === order.value.requester.id) return personName(order.value.requester);
   if (senderId === order.value.courier?.id) return personName(order.value.courier);
+  const member = order.value.members.find(({ id: memberId }) => memberId === senderId);
+  if (member) return personName(member);
   return "Unknown user";
 }
 </script>
@@ -68,7 +70,7 @@ function senderName(senderId: number): string {
       <p v-if="order" class="mb-6 text-center text-sm text-[#5b6570]">{{ order.title }}</p>
 
       <p v-if="error" role="alert" class="rounded-md bg-[#fdf2f2] px-4 py-3 text-center text-sm text-[#c62828]">
-        {{ statusOf(error) === 403 ? "Only the requester and assigned courier can access this chat." : statusOf(error) === 404 ? "This chatroom does not exist." : getApiErrorMessage(error) ?? "The chat could not be loaded." }}
+        {{ statusOf(error) === 403 ? "Only group participants and the assigned courier can access this chat." : statusOf(error) === 404 ? "This chatroom does not exist." : getApiErrorMessage(error) ?? "The chat could not be loaded." }}
       </p>
 
       <section v-else class="flex min-h-[65vh] flex-col overflow-hidden rounded-2xl border border-[#e1e6eb] bg-white shadow-sm">

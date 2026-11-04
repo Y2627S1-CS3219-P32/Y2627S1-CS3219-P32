@@ -1,4 +1,4 @@
-import { index, integer, pgTable, timestamp, uuid, varchar } from "drizzle-orm/pg-core";
+import { index, integer, pgTable, primaryKey, timestamp, uuid, varchar } from "drizzle-orm/pg-core";
 
 export const chatRooms = pgTable(
   "chat_rooms",
@@ -22,4 +22,16 @@ export const chatMessages = pgTable(
     sentAt: timestamp("sent_at", { withTimezone: true }).notNull(),
   },
   (table) => [index("chat_messages_order_sent_idx").on(table.orderId, table.sentAt, table.id)],
+);
+
+export const chatRoomMembers = pgTable(
+  "chat_room_members",
+  {
+    orderId: uuid("order_id").notNull().references(() => chatRooms.orderId, { onDelete: "cascade" }),
+    userId: integer("user_id").notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.orderId, table.userId] }),
+    index("chat_room_members_user_idx").on(table.userId),
+  ],
 );

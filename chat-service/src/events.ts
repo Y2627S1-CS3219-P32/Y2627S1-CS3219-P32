@@ -2,12 +2,14 @@ import { randomUUID } from "node:crypto";
 import { and, eq, isNull, lte } from "drizzle-orm";
 import { PubSub, type Message, type Subscription } from "@google-cloud/pubsub";
 import { db } from "./db/index.js";
-import { chatMessages, chatRooms } from "./db/schema.js";
+import { chatMessages, chatRoomMembers, chatRooms } from "./db/schema.js";
 import { config } from "./config.js";
 import { canAccessChat } from "./access.js";
 import { chatExpiresAt } from "./retention.js";
 
 const ORDER_EVENTS_FILTER = [
+  'attributes.type = "order.group_started"',
+  'attributes.type = "order.member_joined"',
   'attributes.type = "order.created"',
   'attributes.type = "order.accepted"',
   'attributes.type = "order.deleted"',
@@ -18,6 +20,8 @@ const ORDER_EVENTS_FILTER = [
 const MESSAGE_BODY_LIMIT = 2000;
 const CLEANUP_INTERVAL_MS = 60 * 60 * 1000;
 const ORDER_EVENT_TYPES = new Set([
+  "order.group_started",
+  "order.member_joined",
   "order.created",
   "order.accepted",
   "order.deleted",
@@ -32,6 +36,7 @@ class InvalidOrderEventError extends Error {}
 interface RoomSnapshot {
   requesterId: number;
   courierId: number | null;
+  memberIds: number[];
 }
 
 interface StoredMessage {
@@ -70,11 +75,14 @@ function isUuid(value: unknown): value is string {
 function participantIds(value: unknown): RoomSnapshot | undefined {
   if (!isRecord(value)) return undefined;
   const { requesterId, courierId } = value;
+  const memberIds = value.memberIds ?? [];
   if (
     typeof requesterId !== "number" || !Number.isSafeInteger(requesterId) || requesterId <= 0 ||
-    (courierId !== null && (typeof courierId !== "number" || !Number.isSafeInteger(courierId) || courierId <= 0))
+    (courierId !== null && (typeof courierId !== "number" || !Number.isSafeInteger(courierId) || courierId <= 0)) ||
+    !Array.isArray(memberIds) ||
+    !memberIds.every((id) => typeof id === "number" && Number.isSafeInteger(id) && id > 0)
   ) return undefined;
-  return { requesterId, courierId };
+  return { requesterId, courierId, memberIds: [...new Set([requesterId, ...memberIds, ...(courierId === null ? [] : [courierId])])] };
 }
 
 function roomTopic(orderId: string): string {
@@ -159,7 +167,13 @@ async function receiveChatMessage(
   }
 
   const [room] = await db.select().from(chatRooms).where(eq(chatRooms.orderId, expectedOrderId));
-  if (!room || room.expiresAt || !canAccessChat(room, payload.senderId)) {
+  if (!room || room.expiresAt) {
+    console.error(`[chat-service] Dropped message from a nonparticipant for order ${expectedOrderId}`);
+    return;
+  }
+  const members = await db.select({ userId: chatRoomMembers.userId }).from(chatRoomMembers)
+    .where(eq(chatRoomMembers.orderId, expectedOrderId));
+  if (!canAccessChat({ ...room, memberIds: members.map(({ userId }) => userId) }, payload.senderId)) {
     console.error(`[chat-service] Dropped message from a nonparticipant for order ${expectedOrderId}`);
     return;
   }
@@ -203,9 +217,20 @@ async function handleOrderEvent(pubsub: PubSub, event: unknown, receive: (messag
   const participants = participantIds(snapshot);
   if (!participants) throw new InvalidOrderEventError(`Invalid participants in ${event.type} event`);
 
-  if (event.type === "order.created" || event.type === "order.accepted") {
+  if (
+    event.type === "order.group_started" ||
+    event.type === "order.member_joined" ||
+    event.type === "order.created" ||
+    event.type === "order.accepted"
+  ) {
     await db.insert(chatRooms).values({ orderId: event.orderId, ...participants })
-      .onConflictDoUpdate({ target: chatRooms.orderId, set: participants });
+      .onConflictDoUpdate({
+        target: chatRooms.orderId,
+        set: { requesterId: participants.requesterId, courierId: participants.courierId },
+      });
+    await db.insert(chatRoomMembers).values(
+      participants.memberIds.map((userId) => ({ orderId: event.orderId as string, userId })),
+    ).onConflictDoNothing();
     await ensureRoomSubscription(pubsub, event.orderId, receive);
   }
 }

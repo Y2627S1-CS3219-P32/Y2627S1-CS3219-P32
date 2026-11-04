@@ -433,7 +433,7 @@ services:
       PUBSUB_EMULATOR_HOST: pubsub-emulator:8085
       PUBSUB_PROJECT_ID: foc-local
     ports:
-      - "3005:3000"
+      - "3006:3000"
     healthcheck:
       test:
         - CMD

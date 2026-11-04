@@ -3,7 +3,7 @@ import { desc, eq } from "drizzle-orm";
 import { canAccessChat } from "./access.js";
 import { getUserId, requireUser } from "./auth.js";
 import { db } from "./db/index.js";
-import { chatMessages, chatRooms } from "./db/schema.js";
+import { chatMessages, chatRoomMembers, chatRooms } from "./db/schema.js";
 import { HttpError } from "./errors.js";
 import { isValidOrderId, publishChatMessage } from "./events.js";
 
@@ -21,7 +21,11 @@ function orderIdParam(req: Request): string {
 async function accessibleRoom(orderId: string, userId: number) {
   const [room] = await db.select().from(chatRooms).where(eq(chatRooms.orderId, orderId));
   if (!room) throw new HttpError(404, "Chatroom not found");
-  if (!canAccessChat(room, userId)) throw new HttpError(403, "Only the requester and assigned courier can access this chat");
+  const members = await db.select({ userId: chatRoomMembers.userId }).from(chatRoomMembers)
+    .where(eq(chatRoomMembers.orderId, orderId));
+  if (!canAccessChat({ ...room, memberIds: members.map(({ userId: memberId }) => memberId) }, userId)) {
+    throw new HttpError(403, "Only order participants and the assigned courier can access this chat");
+  }
   if (room.expiresAt && room.expiresAt.getTime() <= Date.now()) throw new HttpError(404, "Chatroom not found");
   return room;
 }

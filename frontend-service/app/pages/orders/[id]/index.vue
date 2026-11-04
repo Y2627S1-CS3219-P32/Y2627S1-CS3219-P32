@@ -71,7 +71,7 @@ watch(error, (value) => {
         <div>
           <OrderCard :order="order" :viewer-id="viewerId" detailed :busy="busy" :hide-description="editing" @action="onAction" />
           <NuxtLink
-            v-if="order.requester.id === viewerId || order.courier?.id === viewerId"
+            v-if="isMember(order, viewerId) || order.courier?.id === viewerId"
             :to="`/orders/${encodeURIComponent(id)}/chat`"
             class="mt-4 inline-flex w-full items-center justify-center rounded-xl border border-[#173a73] px-4 py-3 text-sm font-medium text-[#173a73] transition-colors hover:bg-[#eef4fa]"
           >

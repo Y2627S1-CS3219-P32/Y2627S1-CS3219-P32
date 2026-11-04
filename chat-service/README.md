@@ -1,8 +1,11 @@
 # Chat service
 
 The chat service creates one Pub/Sub topic (`order-chat-<order-id>`) per order.
-It consumes `order.created` and `order.accepted` from `order-events` to create
-the room and add the assigned courier. `order.deleted`, `order.cancelled`,
+For group orders it creates the room at `order.group_started`, adds each member
+from `order.member_joined`, and reconciles the participant snapshot again when
+`order.created` is published. Requesters, group members, and the assigned
+courier can access the room; unrelated users cannot. `order.accepted` adds the
+assigned courier for regular orders. `order.deleted`, `order.cancelled`,
 `order.expired`, and `order.completed` make the room read-only and retain its
 messages for 30 days before removing the room and message history.
 Chat messages are published to the room's topic and persisted from its Pub/Sub
@@ -20,5 +23,5 @@ existing deployments.
 
 `docker compose up -d --build` starts the chat database, applies migrations,
 starts the Pub/Sub subscriber, and configures the frontend proxy. The service is
-available at `http://127.0.0.1:3005`. Messages are retained in the chat database
+available at `http://127.0.0.1:3006` (Compose maps host port 3006 to container port 3000). Messages are retained in the chat database
 until an order cancellation, expiry, completion, or deletion event removes the room.
