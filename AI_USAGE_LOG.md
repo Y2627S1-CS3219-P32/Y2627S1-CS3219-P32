@@ -1138,6 +1138,23 @@ for context, frontend-service is being set up. The frontend’s supplier screen 
   returned the delayed reserve and the release cancelled out, leaving the balance unchanged.
 - Author review: Pending.
 
+## 2026-10-18: Publish outbox events before responding
+
+- Tool: Claude Code (Opus 5.5). Mode: Debugging and implementation.
+- Exact prompt: `publish before responding and make that a pr`, after the student asked why the
+  credit publisher runs all the time but the order outbox relay does not, and Claude explained
+  that Cloud Run throttles CPU after a response, stalling relays left running in the background.
+- Key response: order-service and saga-orchestrator now await their outbox relay before
+  responding (to users, Pub/Sub pushes and Cloud Scheduler); failures are still logged and left
+  for the every-minute relay.
+- Affected files: `order-service/src/events/outbox.ts`, `order-service/src/orders/write.ts`,
+  `order-service/src/index.ts`, `order-service/test/orders.test.mjs`,
+  `saga-orchestrator/src/outbox.ts`, `saga-orchestrator/src/saga.ts`,
+  `saga-orchestrator/src/index.ts`, `saga-orchestrator/test/saga.test.mjs`, and this log.
+- Verification: order-service (18/18) and saga-orchestrator (9/9) tests, including new checks
+  that events are published by the time the response arrives.
+- Author review: Pending.
+
 ## 2026-10-18: Supplier-service local user copy and event worker
 
 - Tool: Claude Code (Opus 5.5). Mode: Implementation, refactoring, tests, documentation, and verification.
@@ -1227,6 +1244,24 @@ for context, frontend-service is being set up. The frontend’s supplier screen 
   set, so it can run on Cloud Run.
 - Affected files: `cloudbuild.yaml`, `deploy.sh`, `credit-service/src/events/publisher.ts`, and this log.
 - Verification: `bash -n deploy.sh`, Cloud Build YAML parsing, and a credit-service typecheck.
+- Author review: Pending.
+
+## 2026-10-18: Production fixes after deploying supplier events
+
+- Tool: Claude Code (Opus 5.5). Mode: Debugging and operations.
+- Exact prompts: `for 1 can we manualy do it`, `ok go ahead`, `ok ive merged it, go ahead and
+  deploy`, and `yes` (after asking whether "Your account is still being set up" came from
+  user-service).
+- Key response: a tested one-off SQL backfill recorded supplier.created for the 21 existing
+  production suppliers in supplier-service's outbox (identical payloads to its own code, safe to
+  repeat); a one-off job republished user.created for existing users through user-service's
+  publisher, so supplier-service, order-service and credit-service (subscribed after those users
+  signed up) caught up; notification-service now accepts WebSockets from https://nusfoc.com, and
+  `deploy.sh` keeps that origin.
+- Affected files: `deploy.sh` and this log (the backfill and republish ran as one-off Cloud Run jobs).
+- Verification: all 21 suppliers and 3 users were delivered (204/200) to each consuming service;
+  supplier-service stopped answering 503; nusfoc.com passes the WebSocket origin check (401
+  without a ticket) while unknown origins get 403.
 - Author review: Pending.
 
 ## 2026-10-18: Refactor Credit commands around financial operations
@@ -1425,4 +1460,23 @@ for context, frontend-service is being set up. The frontend’s supplier screen 
   review found no regressions in remaining interfaces. Compose configurations,
   deployment shell syntax, and whitespace checks passed. Disposable containers
   were removed. No schema migration or deployment.
+
+- Author review: Pending.
+
+# AI usage log (Postman)
+
+## 2026-10-18: Postman collection for the user, order and credit services
+
+- Tool: Claude Code (Opus 5.5). Mode: Boilerplate generation and verification.
+- Exact prompt: `can u make a postman collection for me for the order service and the credit
+  service, and the user service`
+- Key response: a Postman collection (40 requests: user auth and admin routes; order creation,
+  browsing, history, editing and state actions; credit balance; internal Pub/Sub push and
+  scheduler routes with the push format built in a pre-request script) and a local environment.
+  Logging in saves tokens and creating an order saves its id for later requests.
+- Affected files: `postman/foc.postman_collection.json`, `postman/foc-local.postman_environment.json`,
+  and this log.
+- Verification: ran the main flow and the internal push requests with Newman against the local
+  stack on the Pub/Sub emulator; fixed a variable-scope bug this found.
+
 - Author review: Pending.
