@@ -2,6 +2,8 @@
  * AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-10-18.
  * Scope: Outbox relay publishing the orchestrator's commands in order per order id, as in
  * order-service (at least once; credit and order-service deduplicate). Author review: Pending.
+ * Claude Code (Opus 5.5), 2026-10-18: callers wait for the publish before responding, since
+ * Cloud Run throttles CPU after a response. Author review: Pending.
  */
 import { asc, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "./db/index.js";
@@ -39,12 +41,13 @@ export async function publishPending(): Promise<number> {
 let running: Promise<void> | undefined;
 let rerun = false;
 
-// Publishes after a commit without delaying the response; leftovers are picked up by
-// POST /internal/outbox/publish (Cloud Scheduler).
-export function requestPublish(): void {
+// Publishes what was just committed. Callers await it before responding: Cloud Run throttles
+// CPU once a response is sent. Failures are logged; POST /internal/outbox/publish (Cloud
+// Scheduler) retries the rows still unpublished.
+export function requestPublish(): Promise<void> {
   if (running) {
     rerun = true;
-    return;
+    return running;
   }
   running = (async () => {
     do {
@@ -56,6 +59,7 @@ export function requestPublish(): void {
     .finally(() => {
       running = undefined;
     });
+  return running;
 }
 
 export function outboxIdle(): Promise<void> {

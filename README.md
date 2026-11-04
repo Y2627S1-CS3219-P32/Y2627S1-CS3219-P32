@@ -55,6 +55,29 @@ secret. `BOOTSTRAP_SECRET` is optional.
 
 ---
 
+## Run the full application locally
+
+Start Docker Desktop and configure the root `.env` as described above. From the
+repository root, run:
+
+```sh
+docker compose up -d --build
+docker compose ps
+```
+
+Compose starts all services and their dependencies, including Credit migrations
+and Pub/Sub provisioning. Open the frontend at http://127.0.0.1:3001.
+No separate startup script is needed.
+
+To stop the stack while keeping database data:
+
+```sh
+docker compose down
+```
+
+See the [Credit README](credit-service/README.md#view-credit-data) for Drizzle
+Studio and database inspection commands.
+
 ## Run the frontend
 
 ```sh

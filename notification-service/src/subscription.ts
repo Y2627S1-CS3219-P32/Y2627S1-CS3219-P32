@@ -10,7 +10,8 @@ import { randomUUID } from "node:crypto";
 import { PubSub, type Message, type Subscription } from "@google-cloud/pubsub";
 import { config } from "./config.js";
 import { routeOrderEvent } from "./order-events.js";
-import { notificationsForOrderEvent } from "./rules.js";
+import { routeCreditEvent } from "./credit-events.js";
+import { notificationsForCreditEvent, notificationsForOrderEvent, type Notification } from "./rules.js";
 import { storeNotifications } from "./store.js";
 
 export const ORDER_EVENTS_FILTER = 'hasPrefix(attributes.type, "order.")';
@@ -23,71 +24,102 @@ function parse(message: Message): unknown {
   return JSON.parse(message.data.toString("utf8"));
 }
 
-export async function subscribeToOrderEvents(): Promise<{ name: string; stop: () => Promise<void> }> {
-  const pubsub = new PubSub({ projectId: config.pubsub.projectId });
-  const topic = pubsub.topic(config.pubsub.orderEventsTopic);
-  // Locally the emulator starts empty; in Cloud the topic already exists.
+type EventSource = {
+  topic: string;
+  storeSubscription: string;
+  filter: string;
+  route: (event: unknown) => unknown;
+  notifications: (event: unknown) => Notification[];
+};
+
+async function subscribe(pubsub: PubSub, source: EventSource) {
+  const topic = pubsub.topic(source.topic);
   if (config.pubsub.emulatorHost) {
-    await pubsub.createTopic(config.pubsub.orderEventsTopic).catch((error: unknown) => {
+    await pubsub.createTopic(source.topic).catch((error: unknown) => {
       if (!isAlreadyExists(error)) throw error;
     });
   }
 
-  // Live pushes: this instance's own subscription.
   const name = `${config.pubsub.subscriptionPrefix}-${randomUUID()}`;
   const [live]: [Subscription, ...unknown[]] = await topic.createSubscription(name, {
-    filter: ORDER_EVENTS_FILTER,
+    filter: source.filter,
     enableMessageOrdering: true,
-    // Live notifications only: nothing is worth delivering after 10 minutes.
     messageRetentionDuration: { seconds: 600 },
-    // Deleted automatically after a day without a subscriber (e.g. a crashed instance).
     expirationPolicy: { ttl: { seconds: 24 * 60 * 60 } },
   });
-  live.on("message", (message) => {
-    try {
-      routeOrderEvent(parse(message));
-    } catch (error) {
-      console.error("[notification-service] Dropped unreadable order event", error);
-    }
-    // Delivered or not, the event is done: users who are offline re-fetch on connect.
-    message.ack();
-  });
-  live.on("error", (error) => console.error("[notification-service] Live subscription error", error));
-
-  // History: one subscription shared by all instances; each event is stored by one of them.
-  const store = topic.subscription(config.pubsub.storeSubscription);
-  await topic.createSubscription(config.pubsub.storeSubscription, {
-    filter: ORDER_EVENTS_FILTER,
-    enableMessageOrdering: true,
-  }).catch((error: unknown) => {
-    if (!isAlreadyExists(error)) throw error;
-  });
-  store.on("message", async (message) => {
-    let event: unknown;
-    try {
-      event = parse(message);
-    } catch (error) {
-      console.error("[notification-service] Dropped unreadable order event", error);
-      message.ack();
-      return;
-    }
-    try {
-      await storeNotifications(notificationsForOrderEvent(event));
-      message.ack();
-    } catch (error) {
-      // Pub/Sub redelivers it later.
-      console.error("[notification-service] Could not store notifications", error);
-      message.nack();
-    }
-  });
-  store.on("error", (error) => console.error("[notification-service] Store subscription error", error));
-
-  return {
-    name,
-    stop: async () => {
-      await Promise.all([live.close(), store.close()]);
-      await live.delete().catch((error: unknown) => console.error("[notification-service] Could not delete subscription", error));
-      await pubsub.close();
-    },
+  const store = topic.subscription(source.storeSubscription);
+  const stop = async () => {
+    await Promise.allSettled([live.close(), store.close()]);
+    await live.delete().catch((error: unknown) => console.error("[notification-service] Could not delete subscription", error));
   };
+  try {
+    await topic.createSubscription(source.storeSubscription, {
+      filter: source.filter,
+      enableMessageOrdering: true,
+    }).catch((error: unknown) => {
+      if (!isAlreadyExists(error)) throw error;
+    });
+    live.on("message", (message) => {
+      try {
+        source.route(parse(message));
+      } catch (error) {
+        console.error(`[notification-service] Dropped unreadable event from ${source.topic}`, error);
+      }
+      message.ack();
+    });
+    live.on("error", (error) => console.error("[notification-service] Live subscription error", error));
+    store.on("message", async (message) => {
+      let event: unknown;
+      try {
+        event = parse(message);
+      } catch (error) {
+        console.error(`[notification-service] Dropped unreadable event from ${source.topic}`, error);
+        message.ack();
+        return;
+      }
+      try {
+        await storeNotifications(source.notifications(event));
+        message.ack();
+      } catch (error) {
+        console.error("[notification-service] Could not store notifications", error);
+        message.nack();
+      }
+    });
+    store.on("error", (error) => console.error("[notification-service] Store subscription error", error));
+    return { name, stop };
+  } catch (error) {
+    await stop();
+    throw error;
+  }
+}
+
+export async function subscribeToEvents() {
+  const pubsub = new PubSub({ projectId: config.pubsub.projectId });
+  const subscriptions: Awaited<ReturnType<typeof subscribe>>[] = [];
+  const stop = async () => {
+    await Promise.allSettled(subscriptions.map((subscription) => subscription.stop()));
+    await pubsub.close();
+  };
+  try {
+    for (const source of [
+      {
+        topic: config.pubsub.orderEventsTopic,
+        storeSubscription: config.pubsub.storeSubscription,
+        filter: ORDER_EVENTS_FILTER,
+        route: routeOrderEvent,
+        notifications: notificationsForOrderEvent,
+      },
+      {
+        topic: config.pubsub.creditEventsTopic,
+        storeSubscription: config.pubsub.creditStoreSubscription,
+        filter: 'hasPrefix(attributes.type, "credit.")',
+        route: routeCreditEvent,
+        notifications: notificationsForCreditEvent,
+      },
+    ]) subscriptions.push(await subscribe(pubsub, source));
+    return { name: subscriptions.map((subscription) => subscription.name).join(", "), stop };
+  } catch (error) {
+    await stop();
+    throw error;
+  }
 }

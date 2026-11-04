@@ -7,11 +7,9 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import { PubSub } from "@google-cloud/pubsub";
 import { createApp } from "../dist/app.js";
-import { execute } from "../dist/credit/commands.js";
-import { userEvent } from "../dist/credit/accounts.js";
-import { balance, reservation, lookup } from "../dist/credit/queries.js";
+import { getBalance as balance } from "../dist/services/accounts.js";
 import { pool } from "../dist/db/index.js";
-import { publishBatch } from "../dist/events/publisher.js";
+import { publishBatch } from "../dist/outbox-publisher/publisher.js";
 
 const projectId = process.env.PUBSUB_PROJECT_ID ?? "foc-local";
 const pubsub = new PubSub({ projectId });
@@ -32,24 +30,16 @@ subscription.on("message", (message) => {
   message.ack();
 });
 subscription.on("error", (error) => console.error(error.message));
-const processed = [];
-const failed = [];
-const server = createApp({
-  execute: async (command) => {
-    try {
-      const result = await execute(command);
-      processed.push({ requestId: command.requestId, result });
-      return result;
-    } catch (error) {
-      failed.push({ requestId: command.requestId, code: error.code });
-      throw error;
-    }
-  },
-  userEvent,
-  balance,
-  reservation,
-  lookup,
-}).listen(Number(process.env.PORT ?? 3004), "0.0.0.0");
+const deliveries = [];
+const server = createApp().listen(Number(process.env.PORT ?? 3004), "0.0.0.0");
+server.on("request", (request, response) => {
+  response.once("finish", () => {
+    const data = request.body?.message?.data;
+    if (request.url.split("?")[0] !== "/internal/pubsub/credit-commands" || !data) return;
+    const command = JSON.parse(Buffer.from(data, "base64").toString());
+    deliveries.push({ requestId: command.requestId, status: response.statusCode });
+  });
+});
 await new Promise((resolve) => server.once("listening", resolve));
 const directory = await mkdtemp(join(tmpdir(), "credit-command-proof-"));
 const userId = 100000 + Math.floor(Math.random() * 1000000000);
@@ -68,14 +58,14 @@ const publish = (command) =>
     attributes: { type: command.type },
   });
 const outcome = async (command, cli = false) => {
-  const before = processed.filter(
-    (item) => item.requestId === command.requestId,
+  const before = deliveries.filter(
+    (item) => item.requestId === command.requestId && item.status === 204,
   ).length;
   if (cli) {
     const file = join(directory, "command.json");
     await writeFile(file, JSON.stringify(command));
     const { stdout } = await promisify(execFile)(process.execPath, [
-      "dist/events/send-command.js",
+      "dist/scripts/send-command.js",
       file,
     ]);
     const accepted = JSON.parse(stdout);
@@ -85,7 +75,7 @@ const outcome = async (command, cli = false) => {
   } else await publish(command);
   await wait(
     () =>
-      processed.filter((item) => item.requestId === command.requestId).length >
+      deliveries.filter((item) => item.requestId === command.requestId && item.status === 204).length >
       before,
     "command push commit",
   );
@@ -183,15 +173,12 @@ try {
     ).rows[0].count,
     beforeReplay,
   );
-  assert.equal(
-    (await request("/internal/v1/credit-orders/" + reserve.requestId)).status,
-    200,
-  );
-  assert.equal(
-    (await request("/internal/v1/credit-reservations/" + reserve.orderId)).body
-      .reservationState,
-    "HELD",
-  );
+  for (const path of [
+    `/internal/v1/credit-orders/${reserve.requestId}`,
+    `/internal/v1/credit-reservations/${reserve.orderId}`,
+  ]) assert.equal((await fetch(base + path, {
+    headers: { "x-internal-secret": process.env.INTERNAL_SHARED_SECRET },
+  })).status, 404);
   const rejected = await outcome({
     ...reserve,
     requestId: randomUUID(),
@@ -234,7 +221,7 @@ try {
   assert.equal((await balance(userId)).reservedCredits, 0);
   assert.equal((await balance(courierId)).totalCredits, 1120);
   console.log(
-    "PASS CLI and Pub/Sub reserve, duplicate replay, rejection, transfer, release, correlated outcomes, and HTTP reads",
+    "PASS CLI and Pub/Sub reserve, duplicate replay, rejection, transfer, release, correlated outcomes, JWT balance read, and removed diagnostic routes",
   );
 
   for (const path of [
@@ -281,10 +268,8 @@ try {
   await publish(pending);
   await wait(
     () =>
-      failed.some(
-        (item) =>
-          item.requestId === pending.requestId &&
-          item.code === "ACCOUNT_PENDING",
+      deliveries.some(
+        (item) => item.requestId === pending.requestId && item.status === 503,
       ),
     "pending-account negative acknowledgment",
   );
@@ -298,7 +283,7 @@ try {
   );
   await provision(pendingUser);
   await wait(
-    () => processed.some((item) => item.requestId === pending.requestId),
+    () => deliveries.some((item) => item.requestId === pending.requestId && item.status === 204),
     "pending command redelivery",
   );
   await publishBatch(topic);
@@ -317,12 +302,14 @@ try {
   await publish(earlyTransfer);
   await wait(
     () =>
-      failed.some(
-        (item) =>
-          item.requestId === earlyTransfer.requestId &&
-          item.code === "RESERVATION_NOT_READY",
+      deliveries.some(
+        (item) => item.requestId === earlyTransfer.requestId && item.status === 503,
       ),
     "early-transfer negative acknowledgment",
+  );
+  assert.equal(
+    (await pool.query("SELECT 1 FROM credit_orders WHERE request_id=$1", [earlyTransfer.requestId])).rowCount,
+    0,
   );
   await outcome({
     ...reserve,
@@ -332,7 +319,7 @@ try {
     amount: 25,
   });
   await wait(
-    () => processed.some((item) => item.requestId === earlyTransfer.requestId),
+    () => deliveries.some((item) => item.requestId === earlyTransfer.requestId && item.status === 204),
     "early transfer redelivery",
   );
   await publishBatch(topic);
@@ -404,7 +391,7 @@ try {
   };
   await publish(command);
   await wait(
-    () => processed.some((item) => item.requestId === command.requestId),
+    () => deliveries.some((item) => item.requestId === command.requestId),
     "outbox outage setup",
   );
   const originalHost = process.env.PUBSUB_EMULATOR_HOST;
@@ -439,11 +426,15 @@ try {
   };
   await publish(release);
   await wait(
-    () => processed.some((item) => item.requestId === release.requestId),
+    () => deliveries.some((item) => item.requestId === release.requestId),
     "outbox replay release setup",
   );
-  await publishBatch(topic, async () => {
-    throw new Error("simulated crash after broker acknowledgment");
+  await publishBatch({
+    publishMessage: async (message) => {
+      await topic.publishMessage(message);
+      throw new Error("simulated crash after broker acknowledgment");
+    },
+    resumePublishing: (orderingKey) => topic.resumePublishing(orderingKey),
   });
   await wait(
     () => received.some((event) => event.requestId === command.requestId),
