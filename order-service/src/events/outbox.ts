@@ -12,6 +12,8 @@ import { config } from "../config.js";
 import { db } from "../db/index.js";
 import { orderEvents } from "../db/schema.js";
 import { publish } from "./pubsub.js";
+// Claude Code (Opus 5.5), 2026-11-04: logs through the shared pino logger. Author review: Pending.
+import { logger } from "../shared/logger.js";
 
 const BATCH = 100;
 
@@ -54,7 +56,7 @@ export async function publishPendingEvents(): Promise<number> {
         }, event.orderId, { type: event.type, orderId: event.orderId });
         published.push(event.id);
       } catch (error) {
-        console.error(`[order-service] Failed to publish event ${event.id}`, error);
+        logger.error({ err: error, eventId: event.id }, "Failed to publish event");
         blocked.add(event.orderId);
       }
     }
@@ -85,7 +87,7 @@ export function requestOutboxPublish(): Promise<void> {
       await publishPendingEvents();
     } while (rerun);
   })()
-    .catch((error: unknown) => console.error("[order-service] Outbox relay failed", error))
+    .catch((error: unknown) => logger.error({ err: error }, "Outbox relay failed"))
     .finally(() => {
       running = undefined;
     });

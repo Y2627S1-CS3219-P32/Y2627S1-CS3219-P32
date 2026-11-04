@@ -16,6 +16,8 @@ import { HttpError } from "./errors.js";
 import { parseListQuery, parseOrderEdit, parseOrderInput, UUID_PATTERN } from "./orders/input.js";
 import { getOrder, listOrderEvents, listOrders } from "./orders/queries.js";
 import { createOrder, editOrder, expireOverdueOrders, handleSagaCommand, performUserAction, USER_ACTIONS, type UserAction } from "./orders/write.js";
+// Claude Code (Opus 5.5), 2026-11-04: logs through the shared pino logger. Author review: Pending.
+import { logger } from "./shared/logger.js";
 
 export const app = express();
 app.use(express.json({ limit: "10kb" }));
@@ -92,7 +94,7 @@ function pushHandler(name: string, handle: (message: unknown) => Promise<void>) 
       await handle(message);
     } catch (error) {
       if (!(error instanceof InvalidMessageError)) throw error;
-      console.error(`[order-service] Dropped invalid ${name} message: ${error.message}`);
+      logger.error({ source: name, reason: error.message }, "Dropped invalid message");
     }
     res.status(204).end();
   };
@@ -103,7 +105,9 @@ internal.post("/pubsub/supplier-events", pushHandler("supplier-events", applySup
 internal.post("/pubsub/order-commands", pushHandler("order-commands", async (message) => {
   const command = parseSagaCommand(message);
   const result = await handleSagaCommand(command);
-  if (result !== "applied") console.log(`[order-service] ${command.type} ${command.commandId} for ${command.orderId}: ${result}`);
+  if (result !== "applied") {
+    logger.info({ commandType: command.type, commandId: command.commandId, orderId: command.orderId, result }, "Saga command not applied");
+  }
 }));
 
 // Called every minute by Cloud Scheduler (locally by the order-ticker container).
@@ -126,7 +130,7 @@ const errorHandler: ErrorRequestHandler = (error, _req, res, _next) => {
     res.status(400).json({ error: "Request body contains invalid JSON" });
     return;
   }
-  console.error("[order-service] Request failed", error);
+  logger.error({ err: error }, "Request failed");
   res.status(500).json({ error: "Internal server error" });
 };
 

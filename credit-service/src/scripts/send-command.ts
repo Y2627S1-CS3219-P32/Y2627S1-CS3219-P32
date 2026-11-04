@@ -17,6 +17,8 @@ try {
     orderingKey: command.orderId,
     attributes: { type },
   });
+  // Claude Code (Opus 5.5), 2026-11-04: the command's result, not a log; test/pubsub.mjs
+  // parses it from stdout, so it stays off the logger. Author review: Pending.
   console.log(
     JSON.stringify({
       messageId,

@@ -16,6 +16,8 @@ import {
   userEventsTopic,
   userEventsTopicName,
 } from "./events/user-events";
+// Claude Code (Opus 5.5), 2026-11-04: logs through the shared pino logger. Author review: Pending.
+import { logger } from "./shared/logger";
 
 const port = Number(process.env.PORT ?? 3334);
 const subscriptionName = process.env.PUBSUB_SUBSCRIPTION ?? "user-events-worker";
@@ -73,7 +75,7 @@ async function applyUserEvent(event: ReturnType<typeof parseUserEvent>): Promise
     try {
       await client.query("ROLLBACK");
     } catch (rollbackError) {
-      console.error("[user-event-worker] Failed to roll back event transaction", rollbackError);
+      logger.error({ err: rollbackError }, "Failed to roll back event transaction");
     }
     throw error;
   } finally {
@@ -102,7 +104,7 @@ app.post("/pubsub/user-events", async (req, res) => {
   try {
     event = parseUserEvent(JSON.parse(Buffer.from(encodedData, "base64").toString("utf8")));
   } catch (error) {
-    console.error("[user-event-worker] Invalid event payload", error);
+    logger.error({ err: error }, "Invalid event payload");
     res.status(400).json({ error: "Invalid Pub/Sub user event" });
     return;
   }
@@ -111,7 +113,7 @@ app.post("/pubsub/user-events", async (req, res) => {
     await applyUserEvent(event);
     res.status(204).end();
   } catch (error) {
-    console.error(`[user-event-worker] Failed to apply event ${event.eventId}`, error);
+    logger.error({ err: error, eventId: event.eventId }, "Failed to apply event");
     res.status(500).json({ error: "Could not apply Pub/Sub user event" });
   }
 });
@@ -138,11 +140,11 @@ initializeDatabase()
   .then(ensureLocalSubscription)
   .then(() => {
     app.listen(port, () => {
-      console.log(`[user-event-worker] Listening on port ${port} for ${userEventsTopicName}`);
+      logger.info({ port, topic: userEventsTopicName }, "User event worker listening");
     });
   })
   .catch(async (error: unknown) => {
-    console.error("[user-event-worker] Startup failed", error);
+    logger.error({ err: error }, "Startup failed");
     await pool.end();
     process.exitCode = 1;
   });

@@ -1,5 +1,5 @@
 {
-  "//": "AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-10-17. Scope: Notification-service dependencies and scripts, mirroring order-service; package-lock.json is npm-generated. Author review: Pending. Claude Code (Opus 5.5), 2026-10-17: PostgreSQL and Drizzle for stored notifications. Author review: Pending.",
+  "//": "AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-10-17. Scope: Notification-service dependencies and scripts, mirroring order-service; package-lock.json is npm-generated. Author review: Pending. Claude Code (Opus 5.5), 2026-10-17: PostgreSQL and Drizzle for stored notifications. Author review: Pending. Claude Code (Opus 5.5), 2026-11-04: pino, and pino-pretty for development, for the shared logger. Author review: Pending.",
   "name": "notification-service",
   "version": "1.0.0",
   "description": "Notification Service",
@@ -21,6 +21,7 @@
     "drizzle-orm": "^0.45.4",
     "express": "^5.3.0",
     "pg": "^8.23.1",
+    "pino": "^10.4.0",
     "ws": "^8.22.0"
   },
   "devDependencies": {
@@ -29,6 +30,7 @@
     "@types/pg": "^8.23.1",
     "@types/ws": "^8.18.2",
     "drizzle-kit": "^0.31.11",
+    "pino-pretty": "^13.2.0",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2"
   }

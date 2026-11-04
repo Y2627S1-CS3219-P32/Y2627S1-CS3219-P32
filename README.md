@@ -131,6 +131,24 @@ reports CPU, memory and network use for every container, labelled `compose_servi
 Grafana links traces, logs and metrics to one another by trace ID. The services do not
 send OpenTelemetry data yet; until they do, only container metrics appear.
 
+## Logging
+
+<!-- AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-11-04.
+Scope: Shared logger instructions. Author review: Pending. -->
+
+The backend services log through one shared [pino](https://getpino.io) logger in
+[`shared/src/logger.ts`](shared/src/logger.ts): JSON lines on stdout, with auth headers,
+passwords and tokens redacted. Docker builds pass `shared/src` in as a build context. To
+run or test a service outside Docker, copy it in first (again after each change to
+`shared/src`):
+
+```sh
+node shared/sync.mjs
+```
+
+See [`shared/README.md`](shared/README.md) for usage and the `LOG_LEVEL`, `LOG_PRETTY`
+and `OTEL_SERVICE_NAME` settings.
+
 ## Deploy to Google Cloud (Cloud Run)
 
 <!-- AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-09-30.

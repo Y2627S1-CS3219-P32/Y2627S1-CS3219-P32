@@ -10,6 +10,9 @@ RUN npm ci
 COPY tsconfig.json tsconfig.build.json ./
 COPY drizzle.config.ts ./
 COPY src ./src
+# Claude Code (Opus 5.5), 2026-11-04: shared code (the logger) from the `shared` build
+# context, which compose.yaml and cloudbuild.yaml pass in. Author review: Pending.
+COPY --from=shared . ./src/shared/
 COPY drizzle ./drizzle
 CMD ["npm", "run", "db:check"]
 

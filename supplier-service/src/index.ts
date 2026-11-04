@@ -52,6 +52,8 @@ import {
   type Transaction,
 } from "./supplier-events.js";
 import { parseSupplierInput, type SupplierInput } from "./supplier-input.js";
+// Claude Code (Opus 5.5), 2026-11-04: logs through the shared pino logger. Author review: Pending.
+import { logger } from "./shared/logger.js";
 
 export const app = express();
 const port = 3000;
@@ -196,7 +198,7 @@ const errorHandler: ErrorRequestHandler = (error, _req, res, _next) => {
     return;
   }
 
-  console.error("[supplier-service] Request failed", error);
+  logger.error({ err: error }, "Request failed");
   res.status(500).json({ error: "Internal server error" });
 };
 
@@ -205,6 +207,6 @@ app.use(errorHandler);
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   app.listen(port, "0.0.0.0", (error) => {
     if (error) throw error;
-    console.log(`Supplier service listening on http://localhost:${port}`);
+    logger.info({ port }, "Supplier service listening");
   });
 }

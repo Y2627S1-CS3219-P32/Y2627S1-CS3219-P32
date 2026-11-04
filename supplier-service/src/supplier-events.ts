@@ -9,6 +9,8 @@ import { PubSub, type Topic } from "@google-cloud/pubsub";
 import { asc, eq, inArray, isNull, sql, type SQL } from "drizzle-orm";
 import { db } from "./db/index.js";
 import { buildings, operatingHours, supplierEvents, suppliers, types } from "./db/schema.js";
+// Claude Code (Opus 5.5), 2026-11-04: logs through the shared pino logger. Author review: Pending.
+import { logger } from "./shared/logger.js";
 
 export interface SupplierSnapshot {
   id: string;
@@ -141,7 +143,7 @@ export async function publishPendingSupplierEvents(): Promise<number> {
         await publisher(event, row.supplierId, { type: row.type, supplierId: row.supplierId });
         published.push(row.id);
       } catch (error) {
-        console.error(`[supplier-service] Failed to publish supplier event ${row.id}`, error);
+        logger.error({ err: error, eventId: row.id }, "Failed to publish supplier event");
         blocked.add(row.supplierId);
       }
     }
@@ -170,7 +172,7 @@ export function requestOutboxPublish(): void {
       await publishPendingSupplierEvents();
     } while (rerun);
   })()
-    .catch((error: unknown) => console.error("[supplier-service] Outbox relay failed", error))
+    .catch((error: unknown) => logger.error({ err: error }, "Outbox relay failed"))
     .finally(() => {
       running = undefined;
     });

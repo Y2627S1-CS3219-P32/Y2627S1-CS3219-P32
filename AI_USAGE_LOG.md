@@ -55,6 +55,40 @@ Author review: Checked for correctness. -->
   data-source health checks passed. The application services are not instrumented yet.
 - Author review: Pending.
 
+## 2026-11-04: Shared pino logger
+
+- Tool: Claude Code (Opus 5.5). Mode: Implementation and verification.
+- Exact prompt: `can you create some kind of shared utility file for a logger that every service
+  can use? perhaps use pino`
+- Student decisions (asked before implementing, as they are architecture and security
+  choices): share the file through Docker build contexts rather than committed copies or a
+  local npm package; also migrate the existing `console.*` calls; redact auth headers,
+  passwords and tokens/secrets; JSON output, with pino-pretty in development.
+- Key response: Added `shared/src/logger.ts` (pino; JSON on stdout with a Cloud Logging
+  `severity` field and `message` key; ISO timestamps; `service` from `OTEL_SERVICE_NAME`,
+  Cloud Run's `K_SERVICE` or `package.json`; `LOG_LEVEL`; `LOG_PRETTY`; redaction). The six
+  backend Dockerfiles copy it from a `shared` build context, which `compose.yaml` and
+  `cloudbuild.yaml` (now `docker buildx build`, since the builder's own `docker build` is
+  Docker 20.10) pass in. `shared/sync.mjs` makes the same git-ignored copy for running outside
+  Docker; `compose.dev.yaml` syncs it into dev containers and turns on pretty output. Replaced
+  the `console.*` calls in the six services, keeping each service's message names and keeping
+  the credit service's message-only error logging; left `send-command.ts`'s output on stdout,
+  as `test/pubsub.mjs` parses it. Set `OTEL_SERVICE_NAME` for the credit publisher and the user
+  and supplier event workers in Compose so they log under their Cloud Run names.
+- Affected files: `shared/src/logger.ts`, `shared/sync.mjs`, `shared/README.md`; the
+  Dockerfile, `package.json`, `package-lock.json` and logging call sites of credit,
+  notification, order, saga, supplier and user services; `compose.yaml`, `compose.dev.yaml`,
+  `cloudbuild.yaml`, `.gitignore`, `README.md`, and this log.
+- Verification: all five TypeScript services typecheck and build; test suites pass against a
+  disposable PostgreSQL (user 9, notification 12, order 18, saga 9, supplier 50, credit 40 of
+  41). The credit architecture test fails identically without these changes, because it
+  matches `/` against Windows paths. All 17 backend images built through Compose; the full
+  stack came up healthy with only JSON log lines; dev mode printed pretty logs and Compose
+  watch synced a `shared/src` edit into the container; the Cloud Build `buildx` command built
+  an image in the `gcr.io/cloud-builders/docker` image against the local daemon. Not yet run
+  on Cloud Build itself.
+- Author review: Pending.
+
 
 # AI usage log (User Service)
 

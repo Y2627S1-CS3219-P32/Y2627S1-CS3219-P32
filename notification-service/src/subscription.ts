@@ -13,6 +13,8 @@ import { routeOrderEvent } from "./order-events.js";
 import { routeCreditEvent } from "./credit-events.js";
 import { notificationsForCreditEvent, notificationsForOrderEvent, type Notification } from "./rules.js";
 import { storeNotifications } from "./store.js";
+// Claude Code (Opus 5.5), 2026-11-04: logs through the shared pino logger. Author review: Pending.
+import { logger } from "./shared/logger.js";
 
 export const ORDER_EVENTS_FILTER = 'hasPrefix(attributes.type, "order.")';
 
@@ -50,7 +52,7 @@ async function subscribe(pubsub: PubSub, source: EventSource) {
   const store = topic.subscription(source.storeSubscription);
   const stop = async () => {
     await Promise.allSettled([live.close(), store.close()]);
-    await live.delete().catch((error: unknown) => console.error("[notification-service] Could not delete subscription", error));
+    await live.delete().catch((error: unknown) => logger.error({ err: error }, "Could not delete subscription"));
   };
   try {
     await topic.createSubscription(source.storeSubscription, {
@@ -63,17 +65,17 @@ async function subscribe(pubsub: PubSub, source: EventSource) {
       try {
         source.route(parse(message));
       } catch (error) {
-        console.error(`[notification-service] Dropped unreadable event from ${source.topic}`, error);
+        logger.error({ err: error, topic: source.topic }, "Dropped unreadable event");
       }
       message.ack();
     });
-    live.on("error", (error) => console.error("[notification-service] Live subscription error", error));
+    live.on("error", (error) => logger.error({ err: error }, "Live subscription error"));
     store.on("message", async (message) => {
       let event: unknown;
       try {
         event = parse(message);
       } catch (error) {
-        console.error(`[notification-service] Dropped unreadable event from ${source.topic}`, error);
+        logger.error({ err: error, topic: source.topic }, "Dropped unreadable event");
         message.ack();
         return;
       }
@@ -81,11 +83,11 @@ async function subscribe(pubsub: PubSub, source: EventSource) {
         await storeNotifications(source.notifications(event));
         message.ack();
       } catch (error) {
-        console.error("[notification-service] Could not store notifications", error);
+        logger.error({ err: error }, "Could not store notifications");
         message.nack();
       }
     });
-    store.on("error", (error) => console.error("[notification-service] Store subscription error", error));
+    store.on("error", (error) => logger.error({ err: error }, "Store subscription error"));
     return { name, stop };
   } catch (error) {
     await stop();

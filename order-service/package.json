@@ -1,5 +1,5 @@
 {
-  "//": "AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-10-17. Scope: Order-service dependencies and scripts, mirroring supplier-service; package-lock.json is npm-generated. Author review: Pending.",
+  "//": "AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-10-17. Scope: Order-service dependencies and scripts, mirroring supplier-service; package-lock.json is npm-generated. Author review: Pending. Claude Code (Opus 5.5), 2026-11-04: pino, and pino-pretty for development, for the shared logger. Author review: Pending.",
   "name": "order-service",
   "version": "1.0.0",
   "description": "Order Service",
@@ -21,13 +21,15 @@
     "drizzle-orm": "^0.45.4",
     "express": "^5.3.0",
     "google-auth-library": "^11.3.1",
-    "pg": "^8.23.1"
+    "pg": "^8.23.1",
+    "pino": "^10.4.0"
   },
   "devDependencies": {
     "@types/express": "^5.0.6",
     "@types/node": "^26.6.5",
     "@types/pg": "^8.23.1",
     "drizzle-kit": "^0.31.11",
+    "pino-pretty": "^13.2.0",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2"
   }

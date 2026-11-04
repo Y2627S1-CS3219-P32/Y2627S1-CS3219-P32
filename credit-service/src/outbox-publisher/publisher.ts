@@ -4,6 +4,8 @@ import { pathToFileURL } from 'node:url';
 import { config } from '../config.js';
 import { pool } from '../db/index.js';
 import { withPublisherLock } from '../repositories/outbox.js';
+// Claude Code (Opus 5.5), 2026-11-04: logs through the shared pino logger. Author review: Pending.
+import { logger } from '../shared/logger.js';
 
 export async function publishBatch(topic: Topic) {
   return withPublisherLock(async ({ rows, markPublished }) => {
@@ -23,15 +25,16 @@ export async function publishBatch(topic: Topic) {
         count++;
       } catch (error) {
         topic.resumePublishing(key);
-        console.error(
-          JSON.stringify({
+        logger.error(
+          {
             eventId: row.event_id,
             requestId: payload.requestId,
             orderId: payload.orderId,
             correlationId: payload.correlationId,
             outcome: 'retry',
             reason: error instanceof Error ? error.message : 'publish failed',
-          }),
+          },
+          'credit_event_publish_retry',
         );
         break;
       }
@@ -66,9 +69,9 @@ async function main() {
     try {
       await publishBatch(topic);
     } catch (error) {
-      console.error(
+      logger.error(
+        { reason: error instanceof Error ? error.message : 'unknown' },
         'credit_publisher_retry',
-        error instanceof Error ? error.message : 'unknown',
       );
     }
     if (running) await new Promise((resolve) => setTimeout(resolve, 1000));
@@ -79,6 +82,6 @@ async function main() {
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href)
   main().catch((error) => {
-    console.error(error);
+    logger.error({ err: error }, 'credit_publisher_failed');
     process.exitCode = 1;
   });

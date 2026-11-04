@@ -11,6 +11,8 @@ import { InvalidMessageError, parseCreditResult, parseOrderEvent } from "./messa
 import { publishPending } from "./outbox.js";
 import { decodePushMessage } from "./pubsub.js";
 import { abortOverdueReservations, handleCreditResult, handleOrderEvent, type Outcome } from "./saga.js";
+// Claude Code (Opus 5.5), 2026-11-04: logs through the shared pino logger. Author review: Pending.
+import { logger } from "./shared/logger.js";
 
 export const app = express();
 app.use(express.json({ limit: "64kb" }));
@@ -30,10 +32,10 @@ function pushHandler(name: string, handle: (message: unknown) => Promise<Outcome
     try {
       if (message === undefined) throw new InvalidMessageError("Push request has no JSON message data");
       const outcome = await handle(message);
-      if (outcome && outcome !== "applied") console.log(`[saga-orchestrator] ${name} message: ${outcome}`);
+      if (outcome && outcome !== "applied") logger.info({ source: name, outcome }, "Message not applied");
     } catch (error) {
       if (!(error instanceof InvalidMessageError)) throw error;
-      console.error(`[saga-orchestrator] Dropped invalid ${name} message: ${error.message}`);
+      logger.error({ source: name, reason: error.message }, "Dropped invalid message");
     }
     res.status(204).end();
   };
@@ -68,7 +70,7 @@ const errorHandler: ErrorRequestHandler = (error, _req, res, _next) => {
     res.status(400).json({ error: "Request body contains invalid JSON" });
     return;
   }
-  console.error("[saga-orchestrator] Request failed", error);
+  logger.error({ err: error }, "Request failed");
   res.status(500).json({ error: "Internal server error" });
 };
 app.use(errorHandler);
