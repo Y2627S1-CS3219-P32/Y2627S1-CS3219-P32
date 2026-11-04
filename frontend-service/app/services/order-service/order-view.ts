@@ -4,15 +4,18 @@
 // formatting. order-service enforces the rules; these only decide what to show.
 // Author review: Pending.
 // Claude Code (Opus 5.5), 2026-10-17: Mine tab (the viewer's own requests). Author review: Pending.
+// Claude Code (Opus 5.5), 2026-10-31: For You tab (ranked by order-ranking-service). Author review: Pending.
 import type { Order, OrderAction, OrderEvent, OrderState } from "#shared/services/order-service/types";
 
-// Mine lists the viewer's own requests (GET /orders/me) in every state.
+// Mine lists the viewer's own requests (GET /orders/me) in every state. For You lists
+// open orders ranked for the viewer by order-ranking-service.
 export const ORDER_TABS = [
-  { key: "all", label: "All", states: "", mine: false },
-  { key: "open", label: "Open", states: "OPEN", mine: false },
-  { key: "in-progress", label: "In Progress", states: "ACCEPTED,PICKED_UP,DELIVERED", mine: false },
-  { key: "done", label: "Done", states: "COMPLETE,SETTLED,CANCELLED,EXPIRED,REJECTED,ABORTED", mine: false },
-  { key: "mine", label: "Mine", states: "", mine: true },
+  { key: "all", label: "All", states: "", mine: false, ranked: false },
+  { key: "for-you", label: "For You", states: "OPEN", mine: false, ranked: true },
+  { key: "open", label: "Open", states: "OPEN", mine: false, ranked: false },
+  { key: "in-progress", label: "In Progress", states: "ACCEPTED,PICKED_UP,DELIVERED", mine: false, ranked: false },
+  { key: "done", label: "Done", states: "COMPLETE,SETTLED,CANCELLED,EXPIRED,REJECTED,ABORTED", mine: false, ranked: false },
+  { key: "mine", label: "Mine", states: "", mine: true, ranked: false },
 ] as const;
 
 const STATES: Record<OrderState, { label: string; accent: string }> = {

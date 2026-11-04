@@ -1,5 +1,6 @@
 <!-- AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-10-17.
-Scope: Order card after the student's mockups, with the viewer's action and status. Author review: Pending. -->
+Scope: Order card after the student's mockups, with the viewer's action and status. Author review: Pending.
+Claude Code (Opus 5.5), 2026-10-31: optional reasons from order-ranking-service. Author review: Pending. -->
 <script setup lang="ts">
 import type { Order, OrderAction } from "#shared/services/order-service/types";
 import { availableAction, canEdit, formatDateTime, personName, stateAccent, stateLabel, statusText } from "../order-view";
@@ -10,6 +11,8 @@ const props = defineProps<{
   // The details page shows every action and links to editing; the list only offers Accept.
   detailed?: boolean;
   busy?: boolean;
+  // Why order-ranking-service suggested this order (For You tab only).
+  reasons?: string[];
 }>();
 const emit = defineEmits<{ action: [action: OrderAction] }>();
 
@@ -44,6 +47,12 @@ const supplierName = computed(() => props.order.supplier.name || "Unknown suppli
         <span class="wrap-anywhere"><span class="sr-only">to</span>{{ order.deliveryLocation }}</span>
       </p>
       <p class="wrap-anywhere whitespace-pre-line">{{ order.description }}</p>
+      <div v-if="reasons?.length" class="mt-3 rounded-md bg-[#fdf3ea] px-3 py-2 text-sm text-[#7a4a1d]">
+        <p class="font-semibold">Why this order</p>
+        <ul class="mt-1 list-disc space-y-0.5 pl-4">
+          <li v-for="reason in reasons" :key="reason">{{ reason }}</li>
+        </ul>
+      </div>
       <div class="mt-auto pt-4">
         <p>Reward: <strong class="font-semibold text-[#4a4f55]">{{ order.creditReward }}</strong></p>
         <p v-if="order.state === 'OPEN' && order.expiresAt">Expires In: <strong class="font-semibold text-[#4a4f55]">{{ formatDateTime(order.expiresAt) }}</strong></p>

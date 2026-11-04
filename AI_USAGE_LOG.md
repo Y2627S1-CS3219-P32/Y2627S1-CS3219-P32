@@ -1228,6 +1228,54 @@ for context, frontend-service is being set up. The frontend’s supplier screen 
   1-3 and order-service stored them in `supplier_versions` (ending in a tombstone); the test
   supplier and type were removed afterwards. Cloud deployment was not run.
 
+# AI usage log (Order Ranking Service)
+
+## 2026-10-31: Smart request-to-courier ranking with explanations
+
+- Tool: Claude Code (Opus 5.5). Mode: Design discussion and implementation.
+- Exact prompt: `order-ranking-service makes sense, and for openai key ill give it to you later, just build it first, and then also you can start docker if u want to, and also finally one mroe question: is it possible to make it explainable, like having a threshold for time and coordinates and semantic similarity and if the similarity is high, then we show why we suggested that?`
+  (following the student's design: a separate service keeping a local copy of orders from
+  order events and embedding each order on creation, with time of day and coordinates
+  added to the embedding).
+- Key response: Added `order-ranking-service`, which copies orders from `order-events` and
+  suppliers from `supplier-events`, embeds orders in the background (OpenAI, or a keyless
+  hashing fallback) with retry back-off, and ranks open orders per courier from separate
+  parts (meaning, distance, time of day as a circular feature, preferences, reward). Each
+  part that reaches its threshold becomes a reason. The parts are kept separate instead of
+  one longer vector so each can be explained and weighted. Added a For You tab, reasons on
+  order cards, browser location, a preferences dialog, and Compose services.
+- Affected files: `order-ranking-service/`, `compose.yaml`, `.env.example`,
+  `frontend-service/` (order board, order card, ranking components, Nuxt endpoints, types,
+  config), and this log.
+- Verification: 17 unit and integration tests pass against PostgreSQL with pgvector and a
+  stand-in OpenAI server; the frontend passes `nuxt typecheck`. Not yet run end to end in
+  Docker Compose (the build failed because the machine's disk was full) and not yet run
+  with a real OpenAI key. Not added to `deploy.sh` or `cloudbuild.yaml`.
+- Author review: Pending.
+
+## 2026-11-01: Fixes to the ranking explanations, embeddings and For You refresh
+
+- Tool: Claude Code (Opus 5.5). Mode: Debugging and implementation.
+- Exact prompt: `sector 1, backlog, fix the problems with pr 26 and you can push directly to the pr`
+  (following a review of PR 26).
+- Key response: The time reason says "orders like this" only when both orders have
+  embeddings that reach the semantic threshold. Orders are embedded again when their
+  supplier arrives after them or changes name or type, or when an order moves to another
+  supplier; a new `embedding_input_version` column (migration 0001) stops an embedding of
+  the old text that was in flight from being stored. Past deliveries are only orders in
+  `DELIVERED`, `COMPLETE` or `SETTLED`, not every accepted order. The order board refreshes
+  the For You list, not the hidden ordinary list, after a failed action and on
+  notifications. Test teardown waits for database connections to close.
+- Affected files: `order-ranking-service/` (score, consumers, embedding job, queries, app,
+  schema, migration 0001, tests, README), `frontend-service/` (order board, ranked list,
+  rankings key), and this log.
+- Verification: `npm test` in order-ranking-service, 23/23, against PostgreSQL 16 with
+  pgvector 0.6.0 and the stand-in OpenAI server; new tests failed before each fix. The
+  frontend passes `nuxt typecheck`. The For You refresh was checked in headless Chromium
+  against the Nuxt dev server with stand-in services, before and after the fix. Not run in
+  Docker Compose or with a real OpenAI key.
+- Author review: Pending.
+
 # AI usage log (Deployment)
 
 ## 2026-10-18: Deploying the order, notification, credit and saga services
