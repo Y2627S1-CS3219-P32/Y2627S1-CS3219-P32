@@ -179,6 +179,7 @@ services:
       NUXT_CREDIT_SERVICE_BASE_URL: http://credit-service:3000
       # Claude Code (Opus 5.5), 2026-10-17. Author review: Pending.
       NUXT_ORDER_SERVICE_BASE_URL: http://order-service:3000
+      NUXT_CHAT_SERVICE_BASE_URL: http://chat-service:3000
       # Claude Code (Opus 5.5), 2026-10-17. Author review: Pending.
       NUXT_NOTIFICATION_SERVICE_BASE_URL: http://notification-service:3000
       NUXT_PUBLIC_NOTIFICATION_SERVICE_URL: ws://127.0.0.1:3003
@@ -186,6 +187,8 @@ services:
       - "3001:3000"
     depends_on:
       user-service:
+        condition: service_healthy
+      chat-service:
         condition: service_healthy
         
   # AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-28.
@@ -388,6 +391,61 @@ services:
         condition: service_completed_successfully
       pubsub-emulator:
         condition: service_healthy
+      chat-service:
+        condition: service_healthy
+
+  chat-db:
+    image: postgres:17
+    ports:
+      - "127.0.0.1:5440:5432"
+    environment:
+      POSTGRES_USER: chat
+      POSTGRES_PASSWORD: chat
+      POSTGRES_DB: chats
+    volumes:
+      - chat-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U chat -d chats"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  chat-db-migrate:
+    build:
+      context: ./chat-service
+      target: tooling
+    command: ["npm", "run", "db:migrate"]
+    environment:
+      DATABASE_URL: postgres://chat:chat@chat-db:5432/chats
+    depends_on:
+      chat-db:
+        condition: service_healthy
+
+  chat-service:
+    build: ./chat-service
+    environment:
+      PORT: "3000"
+      DATABASE_URL: postgres://chat:chat@chat-db:5432/chats
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      PUBSUB_EMULATOR_HOST: pubsub-emulator:8085
+      PUBSUB_PROJECT_ID: foc-local
+    ports:
+      - "3005:3000"
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/health').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    depends_on:
+      chat-db-migrate:
+        condition: service_completed_successfully
+      pubsub-emulator:
+        condition: service_healthy
 
   # AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-10-17.
   # Scope: Notification service (WebSockets for order events). Author review: Pending.
@@ -549,3 +607,4 @@ volumes:
   notification-db-data:
   credit-db-data:
   saga-db-data:
+  chat-db-data:

@@ -36,6 +36,7 @@ microservice (`user-service/`, `supplier-service/`, `order-service/`,
 ├── supplier-service/
 ├── order-service/
 ├── credit-service/
+├── chat-service/
 ├── <n2h-service>/
 └── README.md
 ```
@@ -43,6 +44,9 @@ microservice (`user-service/`, `supplier-service/`, `order-service/`,
 - Any **nice-to-have (N2H)** feature that warrants its own service should
   be added as an **additional folder** at the same level, following the
   same per-service structure.
+- `chat-service/` owns one Pub/Sub-backed chatroom per order and restricts
+  message access to the requester and assigned courier. See its
+  [service README](chat-service/README.md) for details.
 - Files for agentic coding tools (e.g. agent configs, prompts, skills)
   may be added as needed, but must still **respect the
   one-service-per-folder skeleton** for core implementation.

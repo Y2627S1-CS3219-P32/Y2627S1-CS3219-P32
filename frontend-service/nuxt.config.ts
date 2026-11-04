@@ -13,6 +13,7 @@ export default defineNuxtConfig({
     userServiceBaseUrl: "http://127.0.0.1:3333",
     creditServiceBaseUrl: "http://127.0.0.1:3004",
     orderServiceBaseUrl: "http://127.0.0.1:3002",
+    chatServiceBaseUrl: "http://127.0.0.1:3005",
     // Server-side, for issuing tickets.
     notificationServiceBaseUrl: "http://127.0.0.1:3003",
     public: {
