@@ -135,6 +135,7 @@ setup() {
   # database traffic, so they connect over the private IP instead of the connector.
   create_database private supplier_service suppliers supplier-database-url
   create_database socket user_service users user-database-url
+  create_database socket chat_service chats chat-database-url
 
   if ! secret_exists jwt-secret; then
     openssl rand -hex 32 | tr -d '\n' |
@@ -244,6 +245,8 @@ deploy_event_services() {
 
   run_job order-migrate "${REGISTRY}/order-service-tooling:${TAG}" order-database-url \
     "${SOCKET_DB_FLAGS[@]}" --command npm --args run,db:migrate
+  run_job chat-migrate "${REGISTRY}/chat-service-tooling:${TAG}" chat-database-url \
+    "${SOCKET_DB_FLAGS[@]}" --command npm --args run,db:migrate
   run_job notification-migrate "${REGISTRY}/notification-service-tooling:${TAG}" notification-database-url \
     "${SOCKET_DB_FLAGS[@]}" --command npm --args run,db:migrate
   run_job credit-migrate "${REGISTRY}/credit-service:${TAG}" credit-database-url \
@@ -254,6 +257,13 @@ deploy_event_services() {
   # Internal ingress: reached by the frontend over the VPC, and by Pub/Sub push and Cloud
   # Scheduler (same project). Internal routes check the caller's Google OIDC token.
   # (`^|^` makes | the separator, since the invoker list contains commas and @.)
+  run run deploy chat-service --region "$REGION" --image "${REGISTRY}/chat-service:${TAG}" \
+    --port 3000 --ingress internal --allow-unauthenticated \
+    --min-instances 1 --no-cpu-throttling \
+    --add-cloudsql-instances "$SQL_CONNECTION" \
+    --set-env-vars "PUBSUB_PROJECT_ID=${PROJECT_ID}" \
+    --set-secrets "DATABASE_URL=chat-database-url:latest,JWT_SECRET=jwt-secret:latest"
+
   local order_url
   order_url="$(run_url order-service)"
   run run deploy order-service --region "$REGION" --image "${REGISTRY}/order-service:${TAG}" \
@@ -418,7 +428,7 @@ deploy() {
   run run deploy frontend-service --region "$REGION" --image "${REGISTRY}/frontend-service:${TAG}" \
     --port 3000 --ingress all --allow-unauthenticated \
     --network "$NETWORK" --subnet "$SUBNET" --vpc-egress all-traffic \
-    --set-env-vars "NUXT_USER_SERVICE_BASE_URL=${user_url},NUXT_SUPPLIER_SERVICE_BASE_URL=${supplier_url},NUXT_ORDER_SERVICE_BASE_URL=$(service_url order-service),NUXT_CREDIT_SERVICE_BASE_URL=$(service_url credit-service),NUXT_NOTIFICATION_SERVICE_BASE_URL=${notification_url},NUXT_PUBLIC_NOTIFICATION_SERVICE_URL=${notification_url/https:/wss:}"
+    --set-env-vars "NUXT_USER_SERVICE_BASE_URL=${user_url},NUXT_SUPPLIER_SERVICE_BASE_URL=${supplier_url},NUXT_ORDER_SERVICE_BASE_URL=$(service_url order-service),NUXT_CHAT_SERVICE_BASE_URL=$(service_url chat-service),NUXT_CREDIT_SERVICE_BASE_URL=$(service_url credit-service),NUXT_NOTIFICATION_SERVICE_BASE_URL=${notification_url},NUXT_PUBLIC_NOTIFICATION_SERVICE_URL=${notification_url/https:/wss:}"
 
   echo "Frontend: $(service_url frontend-service)"
 }

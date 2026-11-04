@@ -70,6 +70,13 @@ watch(error, (value) => {
       <div v-else-if="order" class="grid gap-10 md:grid-cols-[20rem_1fr] md:gap-16">
         <div>
           <OrderCard :order="order" :viewer-id="viewerId" detailed :busy="busy" :hide-description="editing" @action="onAction" />
+          <NuxtLink
+            v-if="isMember(order, viewerId) || order.courier?.id === viewerId"
+            :to="`/orders/${encodeURIComponent(id)}/chat`"
+            class="mt-4 inline-flex w-full items-center justify-center rounded-xl border border-[#173a73] px-4 py-3 text-sm font-medium text-[#173a73] transition-colors hover:bg-[#eef4fa]"
+          >
+            Open chat
+          </NuxtLink>
           <p v-if="actionError" role="alert" class="mt-3 rounded-md bg-[#fdf2f2] px-3 py-2 text-sm text-[#c62828]">{{ actionError }}</p>
           <GroupPanel v-if="drafting" :order="order" :viewer-id="viewerId" :busy="busy" @join="join" />
         </div>
