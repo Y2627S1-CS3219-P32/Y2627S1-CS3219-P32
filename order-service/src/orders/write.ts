@@ -6,6 +6,7 @@
  * Author review: Pending.
  * Claude Code (Opus 5.5), 2026-10-17: title, and editing an OPEN order (order.edited).
  * Author review: Pending.
+ * Claude Code (Opus 5.5), 2026-10-18: wait for the publish before returning. Author review: Pending.
  */
 import { and, asc, desc, eq, lte } from "drizzle-orm";
 import { config } from "../config.js";
@@ -109,7 +110,7 @@ export async function createOrder(requesterId: number, input: OrderInput): Promi
     });
     return order.id;
   });
-  requestOutboxPublish();
+  await requestOutboxPublish();
   return id;
 }
 
@@ -163,7 +164,7 @@ export async function performUserAction(action: UserAction, orderId: string, use
     const updates: OrderUpdates = action === "accept" ? { courierId: userId, acceptedAt: new Date() } : {};
     await appendEvent(tx, order, transition, { actorId: userId, updates });
   });
-  requestOutboxPublish();
+  await requestOutboxPublish();
 }
 
 const EDIT = { from: "OPEN", to: "OPEN", type: "order.edited" } as const satisfies Transition;
@@ -178,7 +179,7 @@ export async function editOrder(orderId: string, userId: number, edit: OrderEdit
     if (order.currentState !== EDIT.from) throw new HttpError(409, `Order cannot be edited while ${order.currentState}`);
     await appendEvent(tx, order, EDIT, { actorId: userId, updates: edit });
   });
-  requestOutboxPublish();
+  await requestOutboxPublish();
 }
 
 export const SAGA_COMMANDS = {
@@ -211,7 +212,7 @@ export async function handleSagaCommand(command: { commandId: string; type: Saga
     await appendEvent(tx, order, transition, { actorId: null, commandId: command.commandId, updates });
     return "applied";
   });
-  if (result === "applied") requestOutboxPublish();
+  if (result === "applied") await requestOutboxPublish();
   return result;
 }
 
@@ -235,6 +236,6 @@ export async function expireOverdueOrders(now = new Date()): Promise<number> {
     total += count;
     if (count < EXPIRY_BATCH) break;
   }
-  if (total > 0) requestOutboxPublish();
+  if (total > 0) await requestOutboxPublish();
   return total;
 }

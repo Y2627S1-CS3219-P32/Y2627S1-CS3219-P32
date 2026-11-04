@@ -29,6 +29,8 @@ export const config = {
     projectId: process.env.PUBSUB_PROJECT_ID ?? process.env.GOOGLE_CLOUD_PROJECT ?? "foc-local",
     emulatorHost: process.env.PUBSUB_EMULATOR_HOST || undefined,
     orderEventsTopic: process.env.ORDER_EVENTS_TOPIC ?? "order-events",
+    creditEventsTopic: process.env.CREDIT_EVENTS_TOPIC ?? "credit-events",
+    creditStoreSubscription: process.env.CREDIT_STORE_SUBSCRIPTION ?? "notification-credit-store",
     subscriptionPrefix: process.env.SUBSCRIPTION_PREFIX ?? "notification",
     // Shared by all instances, for storing notifications.
     storeSubscription: process.env.STORE_SUBSCRIPTION ?? "notification-store",

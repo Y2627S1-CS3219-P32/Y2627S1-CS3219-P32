@@ -1,0 +1,1545 @@
+{
+  "info": {
+    "name": "Friends on Campus: user, order and credit services",
+    "description": "AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-10-18. Scope: Postman collection for the user, order and credit services. Author review: Pending.\n\nRun the user requests first: logging in saves requesterToken, courierToken and adminToken for the other folders. Create order saves orderId. Internal folders use the local shared secrets and Pub/Sub push format.\n\nSet supplierId in the environment (the default is Cool Spot from the supplier seed data) and sagaCommand for Push saga command.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "User service",
+      "item": [
+        {
+          "name": "Health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{userBaseUrl}}/health",
+              "host": [
+                "{{userBaseUrl}}"
+              ],
+              "path": [
+                "health"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          }
+        },
+        {
+          "name": "Register requester",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{userBaseUrl}}/register",
+              "host": [
+                "{{userBaseUrl}}"
+              ],
+              "path": [
+                "register"
+              ]
+            },
+            "description": "Creates a student account (university email; password needs upper, lower and a digit). Saves requesterToken and requesterId.",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"John Doe\",\n  \"displayName\": \"John-Doe\",\n  \"email\": \"{{requesterEmail}}\",\n  \"confirmEmail\": \"{{requesterEmail}}\",\n  \"password\": \"{{password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test(\"signed in\", () => pm.expect(body.token).to.be.a(\"string\"));",
+                  "pm.collectionVariables.set(\"requesterToken\", body.token);",
+                  "pm.collectionVariables.set(\"requesterId\", body.user.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Register courier",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{userBaseUrl}}/register",
+              "host": [
+                "{{userBaseUrl}}"
+              ],
+              "path": [
+                "register"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Jane Doe\",\n  \"displayName\": \"Jane-Doe\",\n  \"email\": \"{{courierEmail}}\",\n  \"confirmEmail\": \"{{courierEmail}}\",\n  \"password\": \"{{password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test(\"signed in\", () => pm.expect(body.token).to.be.a(\"string\"));",
+                  "pm.collectionVariables.set(\"courierToken\", body.token);",
+                  "pm.collectionVariables.set(\"courierId\", body.user.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Log in as requester",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{userBaseUrl}}/login",
+              "host": [
+                "{{userBaseUrl}}"
+              ],
+              "path": [
+                "login"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{requesterEmail}}\",\n  \"password\": \"{{password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test(\"signed in\", () => pm.expect(body.token).to.be.a(\"string\"));",
+                  "pm.collectionVariables.set(\"requesterToken\", body.token);",
+                  "pm.collectionVariables.set(\"requesterId\", body.user.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Log in as courier",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{userBaseUrl}}/login",
+              "host": [
+                "{{userBaseUrl}}"
+              ],
+              "path": [
+                "login"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{courierEmail}}\",\n  \"password\": \"{{password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test(\"signed in\", () => pm.expect(body.token).to.be.a(\"string\"));",
+                  "pm.collectionVariables.set(\"courierToken\", body.token);",
+                  "pm.collectionVariables.set(\"courierId\", body.user.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Log in as admin",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{userBaseUrl}}/login",
+              "host": [
+                "{{userBaseUrl}}"
+              ],
+              "path": [
+                "login"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"{{adminPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test(\"signed in\", () => pm.expect(body.token).to.be.a(\"string\"));",
+                  "pm.collectionVariables.set(\"adminToken\", body.token);",
+                  "pm.collectionVariables.set(\"adminId\", body.user.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get my account",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{userBaseUrl}}/me",
+              "host": [
+                "{{userBaseUrl}}"
+              ],
+              "path": [
+                "me"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{requesterToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update my account",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{userBaseUrl}}/me",
+              "host": [
+                "{{userBaseUrl}}"
+              ],
+              "path": [
+                "me"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{requesterToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"displayName\": \"John-Smith\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Is first-admin setup available",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{userBaseUrl}}/bootstrap",
+              "host": [
+                "{{userBaseUrl}}"
+              ],
+              "path": [
+                "bootstrap"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          }
+        },
+        {
+          "name": "Create first administrator",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-bootstrap-secret",
+                "value": "{{bootstrapSecret}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{userBaseUrl}}/bootstrap",
+              "host": [
+                "{{userBaseUrl}}"
+              ],
+              "path": [
+                "bootstrap"
+              ]
+            },
+            "description": "Only while no administrator exists and BOOTSTRAP_SECRET is configured.",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Admin\",\n  \"displayName\": \"Admin\",\n  \"email\": \"{{adminEmail}}\",\n  \"confirmEmail\": \"{{adminEmail}}\",\n  \"password\": \"{{adminPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Admin",
+          "item": [
+            {
+              "name": "List users",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{userBaseUrl}}/users",
+                  "host": [
+                    "{{userBaseUrl}}"
+                  ],
+                  "path": [
+                    "users"
+                  ]
+                },
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{adminToken}}",
+                      "type": "string"
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Projected event version",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{userBaseUrl}}/users/events/version",
+                  "host": [
+                    "{{userBaseUrl}}"
+                  ],
+                  "path": [
+                    "users",
+                    "events",
+                    "version"
+                  ]
+                },
+                "description": "Highest user event the worker has applied to the database.",
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{adminToken}}",
+                      "type": "string"
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Get user",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{userBaseUrl}}/users/{{requesterId}}",
+                  "host": [
+                    "{{userBaseUrl}}"
+                  ],
+                  "path": [
+                    "users",
+                    "{{requesterId}}"
+                  ]
+                },
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{adminToken}}",
+                      "type": "string"
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Create user",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{userBaseUrl}}/users",
+                  "host": [
+                    "{{userBaseUrl}}"
+                  ],
+                  "path": [
+                    "users"
+                  ]
+                },
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{adminToken}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Sam Lee\",\n  \"displayName\": \"Sam-Lee\",\n  \"email\": \"sam@u.nus.edu\",\n  \"role\": \"student\",\n  \"password\": \"{{password}}\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "if (pm.response.code === 201) pm.collectionVariables.set(\"createdUserId\", pm.response.json().id);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Update user",
+              "request": {
+                "method": "PATCH",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{userBaseUrl}}/users/{{createdUserId}}",
+                  "host": [
+                    "{{userBaseUrl}}"
+                  ],
+                  "path": [
+                    "users",
+                    "{{createdUserId}}"
+                  ]
+                },
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{adminToken}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"role\": \"admin\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Delete user",
+              "request": {
+                "method": "DELETE",
+                "header": [],
+                "url": {
+                  "raw": "{{userBaseUrl}}/users/{{createdUserId}}",
+                  "host": [
+                    "{{userBaseUrl}}"
+                  ],
+                  "path": [
+                    "users",
+                    "{{createdUserId}}"
+                  ]
+                },
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{adminToken}}",
+                      "type": "string"
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Order service",
+      "item": [
+        {
+          "name": "Health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{orderBaseUrl}}/health",
+              "host": [
+                "{{orderBaseUrl}}"
+              ],
+              "path": [
+                "health"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          }
+        },
+        {
+          "name": "Create order",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{orderBaseUrl}}/orders",
+              "host": [
+                "{{orderBaseUrl}}"
+              ],
+              "path": [
+                "orders"
+              ]
+            },
+            "description": "Starts PENDING; the saga opens it once credits are reserved. Needs the supplier in order-service's copy (see Internal \u2192 Push supplier.created). Saves orderId.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{requesterToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"supplierId\": \"{{supplierId}}\",\n  \"title\": \"Order me coffee\",\n  \"description\": \"One iced latte, less sweet\",\n  \"deliveryLocation\": \"COM1 level 2 lobby\",\n  \"creditReward\": 20\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) pm.collectionVariables.set(\"orderId\", pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Browse orders",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{orderBaseUrl}}/orders?state=OPEN&sort=-reward&limit=20",
+              "host": [
+                "{{orderBaseUrl}}"
+              ],
+              "path": [
+                "orders"
+              ],
+              "query": [
+                {
+                  "key": "state",
+                  "value": "OPEN"
+                },
+                {
+                  "key": "sort",
+                  "value": "-reward"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                },
+                {
+                  "key": "supplierId",
+                  "value": "{{supplierId}}",
+                  "disabled": true
+                },
+                {
+                  "key": "cursor",
+                  "value": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "state: one state or comma-separated. sort: createdAt, -createdAt, reward, -reward. Use nextCursor for the next page.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{courierToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "My orders",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{orderBaseUrl}}/orders/me?limit=20",
+              "host": [
+                "{{orderBaseUrl}}"
+              ],
+              "path": [
+                "orders",
+                "me"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{requesterToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get order",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{orderBaseUrl}}/orders/{{orderId}}",
+              "host": [
+                "{{orderBaseUrl}}"
+              ],
+              "path": [
+                "orders",
+                "{{orderId}}"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{requesterToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Order history",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{orderBaseUrl}}/orders/{{orderId}}/events",
+              "host": [
+                "{{orderBaseUrl}}"
+              ],
+              "path": [
+                "orders",
+                "{{orderId}}",
+                "events"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{requesterToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Edit order (requester, while OPEN)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{orderBaseUrl}}/orders/{{orderId}}",
+              "host": [
+                "{{orderBaseUrl}}"
+              ],
+              "path": [
+                "orders",
+                "{{orderId}}"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{requesterToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Order me two coffees\",\n  \"deliveryLocation\": \"LT11\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Accept (courier)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{orderBaseUrl}}/orders/{{orderId}}/accept",
+              "host": [
+                "{{orderBaseUrl}}"
+              ],
+              "path": [
+                "orders",
+                "{{orderId}}",
+                "accept"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{courierToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Pick up (courier)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{orderBaseUrl}}/orders/{{orderId}}/pickup",
+              "host": [
+                "{{orderBaseUrl}}"
+              ],
+              "path": [
+                "orders",
+                "{{orderId}}",
+                "pickup"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{courierToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Deliver (courier)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{orderBaseUrl}}/orders/{{orderId}}/deliver",
+              "host": [
+                "{{orderBaseUrl}}"
+              ],
+              "path": [
+                "orders",
+                "{{orderId}}",
+                "deliver"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{courierToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Confirm receipt (requester)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{orderBaseUrl}}/orders/{{orderId}}/confirm",
+              "host": [
+                "{{orderBaseUrl}}"
+              ],
+              "path": [
+                "orders",
+                "{{orderId}}",
+                "confirm"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{requesterToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Cancel (requester, before acceptance)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{orderBaseUrl}}/orders/{{orderId}}/cancel",
+              "host": [
+                "{{orderBaseUrl}}"
+              ],
+              "path": [
+                "orders",
+                "{{orderId}}",
+                "cancel"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{requesterToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Internal (Pub/Sub push, scheduler)",
+          "description": "Local only: authenticated with the shared secret (orderInternalSecret). In Cloud these need a Google OIDC token.",
+          "item": [
+            {
+              "name": "Push supplier.created",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "x-internal-secret",
+                    "value": "{{orderInternalSecret}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{orderBaseUrl}}/internal/pubsub/supplier-events",
+                  "host": [
+                    "{{orderBaseUrl}}"
+                  ],
+                  "path": [
+                    "internal",
+                    "pubsub",
+                    "supplier-events"
+                  ]
+                },
+                "description": "Adds supplierId to order-service's supplier copy (supplier-service doesn't publish these yet).",
+                "auth": {
+                  "type": "noauth"
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"message\": { \"data\": \"{{pushData}}\" }\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "// Pub/Sub push format: the message JSON is base64-encoded in message.data.",
+                      "const message = {",
+                      "  eventId: pm.variables.replaceIn(\"{{$guid}}\"),",
+                      "  type: \"supplier.created\",",
+                      "  version: Date.now(),",
+                      "  supplier: {",
+                      "    id: pm.variables.get(\"supplierId\"),",
+                      "    name: \"Cool Spot\", type: \"Food/Coffee\", buildingName: \"COM2\", floor: \"B1\",",
+                      "    locationDescription: null, latitude: \"1.294200\", longitude: \"103.773600\",",
+                      "    isActive: true, imageUrl: null,",
+                      "    operatingHours: [{ day: 1, openingHrs: \"08:00\", closingHrs: \"20:00\" }]",
+                      "  }",
+                      "};",
+                      "const json = JSON.stringify(message);",
+                      "pm.collectionVariables.set(\"pushData\", CryptoJS.enc.Base64.stringify(CryptoJS.enc.Utf8.parse(json)));",
+                      "console.log(\"Pushed message\", message);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Push saga command",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "x-internal-secret",
+                    "value": "{{orderInternalSecret}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{orderBaseUrl}}/internal/pubsub/order-commands",
+                  "host": [
+                    "{{orderBaseUrl}}"
+                  ],
+                  "path": [
+                    "internal",
+                    "pubsub",
+                    "order-commands"
+                  ]
+                },
+                "description": "What the saga orchestrator sends. Set sagaCommand to OpenOrder, RejectOrder, AbortOrder or SettleOrder.",
+                "auth": {
+                  "type": "noauth"
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"message\": { \"data\": \"{{pushData}}\" }\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "// Pub/Sub push format: the message JSON is base64-encoded in message.data.",
+                      "const message = {",
+                      "  commandId: pm.variables.replaceIn(\"{{$guid}}\"),",
+                      "  type: pm.variables.get(\"sagaCommand\"), // OpenOrder, RejectOrder, AbortOrder or SettleOrder",
+                      "  orderId: pm.variables.get(\"orderId\")",
+                      "};",
+                      "const json = JSON.stringify(message);",
+                      "pm.collectionVariables.set(\"pushData\", CryptoJS.enc.Base64.stringify(CryptoJS.enc.Utf8.parse(json)));",
+                      "console.log(\"Pushed message\", message);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Expire overdue orders",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "x-internal-secret",
+                    "value": "{{orderInternalSecret}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{orderBaseUrl}}/internal/orders/expire-overdue",
+                  "host": [
+                    "{{orderBaseUrl}}"
+                  ],
+                  "path": [
+                    "internal",
+                    "orders",
+                    "expire-overdue"
+                  ]
+                },
+                "auth": {
+                  "type": "noauth"
+                }
+              }
+            },
+            {
+              "name": "Publish outbox",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "x-internal-secret",
+                    "value": "{{orderInternalSecret}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{orderBaseUrl}}/internal/outbox/publish",
+                  "host": [
+                    "{{orderBaseUrl}}"
+                  ],
+                  "path": [
+                    "internal",
+                    "outbox",
+                    "publish"
+                  ]
+                },
+                "auth": {
+                  "type": "noauth"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Credit service",
+      "item": [
+        {
+          "name": "Health (live)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{creditBaseUrl}}/health/live",
+              "host": [
+                "{{creditBaseUrl}}"
+              ],
+              "path": [
+                "health",
+                "live"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          }
+        },
+        {
+          "name": "Health (ready)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{creditBaseUrl}}/health/ready",
+              "host": [
+                "{{creditBaseUrl}}"
+              ],
+              "path": [
+                "health",
+                "ready"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          }
+        },
+        {
+          "name": "My balance",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{creditBaseUrl}}/api/v1/credits/me",
+              "host": [
+                "{{creditBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "credits",
+                "me"
+              ]
+            },
+            "description": "totalCredits, reservedCredits, availableCredits.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{requesterToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Internal (Pub/Sub push)",
+          "description": "Local only: authenticated with the shared secret (creditInternalSecret). In Cloud these need a Google OIDC token. Results are published on credit-events.",
+          "item": [
+            {
+              "name": "Push credit.reserve",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "x-internal-secret",
+                    "value": "{{creditInternalSecret}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{creditBaseUrl}}/internal/pubsub/credit-commands",
+                  "host": [
+                    "{{creditBaseUrl}}"
+                  ],
+                  "path": [
+                    "internal",
+                    "pubsub",
+                    "credit-commands"
+                  ]
+                },
+                "auth": {
+                  "type": "noauth"
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"message\": { \"data\": \"{{pushData}}\" }\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "// Keep the same requestId to retry; a new one is a new command.",
+                      "pm.collectionVariables.set(\"creditRequestId\", pm.variables.replaceIn(\"{{$guid}}\"));",
+                      "",
+                      "// Pub/Sub push format: the message JSON is base64-encoded in message.data.",
+                      "const message = {",
+                      "  type: \"credit.reserve\",",
+                      "  requestId: pm.variables.get(\"creditRequestId\"),",
+                      "  correlationId: pm.variables.replaceIn(\"{{$guid}}\"),",
+                      "  orderId: pm.variables.get(\"orderId\"),",
+                      "  requesterId: Number(pm.variables.get(\"requesterId\")),",
+                      "  amount: 20",
+                      "};",
+                      "const json = JSON.stringify(message);",
+                      "pm.collectionVariables.set(\"pushData\", CryptoJS.enc.Base64.stringify(CryptoJS.enc.Utf8.parse(json)));",
+                      "console.log(\"Pushed message\", message);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Push credit.release",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "x-internal-secret",
+                    "value": "{{creditInternalSecret}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{creditBaseUrl}}/internal/pubsub/credit-commands",
+                  "host": [
+                    "{{creditBaseUrl}}"
+                  ],
+                  "path": [
+                    "internal",
+                    "pubsub",
+                    "credit-commands"
+                  ]
+                },
+                "auth": {
+                  "type": "noauth"
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"message\": { \"data\": \"{{pushData}}\" }\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.collectionVariables.set(\"creditRequestId\", pm.variables.replaceIn(\"{{$guid}}\"));",
+                      "",
+                      "// Pub/Sub push format: the message JSON is base64-encoded in message.data.",
+                      "const message = {",
+                      "  type: \"credit.release\",",
+                      "  requestId: pm.variables.get(\"creditRequestId\"),",
+                      "  correlationId: pm.variables.replaceIn(\"{{$guid}}\"),",
+                      "  orderId: pm.variables.get(\"orderId\"),",
+                      "  requesterId: Number(pm.variables.get(\"requesterId\")),",
+                      "  amount: 20,",
+                      "  reason: \"Testing from Postman\"",
+                      "};",
+                      "const json = JSON.stringify(message);",
+                      "pm.collectionVariables.set(\"pushData\", CryptoJS.enc.Base64.stringify(CryptoJS.enc.Utf8.parse(json)));",
+                      "console.log(\"Pushed message\", message);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Push credit.transfer",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "x-internal-secret",
+                    "value": "{{creditInternalSecret}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{creditBaseUrl}}/internal/pubsub/credit-commands",
+                  "host": [
+                    "{{creditBaseUrl}}"
+                  ],
+                  "path": [
+                    "internal",
+                    "pubsub",
+                    "credit-commands"
+                  ]
+                },
+                "auth": {
+                  "type": "noauth"
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"message\": { \"data\": \"{{pushData}}\" }\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.collectionVariables.set(\"creditRequestId\", pm.variables.replaceIn(\"{{$guid}}\"));",
+                      "",
+                      "// Pub/Sub push format: the message JSON is base64-encoded in message.data.",
+                      "const message = {",
+                      "  type: \"credit.transfer\",",
+                      "  requestId: pm.variables.get(\"creditRequestId\"),",
+                      "  correlationId: pm.variables.replaceIn(\"{{$guid}}\"),",
+                      "  orderId: pm.variables.get(\"orderId\"),",
+                      "  courierId: Number(pm.variables.get(\"courierId\"))",
+                      "};",
+                      "const json = JSON.stringify(message);",
+                      "pm.collectionVariables.set(\"pushData\", CryptoJS.enc.Base64.stringify(CryptoJS.enc.Utf8.parse(json)));",
+                      "console.log(\"Pushed message\", message);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Command result",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "x-internal-secret",
+                    "value": "{{creditInternalSecret}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{creditBaseUrl}}/internal/v1/credit-orders/{{creditRequestId}}",
+                  "host": [
+                    "{{creditBaseUrl}}"
+                  ],
+                  "path": [
+                    "internal",
+                    "v1",
+                    "credit-orders",
+                    "{{creditRequestId}}"
+                  ]
+                },
+                "description": "Stored result of the last command sent from this collection.",
+                "auth": {
+                  "type": "noauth"
+                }
+              }
+            },
+            {
+              "name": "Reservation state",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "x-internal-secret",
+                    "value": "{{creditInternalSecret}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{creditBaseUrl}}/internal/v1/credit-reservations/{{orderId}}",
+                  "host": [
+                    "{{creditBaseUrl}}"
+                  ],
+                  "path": [
+                    "internal",
+                    "v1",
+                    "credit-reservations",
+                    "{{orderId}}"
+                  ]
+                },
+                "auth": {
+                  "type": "noauth"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "requesterToken",
+      "value": ""
+    },
+    {
+      "key": "requesterId",
+      "value": ""
+    },
+    {
+      "key": "courierToken",
+      "value": ""
+    },
+    {
+      "key": "courierId",
+      "value": ""
+    },
+    {
+      "key": "adminToken",
+      "value": ""
+    },
+    {
+      "key": "adminId",
+      "value": ""
+    },
+    {
+      "key": "orderId",
+      "value": ""
+    },
+    {
+      "key": "createdUserId",
+      "value": ""
+    },
+    {
+      "key": "creditRequestId",
+      "value": ""
+    },
+    {
+      "key": "pushData",
+      "value": ""
+    }
+  ]
+}

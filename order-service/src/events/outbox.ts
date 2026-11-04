@@ -4,6 +4,8 @@
  * to the order-events topic in per-order sequence. Author review: Pending.
  * Claude Code (Opus 5.5), 2026-10-17: type and orderId attributes for subscription
  * filters. Author review: Pending.
+ * Claude Code (Opus 5.5), 2026-10-18: callers wait for the publish before responding, since
+ * Cloud Run throttles CPU after a response. Author review: Pending.
  */
 import { asc, inArray, isNull, sql } from "drizzle-orm";
 import { config } from "../config.js";
@@ -67,13 +69,15 @@ export async function publishPendingEvents(): Promise<number> {
 let running: Promise<void> | undefined;
 let rerun = false;
 
-// Starts a relay run after a commit without delaying the response. A commit during
-// a run triggers one more run. Anything still missed is picked up by
-// POST /internal/outbox/publish (Cloud Scheduler).
-export function requestOutboxPublish(): void {
+// Publishes what was just committed. Callers await it before responding: Cloud Run throttles
+// CPU once a response is sent, which would stall a publish left running in the background.
+// A commit during a run triggers one more run, and its caller waits for that run too. Publish
+// failures are logged, not thrown: the rows stay unpublished and POST /internal/outbox/publish
+// (Cloud Scheduler) retries them.
+export function requestOutboxPublish(): Promise<void> {
   if (running) {
     rerun = true;
-    return;
+    return running;
   }
   running = (async () => {
     do {
@@ -85,6 +89,7 @@ export function requestOutboxPublish(): void {
     .finally(() => {
       running = undefined;
     });
+  return running;
 }
 
 // Lets tests wait for a relay started by a request.

@@ -36,6 +36,9 @@ PUBSUB_PUSH_SERVICE_ACCOUNT="${PUBSUB_PUSH_SERVICE_ACCOUNT:-user-event-push@${PR
 SCHEDULER_SERVICE_ACCOUNT="${SCHEDULER_SERVICE_ACCOUNT:-foc-scheduler@${PROJECT_ID}.iam.gserviceaccount.com}"
 INITIAL_CREDITS="${INITIAL_CREDITS:-1000}"
 RESERVE_TIMEOUT_SECONDS="${RESERVE_TIMEOUT_SECONDS:-60}"
+# Custom domains the frontend is served on, allowed to open notification WebSockets.
+# (Claude Code (Opus 5.5), 2026-10-18; author review: Pending.)
+PUBLIC_ORIGINS="${PUBLIC_ORIGINS:-https://nusfoc.com}"
 
 REGISTRY="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPOSITORY}"
 SQL_CONNECTION="${PROJECT_ID}:${REGION}:${SQL_INSTANCE}"
@@ -302,6 +305,7 @@ deploy_event_services() {
   origins="$(run_url frontend-service)"
   run run services describe frontend-service --region "$REGION" >/dev/null 2>&1 &&
     origins="${origins},$(service_url frontend-service)"
+  [ -n "$PUBLIC_ORIGINS" ] && origins="${origins},${PUBLIC_ORIGINS}"
   run run deploy notification-service --region "$REGION" --image "${REGISTRY}/notification-service:${TAG}" \
     --port 3000 --ingress all --allow-unauthenticated \
     --min-instances 1 --no-cpu-throttling --timeout 3600 \
