@@ -1463,6 +1463,38 @@ for context, frontend-service is being set up. The frontend’s supplier screen 
 
 - Author review: Pending.
 
+# AI usage log (Chat Service)
+
+## 2026-11-04: Pub/Sub chatrooms for orders
+
+- Tool: Copilot SDK in VS Code. Mode: Implementation, tests, documentation, and verification.
+- Exact prompts:
+
+  ```text
+  Using the pubsub event bus, implement chatrooms like this:
+  Every an order/errand is created, create a new chatroom topic for that order. Allow only the requestor and courrier to have access to the messages sent in that chatroom.
+
+  create a new chat service for this purpose. Listen for order created and order deleted events to create and destroy chatrooms respectively. Use events to send messages.
+
+  Add a simple UI for now, following the same responsiveness as the rest of the app, make it a separate page from the order details page.
+  ```
+
+  Follow-up prompts: `listen in on "order.cancelled" | "order.expired" | "order.completed" to delete a chat.`;
+  `use the display names as the chat names`; and
+  `do not delete the chatroom events. keep it for 30 days`.
+- Key response: Added a standalone chat service with a Pub/Sub topic per order,
+  participant authorization for requester and assigned courier, message persistence,
+  and a responsive order chat page. Terminal order events make rooms read-only and
+  retain their message history for 30 days before cleanup. Chat labels use the
+  participants' display names.
+- Affected files: `chat-service/`, `frontend-service/app/pages/orders/[id]/chat.vue`,
+  order details page, frontend chat proxy and shared types, `compose.yaml`,
+  `compose.dev.yaml`, `cloudbuild.yaml`, `deploy.sh`, `README.md`, and this log.
+- Verification: Chat service build/tests and typecheck, frontend typecheck and
+  production build, Compose configuration validation, deployment shell syntax,
+  and `git diff --check` passed.
+- Author review: Pending.
+
 # AI usage log (Postman)
 
 ## 2026-10-18: Postman collection for the user, order and credit services
