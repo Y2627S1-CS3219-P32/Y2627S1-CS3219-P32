@@ -34,6 +34,27 @@ Author review: Checked for correctness. -->
   and the student confirmed the supplier directory loads on the deployed frontend.
 - Author review: Pending.
 
+## 2026-11-04: Local observability stack
+
+- Tool: Claude Code (Opus 5.5). Mode: Boilerplate generation (infrastructure config) and
+  verification.
+- Exact prompt: `can you spin up an observability stack in compose? (otel, prometheus, grafana,
+  loki, tempo) - beware of the port conflicts`
+- Key response: Added a Compose overlay with an OpenTelemetry Collector (OTLP in; traces to
+  Tempo, metrics to Prometheus over OTLP, logs to Loki over OTLP; Docker container metrics),
+  Prometheus, Loki, Tempo (service-graph and span metrics written to Prometheus) and Grafana
+  with provisioned, cross-linked data sources. Host ports avoid the app's: Grafana 3030,
+  Prometheus 9090, OTLP 4317/4318, all on 127.0.0.1; Loki and Tempo are not published.
+- Affected files: `compose.observability.yaml`, `observability/otel-collector.yaml`,
+  `observability/prometheus.yaml`, `observability/loki.yaml`, `observability/tempo.yaml`,
+  `observability/grafana/provisioning/datasources/datasources.yaml`, `README.md`, and this log.
+- Verification: `docker compose -f compose.yaml -f compose.observability.yaml config` passed.
+  Started the stack, sent test traces, logs and metrics with `telemetrygen`, and found them in
+  Tempo, Loki and Prometheus through Grafana's data-source proxy; Tempo's service-graph metrics
+  and per-container metrics labelled by Compose service reached Prometheus; all three Grafana
+  data-source health checks passed. The application services are not instrumented yet.
+- Author review: Pending.
+
 
 # AI usage log (User Service)
 

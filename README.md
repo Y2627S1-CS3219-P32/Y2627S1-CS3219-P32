@@ -106,6 +106,31 @@ modules (frontend) on change.
 Editing a `package.json` rebuilds that service's image. Outside Docker, run
 `npm run dev` in any of these service folders.
 
+## Observability (local)
+
+<!-- AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-11-04.
+Scope: Local observability stack instructions. Author review: Pending. -->
+
+[`compose.observability.yaml`](compose.observability.yaml) adds an OpenTelemetry
+Collector, Prometheus, Loki, Tempo and Grafana, configured in
+[`observability/`](observability/). Add it to any other Compose command:
+
+```sh
+docker compose -f compose.yaml -f compose.observability.yaml up -d --build
+```
+
+| What | Where |
+| --- | --- |
+| Grafana (log in as `admin` / `admin`) | http://127.0.0.1:3030 |
+| Prometheus | http://127.0.0.1:9090 |
+| OTLP from containers | `http://otel-collector:4318` (HTTP), `otel-collector:4317` (gRPC) |
+| OTLP from the host | `http://127.0.0.1:4318`, `127.0.0.1:4317` |
+
+The collector sends traces to Tempo, metrics to Prometheus and logs to Loki, and
+reports CPU, memory and network use for every container, labelled `compose_service`.
+Grafana links traces, logs and metrics to one another by trace ID. The services do not
+send OpenTelemetry data yet; until they do, only container metrics appear.
+
 ## Deploy to Google Cloud (Cloud Run)
 
 <!-- AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-09-30.

@@ -1,0 +1,89 @@
+# AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-11-04.
+# Scope: Local observability stack: OpenTelemetry Collector, Prometheus, Loki, Tempo and
+# Grafana. Author review: Pending.
+#
+# Usage, with the app:  docker compose -f compose.yaml -f compose.observability.yaml up -d --build
+#        on its own:    docker compose -f compose.observability.yaml up -d
+#
+# Host ports avoid the app's 3000-3004, 3333 and 543x. All bind to 127.0.0.1:
+#   Grafana        http://127.0.0.1:3030   (admin / admin unless GRAFANA_ADMIN_* is set)
+#   Prometheus     http://127.0.0.1:9090
+#   OTLP gRPC      127.0.0.1:4317          (for services run on the host)
+#   OTLP HTTP      127.0.0.1:4318
+# Containers send OTLP to http://otel-collector:4318 (or otel-collector:4317 for gRPC).
+# Loki and Tempo are reached only through Grafana, so they publish no host ports; Tempo's
+# own 4317/4318 stay inside the Compose network and do not clash with the collector's.
+services:
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.164.0
+    command: ["--config=/etc/otelcol/config.yaml"]
+    # Root only to read the Docker socket for container metrics.
+    user: "0:0"
+    volumes:
+      - ./observability/otel-collector.yaml:/etc/otelcol/config.yaml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    ports:
+      - "127.0.0.1:4317:4317"
+      - "127.0.0.1:4318:4318"
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+      - loki
+      - tempo
+
+  prometheus:
+    image: prom/prometheus:v3.15.1
+    command:
+      - --config.file=/etc/prometheus/prometheus.yaml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=7d
+      - --web.enable-otlp-receiver
+      - --web.enable-remote-write-receiver
+      - --enable-feature=exemplar-storage
+    volumes:
+      - ./observability/prometheus.yaml:/etc/prometheus/prometheus.yaml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "127.0.0.1:9090:9090"
+    restart: unless-stopped
+
+  loki:
+    image: grafana/loki:3.7.9
+    command: ["-config.file=/etc/loki/config.yaml"]
+    volumes:
+      - ./observability/loki.yaml:/etc/loki/config.yaml:ro
+      - loki-data:/loki
+    restart: unless-stopped
+
+  tempo:
+    image: grafana/tempo:2.10.10
+    command: ["-config.file=/etc/tempo/config.yaml"]
+    volumes:
+      - ./observability/tempo.yaml:/etc/tempo/config.yaml:ro
+      - tempo-data:/var/tempo
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:13.2.5
+    environment:
+      # Grafana 13 limits anonymous users to Viewer, which cannot use Explore, so log in.
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "127.0.0.1:3030:3000"
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+      - loki
+      - tempo
+
+volumes:
+  prometheus-data:
+  loki-data:
+  tempo-data:
+  grafana-data:
