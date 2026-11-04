@@ -1506,3 +1506,30 @@ for context, frontend-service is being set up. The frontend’s supplier screen 
   Mailjet settings and its SMTP connection/authentication succeeded; no live email
   delivery confirmation was available.
 - Author review: Pending.
+
+## 2026-11-04: Move welcome email delivery to mail-service
+
+- Tool: ChatGPT (GPT-6). Mode: Refactoring, implementation, tests, and verification.
+- User instruction: Create a separate mail service that sends welcome email in
+  response to `user.created` events.
+- Key response:
+  - Added a standalone Express/Nodemailer service with a Pub/Sub push endpoint that
+    sends a welcome email only for `user.created`.
+  - Delivery failures return 500 so Pub/Sub retries; unrelated events and invalid
+    payloads are acknowledged without sending email.
+  - Removed SMTP configuration and email delivery from user-service; registration
+    now only publishes the existing user-created event.
+  - Wired a local emulator subscription and Cloud Run authenticated push
+    subscription, plus Cloud Build, Compose, Secret Manager, and service docs.
+- Affected files: `mail-service/`, `.env.example`, `compose.yaml`,
+  `compose.dev.yaml`, `cloudbuild.yaml`, `deploy.sh`, `README.md`,
+  `user-service/README.md`, `user-service/package.json`,
+  `user-service/package-lock.json`, `user-service/src/config.ts`,
+  `user-service/src/controllers/auth.controller.ts`,
+  `user-service/src/services/auth.service.ts`, and this log.
+- Verification: Mail-service tests (10/10) and user-service tests (9/9) passed;
+  strict TypeScript checks for both services and `docker compose config --quiet`
+  passed. Cloud Build YAML parsed; deployment script syntax passed; the mail and
+  user service container images built successfully, and the mail image test suite
+  passed.
+- Author review: Pending.

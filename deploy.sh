@@ -10,6 +10,8 @@
 # Claude Code (Opus 5.5), 2026-10-18. Scope: order, notification, credit and saga services:
 # databases, topics, push subscriptions, Cloud Scheduler jobs and frontend wiring.
 # Author review: Pending.
+# ChatGPT (GPT-6), 2026-11-04: deploy mail-service and authenticated user-events subscription.
+# Author review: Pending.
 #
 # Usage (from the repository root, after `gcloud builds submit --config cloudbuild.yaml`):
 #   ./deploy.sh setup   # one-time: Cloud SQL, databases, secrets, IAM, networking
@@ -30,6 +32,7 @@ SUBNET="${SUBNET:-default}"
 PUBSUB_TOPIC="${PUBSUB_TOPIC:-user-events}"
 PUBSUB_SUBSCRIPTION="${PUBSUB_SUBSCRIPTION:-user-events-worker}"
 SUPPLIER_USER_EVENTS_SUBSCRIPTION="${SUPPLIER_USER_EVENTS_SUBSCRIPTION:-supplier-service-user-events}"
+MAIL_SERVICE_SUBSCRIPTION="${MAIL_SERVICE_SUBSCRIPTION:-mail-service-user-events}"
 SUPPLIER_EVENTS_TOPIC="${SUPPLIER_EVENTS_TOPIC:-supplier-events}"
 PUBSUB_PUSH_SERVICE_ACCOUNT="${PUBSUB_PUSH_SERVICE_ACCOUNT:-user-event-push@${PROJECT_ID}.iam.gserviceaccount.com}"
 # Identity Cloud Scheduler uses to call the services' internal routes.
@@ -321,6 +324,21 @@ deploy_event_services() {
 
 deploy() {
   ensure_pubsub
+
+  if secret_exists mailjet-api-key && secret_exists mailjet-secret-key && secret_exists mailjet-from; then
+    local mail_service_url
+    mail_service_url="$(run_url mail-service)"
+    run run deploy mail-service --region "$REGION" --image "${REGISTRY}/mail-service:${TAG}" \
+      --port 3335 --no-allow-unauthenticated \
+      --set-env-vars "PUBSUB_PROJECT_ID=${PROJECT_ID},PUBSUB_TOPIC=${PUBSUB_TOPIC},PUBSUB_SUBSCRIPTION=${MAIL_SERVICE_SUBSCRIPTION}" \
+      --set-secrets "MAILJET_API_KEY=mailjet-api-key:latest,MAILJET_SECRET_KEY=mailjet-secret-key:latest,MAILJET_FROM=mailjet-from:latest"
+    run run services add-iam-policy-binding mail-service --region "$REGION" \
+      --member "serviceAccount:${PUBSUB_PUSH_SERVICE_ACCOUNT}" --role roles/run.invoker >/dev/null
+    ensure_push_subscription "$MAIL_SERVICE_SUBSCRIPTION" "$PUBSUB_TOPIC" \
+      "${mail_service_url}/pubsub/user-events" "$mail_service_url"
+  else
+    echo "Mail service deployment skipped: create mailjet-api-key, mailjet-secret-key, and mailjet-from secrets to enable it."
+  fi
 
   run_job supplier-migrate "${REGISTRY}/supplier-service-tooling:${TAG}" supplier-database-url \
     "${PRIVATE_DB_FLAGS[@]}" --command npm --args run,db:migrate

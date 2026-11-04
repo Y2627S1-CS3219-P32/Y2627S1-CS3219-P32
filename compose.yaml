@@ -1,6 +1,7 @@
 # AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-30.
-# Scope: User PostgreSQL wiring, optional bootstrap secret, and Mailjet welcome-email settings.
+# Scope: User PostgreSQL wiring, optional bootstrap secret, and Mailjet event-driven mail service.
 # Author review: Done.
+# ChatGPT (GPT-6), 2026-11-04: add mail-service and wait for its user-events subscription. Author review: Pending.
 services:
   credit-db:
     image: postgres:17
@@ -91,9 +92,6 @@ services:
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
       JWT_ACCESS_TOKEN_TTL: ${JWT_ACCESS_TOKEN_TTL:-900}
       BOOTSTRAP_SECRET: ${BOOTSTRAP_SECRET:-}
-      MAILJET_API_KEY: ${MAILJET_API_KEY:-}
-      MAILJET_SECRET_KEY: ${MAILJET_SECRET_KEY:-}
-      MAILJET_FROM: ${MAILJET_FROM:-}
       DATABASE_URL: postgres://user:user@user-db:5432/users
       PUBSUB_EMULATOR_HOST: pubsub-emulator:8085
       PUBSUB_PROJECT_ID: foc-local
@@ -116,6 +114,8 @@ services:
         condition: service_completed_successfully
       user-event-worker:
         condition: service_healthy
+      mail-service:
+        condition: service_healthy
       # Claude Code (Opus 5.5), 2026-10-17: order-service creates its user-events
       # subscription at startup; earlier events would never reach it. Author review: Pending.
       order-service:
@@ -123,6 +123,36 @@ services:
       # Claude Code (Opus 5.5), 2026-10-18: likewise for the supplier event worker.
       # Author review: Pending.
       supplier-event-worker:
+        condition: service_healthy
+
+  mail-service:
+    build:
+      context: ./mail-service
+    restart: unless-stopped
+    environment:
+      PORT: "3335"
+      PUBSUB_EMULATOR_HOST: pubsub-emulator:8085
+      PUBSUB_PROJECT_ID: foc-local
+      PUBSUB_TOPIC: user-events
+      PUBSUB_SUBSCRIPTION: mail-service-user-events
+      PUBSUB_PUSH_ENDPOINT: http://mail-service:3335/pubsub/user-events
+      MAILJET_API_KEY: ${MAILJET_API_KEY:-}
+      MAILJET_SECRET_KEY: ${MAILJET_SECRET_KEY:-}
+      MAILJET_FROM: ${MAILJET_FROM:-}
+    ports:
+      - "3335:3335"
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3335/health').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    depends_on:
+      pubsub-emulator:
         condition: service_healthy
 
   user-event-worker:

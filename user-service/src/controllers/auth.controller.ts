@@ -3,8 +3,8 @@
     Tool: ChatGPT (model: GPT-6), date: 2026-09-29
     Scope: Async auth, profile-update, and first-administrator bootstrap handlers
     Author review: Done
-    Tool: ChatGPT (GPT-6), date: 2026-10-19
-    Scope: Passing Mailjet settings to public registration
+    Tool: ChatGPT (GPT-6), date: 2026-11-04
+    Scope: Registration publishes events; email delivery is delegated to mail-service
     Author review: Pending
 **/
 import type { Request, Response } from "express";
@@ -35,7 +35,6 @@ export async function postRegister(req: Request, res: Response): Promise<void> {
   res.status(201).json(await register(req.body, {
     jwtSecret: config.jwtSecret,
     accessTokenTtl: config.jwtAccessTokenTtl,
-    mailjet: config.mailjet,
   }));
 }
 

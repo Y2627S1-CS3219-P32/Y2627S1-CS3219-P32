@@ -1,5 +1,5 @@
 {
-  "//": "AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-30. Scope: PostgreSQL driver and Drizzle migration command. Author review: Done. ChatGPT (GPT-6), 2026-09-29. Scope: User-service auth test script. Author review: Done. Claude Code (Opus 5.5), 2026-09-29. Scope: tsx watch dev script. Author review: Done. ChatGPT (GPT-6), 2026-10-19. Scope: Nodemailer dependency and welcome-email test script. Author review: Pending.",
+  "//": "AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-30. Scope: PostgreSQL driver and Drizzle migration command. Author review: Done. ChatGPT (GPT-6), 2026-09-29. Scope: User-service auth test script. Author review: Done. Claude Code (Opus 5.5), 2026-09-29. Scope: tsx watch dev script. Author review: Done. ChatGPT (GPT-6), 2026-11-04. Scope: Remove mail delivery; welcome emails are handled by mail-service. Author review: Pending.",
   "name": "user-service",
   "version": "1.0.0",
   "description": "",
@@ -9,7 +9,7 @@
     "start": "tsx src/index.ts",
     "worker": "tsx src/worker.ts",
     "db:migrate": "drizzle-kit push",
-    "test": "tsx --test src/auth.test.ts src/events/parse-user-event.test.ts src/services/mailjet.service.test.ts"
+    "test": "tsx --test src/auth.test.ts src/events/parse-user-event.test.ts"
   },
   "keywords": [],
   "author": "",
@@ -20,12 +20,10 @@
     "dotenv": "^18.0.4",
     "drizzle-orm": "^1.0.0-rc.4",
     "express": "^5.2.1",
-    "nodemailer": "^10.1.7",
     "pg": "^8.23.0"
   },
   "devDependencies": {
     "@types/express": "^5.0.6",
-    "@types/nodemailer": "^8.0.2",
     "@types/pg": "^8.23.1",
     "drizzle-kit": "^1.0.0-rc.4",
     "tsx": "^4.23.15"

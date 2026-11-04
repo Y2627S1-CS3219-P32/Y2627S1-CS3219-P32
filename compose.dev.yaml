@@ -1,6 +1,7 @@
 # AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-09-29.
 # Scope: Development override with hot reloading via Compose watch.
 # Author review: Check for correctness.
+# ChatGPT (GPT-6), 2026-11-04: add mail-service source watching. Author review: Pending.
 #
 # Usage: docker compose -f compose.yaml -f compose.dev.yaml up --build --watch
 services:
@@ -48,6 +49,16 @@ services:
           target: /app/src
         - action: rebuild
           path: ./user-service/package.json
+
+  mail-service:
+    command: ["npx", "tsx", "watch", "src/index.ts"]
+    develop:
+      watch:
+        - action: sync
+          path: ./mail-service/src
+          target: /app/src
+        - action: rebuild
+          path: ./mail-service/package.json
 
   frontend-service:
     build:

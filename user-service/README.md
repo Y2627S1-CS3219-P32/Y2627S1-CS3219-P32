@@ -1,5 +1,6 @@
 <!-- AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-30.
-Scope: PostgreSQL setup, demo credentials, and registration requirements. Author review: Done. -->
+Scope: PostgreSQL setup, demo credentials, and registration requirements. Author review: Done.
+ChatGPT (GPT-6), 2026-11-04: document event-driven welcome email delivery. Author review: Pending. -->
 # Local Development
 
 Run the following commands:
@@ -68,15 +69,12 @@ validation and uniqueness rules. Email updates require a matching `confirmEmail`
 updates require the current password, enforce the registration password rules, and reject a new
 password that matches the current password.
 
-To send a welcome email after public registration, set `MAILJET_API_KEY`, `MAILJET_SECRET_KEY`,
-and `MAILJET_FROM` in the user-service environment. The sender address must be verified in
-Mailjet. Mailjet uses its SMTP endpoint (`in-v3.mailjet.com:587`) through Nodemailer. Leave all
-three settings unset to disable welcome emails during local development; partial configuration
-prevents the service from starting. A delivery failure is logged and does not undo a successful
-registration.
+Public registration publishes `user.created`; the independent `mail-service` consumes this
+event and sends the welcome email. Registration does not depend on email delivery.
 
 The service publishes to `PUBSUB_TOPIC` (default `user-events`) in
 `PUBSUB_PROJECT_ID` (default `foc-local`). Set `PUBSUB_EMULATOR_HOST` for local
 development. The worker exposes `POST /pubsub/user-events` for Pub/Sub push
 delivery and `GET /health` for readiness checks; GCP push requests use Cloud Run
-IAM authentication.
+IAM authentication. The separate [mail-service](../mail-service/README.md) consumes
+the same topic and sends a welcome email for `user.created` events.
