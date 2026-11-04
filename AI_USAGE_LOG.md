@@ -1562,18 +1562,25 @@ for context, frontend-service is being set up. The frontend’s supplier screen 
 
   Follow-up prompts: `listen in on "order.cancelled" | "order.expired" | "order.completed" to delete a chat.`;
   `use the display names as the chat names`; and
-  `do not delete the chatroom events. keep it for 30 days`.
+  `do not delete the chatroom events. keep it for 30 days`;
+  `i just added group orders, can you make the chat service handle that?`;
+  `move the chat service port somewhere else`; and
+  `the other participants should also be allowed to chat, and before the order is placed`.
 - Key response: Added a standalone chat service with a Pub/Sub topic per order,
   participant authorization for requester and assigned courier, message persistence,
-  and a responsive order chat page. Terminal order events make rooms read-only and
-  retain their message history for 30 days before cleanup. Chat labels use the
-  participants' display names.
+  and a responsive order chat page. Group rooms are created at draft start,
+  synchronized with joining members, and allow all group participants and the
+  assigned courier to chat before and after placement. Terminal order events make
+  rooms read-only and retain their message history for 30 days before cleanup.
+  Chat labels use participants' display names.
 - Affected files: `chat-service/`, `frontend-service/app/pages/orders/[id]/chat.vue`,
   order details page, frontend chat proxy and shared types, `compose.yaml`,
   `compose.dev.yaml`, `cloudbuild.yaml`, `deploy.sh`, `README.md`, and this log.
 - Verification: Chat service build/tests and typecheck, frontend typecheck and
   production build, Compose configuration validation, deployment shell syntax,
-  and `git diff --check` passed.
+  and `git diff --check` passed. Group chat authorization tests cover requester,
+  group members, courier, and unrelated users; frontend typecheck passed after
+  adding group participants' chat link before placement.
 - Author review: Pending.
 
 # AI usage log (Postman)
