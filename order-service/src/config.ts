@@ -1,6 +1,7 @@
 /**
  * AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-10-17.
  * Scope: Order-service environment configuration. Author review: Pending.
+ * Claude Code (Opus 5.5), 2026-10-17: sync-events topic for group orders. Author review: Pending.
  */
 import "dotenv/config";
 
@@ -41,5 +42,6 @@ export const config = {
     userEventsTopic: process.env.USER_EVENTS_TOPIC ?? "user-events",
     supplierEventsTopic: process.env.SUPPLIER_EVENTS_TOPIC ?? "supplier-events",
     orderCommandsTopic: process.env.ORDER_COMMANDS_TOPIC ?? "order-commands",
+    syncEventsTopic: process.env.SYNC_EVENTS_TOPIC ?? "sync-events",
   },
 };

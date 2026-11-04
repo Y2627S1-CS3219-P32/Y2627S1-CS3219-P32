@@ -94,6 +94,19 @@ services:
         - action: rebuild
           path: ./notification-service/package.json
 
+  # Claude Code (Opus 5.5), 2026-10-17: sync-service hot reloading. Author review: Pending.
+  sync-service:
+    build:
+      target: tooling
+    command: ["npx", "tsx", "watch", "src/index.ts"]
+    develop:
+      watch:
+        - action: sync
+          path: ./sync-service/src
+          target: /app/src
+        - action: rebuild
+          path: ./sync-service/package.json
+
   credit-service:
     build:
       target: tooling
