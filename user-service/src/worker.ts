@@ -3,6 +3,9 @@
     Tool: Copilot SDK in VS Code, 2026-10-15
     Scope: Pub/Sub push worker for the user PostgreSQL projection
     Author review: Pending
+    Tool: ChatGPT (GPT-6), date: 2026-11-04
+    Scope: Persist account verification fields from user events
+    Author review: Pending
 **/
 import "dotenv/config";
 
@@ -47,14 +50,19 @@ async function applyUserEvent(event: ReturnType<typeof parseUserEvent>): Promise
       await client.query("DELETE FROM users WHERE id = $1", [userId]);
     } else {
       await client.query(
-        `INSERT INTO users (id, name, display_name, email, role, "passwordHash")
-         VALUES ($1, $2, $3, $4, $5, $6)
+        `INSERT INTO users (
+           id, name, display_name, email, role, "passwordHash",
+           verification_status, verification_code
+         )
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
          ON CONFLICT (id) DO UPDATE SET
            name = EXCLUDED.name,
            display_name = EXCLUDED.display_name,
            email = EXCLUDED.email,
            role = EXCLUDED.role,
-           "passwordHash" = EXCLUDED."passwordHash"`,
+           "passwordHash" = EXCLUDED."passwordHash",
+           verification_status = EXCLUDED.verification_status,
+           verification_code = EXCLUDED.verification_code`,
         [
           event.user.id,
           event.user.name,
@@ -62,6 +70,8 @@ async function applyUserEvent(event: ReturnType<typeof parseUserEvent>): Promise
           event.user.email,
           event.user.role,
           event.user.passwordHash,
+          event.user.verificationStatus,
+          event.user.verificationCode,
         ],
       );
       if (event.user.role === "admin") {

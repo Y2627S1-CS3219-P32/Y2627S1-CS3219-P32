@@ -1,19 +1,24 @@
 /**
     AI Assistance Disclosure:
     Tool: ChatGPT (GPT-6), date: 2026-11-04
-    Scope: Mail service startup and local Pub/Sub subscription
+    Scope: Mail service startup, email senders, and local Pub/Sub subscription
     Author review: Pending
 **/
 import { PubSub } from "@google-cloud/pubsub";
 
 import { createApp } from "./app";
 import { config } from "./config";
-import { createWelcomeEmailSender } from "./welcome-email";
+import {
+  createVerificationEmailSender,
+  createWelcomeEmailSender,
+} from "./welcome-email";
 
-const sendWelcomeEmail = config.mailjet
-  ? createWelcomeEmailSender(config.mailjet)
-  : undefined;
-const app = createApp(sendWelcomeEmail);
+const app = createApp(config.mailjet
+  ? {
+      sendWelcomeEmail: createWelcomeEmailSender(config.mailjet),
+      sendVerificationEmail: createVerificationEmailSender(config.mailjet),
+    }
+  : {});
 
 function isAlreadyExists(error: unknown): boolean {
   return typeof error === "object" && error !== null && "code" in error && error.code === 6;

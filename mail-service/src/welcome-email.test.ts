@@ -1,7 +1,7 @@
 /**
     AI Assistance Disclosure:
     Tool: ChatGPT (GPT-6), date: 2026-11-04
-    Scope: Mailjet welcome email sender tests
+    Scope: Mailjet verification and welcome email sender tests
     Author review: Pending
 **/
 import assert from "node:assert/strict";
@@ -9,7 +9,10 @@ import test from "node:test";
 
 import type { SendMailOptions } from "nodemailer";
 
-import { createWelcomeEmailSender } from "./welcome-email";
+import {
+  createVerificationEmailSender,
+  createWelcomeEmailSender,
+} from "./welcome-email";
 
 const settings = {
   apiKey: "mailjet-api-key",
@@ -30,8 +33,8 @@ test("welcome email sender sends a personalized message to the new user", async 
   assert.deepEqual(sentMessage, {
     from: "welcome@example.com",
     to: "student@u.nus.edu",
-    subject: "Welcome to FOC!",
-    text: "Hi Alex Tan,\n\nWelcome to FOC! Your account is ready. We’re glad to have you with us.\n",
+    subject: "Welcome to NUS FOC!",
+    text: "Hi Alex Tan,\n\nWelcome to NUS Friends of Campus! Your account is ready. We’re glad to have you with us.\n",
   });
 });
 
@@ -44,6 +47,45 @@ test("welcome email sender rejects failed delivery", async () => {
 
   await assert.rejects(
     sendWelcomeEmail({ email: "student@u.nus.edu", name: "Alex Tan" }),
+    { message: "Mailjet unavailable" },
+  );
+});
+
+test("verification email sender sends the code to the new user", async () => {
+  let sentMessage: SendMailOptions | undefined;
+  const sendVerificationEmail = createVerificationEmailSender(settings, {
+    async sendMail(message) {
+      sentMessage = message;
+      return {};
+    },
+  });
+
+  await sendVerificationEmail({
+    email: "student@u.nus.edu",
+    name: "Alex Tan",
+    verificationCode: "012345",
+  });
+  assert.deepEqual(sentMessage, {
+    from: "welcome@example.com",
+    to: "student@u.nus.edu",
+    subject: "Verify your NUS FOC account",
+    text: "Hi Alex Tan,\n\nYour NUS Friends of Campus verification code is 012345.\n\nVisit the app and enter this code on the /verify page to activate your account. If you did not create this account, you can ignore this email.\n",
+  });
+});
+
+test("verification email sender rejects failed delivery", async () => {
+  const sendVerificationEmail = createVerificationEmailSender(settings, {
+    async sendMail() {
+      throw new Error("Mailjet unavailable");
+    },
+  });
+
+  await assert.rejects(
+    sendVerificationEmail({
+      email: "student@u.nus.edu",
+      name: "Alex Tan",
+      verificationCode: "012345",
+    }),
     { message: "Mailjet unavailable" },
   );
 });

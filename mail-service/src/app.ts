@@ -1,16 +1,22 @@
 /**
     AI Assistance Disclosure:
     Tool: ChatGPT (GPT-6), date: 2026-11-04
-    Scope: Pub/Sub push endpoint for user-created welcome emails
+    Scope: Pub/Sub push endpoint for verification and welcome emails
     Author review: Pending
 **/
 import express, { type ErrorRequestHandler } from "express";
 
 import { InvalidUserEventError, processUserEvent } from "./user-events";
-import type { WelcomeEmailRecipient } from "./welcome-email";
+import type {
+  VerificationEmailRecipient,
+  WelcomeEmailRecipient,
+} from "./welcome-email";
 
 export function createApp(
-  sendWelcomeEmail: ((recipient: WelcomeEmailRecipient) => Promise<void>) | undefined,
+  senders: {
+    sendWelcomeEmail?: (recipient: WelcomeEmailRecipient) => Promise<void>;
+    sendVerificationEmail?: (recipient: VerificationEmailRecipient) => Promise<void>;
+  },
 ) {
   const app = express();
   app.use(express.json({ limit: "1mb" }));
@@ -42,7 +48,7 @@ export function createApp(
     }
 
     try {
-      await processUserEvent(event, sendWelcomeEmail);
+      await processUserEvent(event, senders);
       res.status(204).end();
     } catch (error) {
       if (error instanceof InvalidUserEventError) {
@@ -50,7 +56,7 @@ export function createApp(
         res.status(204).end();
         return;
       }
-      console.error("[mail-service] Failed to send welcome email", error);
+      console.error("[mail-service] Failed to send user email", error);
       res.status(500).json({ error: "Could not process user event" });
     }
   });

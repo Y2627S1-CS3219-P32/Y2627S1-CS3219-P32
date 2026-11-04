@@ -6,6 +6,12 @@
     Tool: ChatGPT (GPT-6), date: 2026-11-04
     Scope: Registration publishes events; email delivery is delegated to mail-service
     Author review: Pending
+    Tool: ChatGPT (GPT-6), date: 2026-11-04
+    Scope: Expose the public account verification command
+    Author review: Pending
+    Tool: ChatGPT (GPT-6), date: 2026-11-04
+    Scope: Register pending users without issuing an authenticated session
+    Author review: Pending
 **/
 import type { Request, Response } from "express";
 
@@ -16,6 +22,7 @@ import {
   ensureBootstrapAvailable,
   login,
   register,
+  verifyUser,
   updateAuthenticatedUser,
 } from "../services/auth.service";
 import { HttpError } from "../errors";
@@ -32,10 +39,11 @@ export async function postLogin(req: Request, res: Response): Promise<void> {
 }
 
 export async function postRegister(req: Request, res: Response): Promise<void> {
-  res.status(201).json(await register(req.body, {
-    jwtSecret: config.jwtSecret,
-    accessTokenTtl: config.jwtAccessTokenTtl,
-  }));
+  res.status(201).json(await register(req.body));
+}
+
+export async function postVerifyUser(req: Request, res: Response): Promise<void> {
+  res.json(await verifyUser(req.body));
 }
 
 export async function getCurrentUser(_req: Request, res: Response): Promise<void> {

@@ -107,10 +107,12 @@ modules (frontend) on change.
 Editing a `package.json` rebuilds that service's image. Outside Docker, run
 `npm run dev` in any of these service folders.
 
-The `mail-service` consumes `user.created` and sends welcome email through Mailjet.
-Set `MAILJET_API_KEY`, `MAILJET_SECRET_KEY`, and `MAILJET_FROM` in `.env`; the sender
-address must be verified with Mailjet. If these settings are omitted, local signup
-continues but welcome email is skipped.
+The `mail-service` sends verification codes for pending accounts and a welcome email
+after `user.verified`, through Mailjet. Set `MAILJET_API_KEY`, `MAILJET_SECRET_KEY`,
+and `MAILJET_FROM` in `.env`; the sender address must be verified with Mailjet. Accounts
+must be verified before users can sign in or access authenticated app functionality. If
+these settings are omitted, codes remain available in the admin user list, but emails
+are skipped.
 
 ## Deploy to Google Cloud (Cloud Run)
 
@@ -134,7 +136,7 @@ subscription and updates the PostgreSQL read model. Events contain password
 hashes only; GCP IAM restricts publishing and push invocation.
 
 The `mail-service` also consumes `user-events` through an authenticated Pub/Sub push
-subscription and sends welcome email for `user.created`. To enable it in Cloud Run,
+subscription and sends welcome email for `user.verified`. To enable it in Cloud Run,
 create the following Secret Manager secrets before running `./deploy.sh`:
 
 ```sh

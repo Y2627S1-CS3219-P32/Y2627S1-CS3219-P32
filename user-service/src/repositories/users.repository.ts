@@ -3,11 +3,14 @@
     Tool: ChatGPT (model: GPT-6), date: 2026-09-29
     Scope: Async PostgreSQL user repository including self-service account updates
     Author review: Done
+    Tool: ChatGPT (GPT-6), date: 2026-11-04
+    Scope: Return verification status publicly and code to administrator listings
+    Author review: Pending
 **/
 import { eq, sql } from "drizzle-orm";
 
 import { db, pool } from "../db";
-import { usersTable, type PublicUser, type User } from "../db/schema";
+import { usersTable, type AdminUser, type PublicUser, type User } from "../db/schema";
 
 const publicUserColumns = {
   id: usersTable.id,
@@ -15,14 +18,26 @@ const publicUserColumns = {
   displayName: usersTable.displayName,
   email: usersTable.email,
   role: usersTable.role,
+  verificationStatus: usersTable.verificationStatus,
 };
 
-export async function findAllUsers(): Promise<PublicUser[]> {
-  return db.select(publicUserColumns).from(usersTable);
+const adminUserColumns = {
+  ...publicUserColumns,
+  verificationCode: usersTable.verificationCode,
+};
+
+export async function findAllUsers(): Promise<AdminUser[]> {
+  return db.select(adminUserColumns).from(usersTable);
 }
 
 export async function findPublicUserById(id: number): Promise<PublicUser | undefined> {
   const [user] = await db.select(publicUserColumns).from(usersTable)
+    .where(eq(usersTable.id, id)).limit(1);
+  return user;
+}
+
+export async function findAdminUserById(id: number): Promise<AdminUser | undefined> {
+  const [user] = await db.select(adminUserColumns).from(usersTable)
     .where(eq(usersTable.id, id)).limit(1);
   return user;
 }

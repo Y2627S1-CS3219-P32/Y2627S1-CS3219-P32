@@ -17,22 +17,33 @@ function isUnauthorized(error: unknown): boolean {
     error.response.status === 401;
 }
 
+function isForbidden(error: unknown): boolean {
+  if (typeof error !== "object" || error === null) return false;
+  if ("statusCode" in error && error.statusCode === 403) return true;
+  if ("status" in error && error.status === 403) return true;
+  return "response" in error &&
+    typeof error.response === "object" &&
+    error.response !== null &&
+    "status" in error.response &&
+    error.response.status === 403;
+}
+
 const route = useRoute();
 const requestFetch = useRequestFetch();
 const { data: user } = await useAsyncData<User | null>("navigation-user", async () => {
   try {
     return await requestFetch<User>("/api/user-service/me");
   } catch (error) {
-    if (isUnauthorized(error)) return null;
+    if (isUnauthorized(error) || isForbidden(error)) return null;
     throw error;
   }
 });
 </script>
 
 <template>
-  <div class="min-h-screen" :class="{ 'pb-16 md:pb-0': route.path !== '/login' && route.path !== '/signup' }">
+  <div class="min-h-screen" :class="{ 'pb-16 md:pb-0': !['/login', '/signup', '/verify'].includes(route.path) }">
     <nav
-      v-if="route.path !== '/login' && route.path !== '/signup'"
+      v-if="!['/login', '/signup', '/verify'].includes(route.path)"
       aria-label="Main navigation"
       class="fixed inset-x-0 bottom-0 z-50 border-t border-[#e1e6eb] bg-white/95 shadow-[0_-4px_12px_rgba(6,66,126,0.06)] backdrop-blur md:sticky md:top-0 md:border-t-0 md:border-b md:shadow-sm"
     >

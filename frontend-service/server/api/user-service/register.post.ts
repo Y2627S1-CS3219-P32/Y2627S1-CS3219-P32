@@ -10,9 +10,9 @@ export default defineEventHandler(async (event) => {
     confirmEmail?: unknown;
     password?: unknown;
   }>(event);
-  let response: { token: string; user: unknown };
+  let response: { user: unknown };
   try {
-    response = await $fetch<{ token: string; user: unknown }>("/register", {
+    response = await $fetch<{ user: unknown }>("/register", {
       baseURL: config.userServiceBaseUrl,
       method: "POST",
       body,
@@ -22,13 +22,6 @@ export default defineEventHandler(async (event) => {
   } catch (error) {
     throw toUserServiceError(error);
   }
-
-  setCookie(event, "user_access_token", response.token, {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    path: "/",
-  });
 
   return { user: response.user };
 });

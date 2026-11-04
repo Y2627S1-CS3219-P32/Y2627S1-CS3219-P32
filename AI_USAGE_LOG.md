@@ -1533,3 +1533,105 @@ for context, frontend-service is being set up. The frontend’s supplier screen 
   user service container images built successfully, and the mail image test suite
   passed.
 - Author review: Pending.
+
+## 2026-11-04: Add account verification status and codes
+
+- Tool: ChatGPT (GPT-6). Mode: Implementation, tests, and verification.
+- User instruction: Track pending/verified account status, generate and persist a
+  verification code, provide a verification command, and expose pending codes on
+  the administrator user page without sending verification email.
+- Key response:
+  - New accounts start pending verification with a generated six-digit code;
+    status and code are included in user events and persisted by the projection.
+  - Added `POST /verify` and an administrator action to verify accounts using the
+    displayed code. Successful verification clears the code.
+  - Public user responses expose verification status but not the code. No
+    verification email is sent.
+- Affected files: `frontend-service/app/pages/admin/users.vue`,
+  `frontend-service/server/api/user-service/verify.post.ts`,
+  `frontend-service/shared/services/user-service/types.ts`,
+  `user-service/README.md`, `user-service/package.json`,
+  `user-service/src/controllers/auth.controller.ts`, `user-service/src/db/schema.ts`,
+  `user-service/src/events/parse-user-event.test.ts`,
+  `user-service/src/events/parse-user-event.ts`,
+  `user-service/src/events/user-events.ts`,
+  `user-service/src/repositories/users.repository.ts`,
+  `user-service/src/routes/auth.routes.ts`,
+  `user-service/src/services/auth.service.ts`,
+  `user-service/src/services/users.service.ts`, `user-service/src/verification.test.ts`,
+  `user-service/src/verification.ts`, `user-service/src/worker.ts`, and this log.
+- Verification: All 12 user-service tests passed; strict user-service TypeScript
+  checking, frontend Nuxt typechecking, `docker compose config --quiet`, and
+  `git diff --check` passed.
+- Author review: Pending.
+
+## 2026-11-04: Gate app access on account verification
+
+- Tool: ChatGPT (GPT-6). Mode: Implementation, tests, and verification.
+- User instruction: Restrict app access to verified users, redirect after signup to
+  verification, and send welcome email when the mail service receives `user.verified`.
+- Key response:
+  - Pending accounts no longer receive a session on registration, cannot log in, and
+    are rejected by user-service authentication and authenticated frontend API proxies.
+    Protected page middleware sends pending users to `/verification`.
+  - Added a public code-entry verification page; successful verification publishes
+    `user.verified`, which is the only event that triggers the welcome email.
+  - Updated service documentation and tests for verified-user mail delivery.
+- Affected files: `README.md`, `frontend-service/app/app.vue`,
+  `frontend-service/app/middleware/admin.global.ts`,
+  `frontend-service/app/middleware/auth.ts`, `frontend-service/app/pages/signup.vue`,
+  `frontend-service/app/pages/verification.vue`,
+  `frontend-service/server/api/user-service/register.post.ts`,
+  `frontend-service/server/middleware/verified-user.ts`,
+  `mail-service/README.md`, `mail-service/src/app.test.ts`, `mail-service/src/app.ts`,
+  `mail-service/src/user-events.test.ts`, `mail-service/src/user-events.ts`,
+  `user-service/README.md`, `user-service/src/controllers/auth.controller.ts`,
+  `user-service/src/events/parse-user-event.test.ts`,
+  `user-service/src/events/parse-user-event.ts`, `user-service/src/events/user-events.ts`,
+  `user-service/src/middleware/authentication.ts`,
+  `user-service/src/services/auth.service.ts`, and this log.
+- Verification: All 12 user-service tests passed; the 8 targeted mail event tests,
+  strict TypeScript checks for user-service and mail-service, frontend Nuxt
+  typechecking, Compose configuration, and `git diff --check` passed. The full
+  mail-service suite has one pre-existing failure in
+  `welcome-email.test.ts`: its expected message text does not match the unchanged
+  sender implementation; 9 of 10 tests pass.
+- Author review: Pending.
+
+## 2026-11-04: Refine verification navigation
+
+- Tool: ChatGPT (GPT-6). Mode: Frontend implementation and verification.
+- User instruction: Use `/verify`, route unverified login attempts to verification,
+  and continue to login after verification.
+- Key response:
+  - Renamed the frontend verification page route to `/verify` and updated signup
+    and protected-page redirects.
+  - A 403 from login now redirects to `/verify` with the email prefilled.
+  - Successful verification redirects to `/login` with the email prefilled and
+    a success message.
+- Affected files: `frontend-service/app/app.vue`,
+  `frontend-service/app/middleware/admin.global.ts`,
+  `frontend-service/app/middleware/auth.ts`, `frontend-service/app/pages/login.vue`,
+  `frontend-service/app/pages/signup.vue`, `frontend-service/app/pages/verify.vue`,
+  and this log.
+- Verification: Frontend Nuxt typechecking and `git diff --check` passed.
+- Author review: Pending.
+
+## 2026-11-04: Send account verification emails
+
+- Tool: ChatGPT (GPT-6). Mode: Implementation, tests, and verification.
+- User instruction: Add email verification.
+- Key response:
+  - Mail-service now emails the six-digit verification code for pending account
+    creation and pending account email updates.
+  - Successful verification continues to trigger the separate welcome email.
+  - Delivery errors remain retryable through Pub/Sub; missing Mailjet settings
+    produce a warning and acknowledge events as before.
+- Affected files: `README.md`, `mail-service/README.md`, `mail-service/src/app.test.ts`,
+  `mail-service/src/app.ts`, `mail-service/src/index.ts`,
+  `mail-service/src/user-events.test.ts`, `mail-service/src/user-events.ts`,
+  `mail-service/src/welcome-email.test.ts`, `mail-service/src/welcome-email.ts`,
+  `user-service/README.md`, and this log.
+- Verification: All 18 mail-service tests passed; strict mail-service TypeScript
+  checking, `docker compose config --quiet`, and `git diff --check` passed.
+- Author review: Pending.
