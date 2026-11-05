@@ -1,7 +1,8 @@
 // AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-10-17.
 // Scope: Types for the order-service API. Author review: Pending.
+// Claude Code (Opus 5.5), 2026-10-17: group orders. Author review: Pending.
 export type OrderState =
-  | "PENDING" | "OPEN" | "REJECTED" | "ABORTED" | "ACCEPTED" | "CANCELLED"
+  | "SYNCHRONISING" | "PENDING" | "OPEN" | "REJECTED" | "ABORTED" | "ACCEPTED" | "CANCELLED"
   | "EXPIRED" | "PICKED_UP" | "DELIVERED" | "COMPLETE" | "SETTLED";
 
 export interface OrderPerson {
@@ -29,6 +30,9 @@ export interface Order {
   description: string;
   deliveryLocation: string;
   creditReward: number;
+  isGroupOrder: boolean;
+  // Group members other than the requester.
+  members: OrderPerson[];
   state: OrderState;
   acceptedAt: string | null;
   expiresAt: string | null;
@@ -62,6 +66,7 @@ export interface OrderListQuery {
 }
 
 export interface OrderCreate {
+  isGroupOrder?: boolean;
   supplierId: string;
   title: string;
   description: string;
