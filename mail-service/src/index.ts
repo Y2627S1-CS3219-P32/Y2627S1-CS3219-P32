@@ -10,6 +10,7 @@ import { createApp } from "./app";
 import { config } from "./config";
 import {
   createEmailUpdatedEmailSender,
+  createPasswordResetEmailSender,
   createVerificationEmailSender,
   createWelcomeEmailSender,
 } from "./welcome-email";
@@ -18,6 +19,10 @@ const app = createApp(config.mailjet
   ? {
       sendWelcomeEmail: createWelcomeEmailSender(config.mailjet),
       sendEmailUpdatedEmail: createEmailUpdatedEmailSender(config.mailjet),
+      sendPasswordResetEmail: createPasswordResetEmailSender(
+        config.mailjet,
+        config.frontendBaseUrl,
+      ),
       sendVerificationEmail: createVerificationEmailSender(config.mailjet),
     }
   : {});
@@ -28,23 +33,32 @@ function isAlreadyExists(error: unknown): boolean {
 
 async function ensureLocalSubscription(): Promise<void> {
   if (!config.useEmulator) return;
-  if (!config.pushEndpoint) {
-    throw new Error("PUBSUB_PUSH_ENDPOINT is required when using the Pub/Sub emulator");
+  if (!config.pushEndpoint || !config.passwordResetPushEndpoint) {
+    throw new Error("Pub/Sub push endpoints are required when using the Pub/Sub emulator");
   }
 
   const pubsub = new PubSub({ projectId: config.projectId });
-  const topic = pubsub.topic(config.topicName);
-  await pubsub.createTopic(config.topicName).catch((error: unknown) => {
-    if (!isAlreadyExists(error)) throw error;
-  });
-  await topic.createSubscription(config.subscriptionName, {
-    pushEndpoint: config.pushEndpoint,
-  }).catch(async (error: unknown) => {
-    if (!isAlreadyExists(error)) throw error;
-    await pubsub.subscription(config.subscriptionName).modifyPushConfig({
+  for (const { topicName, subscriptionName, pushEndpoint } of [
+    {
+      topicName: config.topicName,
+      subscriptionName: config.subscriptionName,
       pushEndpoint: config.pushEndpoint,
+    },
+    {
+      topicName: config.passwordResetTopicName,
+      subscriptionName: config.passwordResetSubscriptionName,
+      pushEndpoint: config.passwordResetPushEndpoint,
+    },
+  ]) {
+    const topic = pubsub.topic(topicName);
+    await pubsub.createTopic(topicName).catch((error: unknown) => {
+      if (!isAlreadyExists(error)) throw error;
     });
-  });
+    await topic.createSubscription(subscriptionName, { pushEndpoint }).catch(async (error: unknown) => {
+      if (!isAlreadyExists(error)) throw error;
+      await pubsub.subscription(subscriptionName).modifyPushConfig({ pushEndpoint });
+    });
+  }
 }
 
 ensureLocalSubscription()

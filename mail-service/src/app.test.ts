@@ -43,17 +43,21 @@ async function postEvent(
   senders: {
     sendWelcomeEmail?: (recipient: { name: string; email: string }) => Promise<void>;
     sendEmailUpdatedEmail?: (recipient: { name: string; email: string }) => Promise<void>;
+    sendPasswordResetEmail?: (
+      recipient: { name: string; email: string; resetToken: string }
+    ) => Promise<void>;
     sendVerificationEmail?: (
       recipient: { name: string; email: string; verificationCode: string }
     ) => Promise<void>;
   },
+  path = "/pubsub/user-events",
 ): Promise<Response> {
   const app = createApp(senders);
   const server = app.listen(0, "127.0.0.1");
   await new Promise<void>((resolve) => server.once("listening", resolve));
   const address = server.address() as AddressInfo;
   try {
-    return await fetch(`http://127.0.0.1:${address.port}/pubsub/user-events`, {
+    return await fetch(`http://127.0.0.1:${address.port}${path}`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -147,4 +151,28 @@ test("invalid user events are acknowledged to avoid poison-message retries", asy
   );
 
   assert.equal(response.status, 204);
+});
+
+test("password reset push sends the reset email and acknowledges the event", async () => {
+  let recipient: { email: string; name: string; resetToken: string } | undefined;
+  const resetToken = "a".repeat(43);
+  const response = await postEvent({
+    type: "password_reset.requested",
+    eventId: "reset-event",
+    userId: 42,
+    email: "student@u.nus.edu",
+    name: "Alex Tan",
+    resetToken,
+  }, {
+    sendPasswordResetEmail: async (value) => {
+      recipient = value;
+    },
+  }, "/pubsub/password-reset");
+
+  assert.equal(response.status, 204);
+  assert.deepEqual(recipient, {
+    email: "student@u.nus.edu",
+    name: "Alex Tan",
+    resetToken,
+  });
 });

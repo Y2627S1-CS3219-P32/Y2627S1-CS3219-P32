@@ -74,6 +74,10 @@ Public registration publishes `user.created`; the independent `mail-service` sen
 welcome email after the account is verified, in response to `user.verified`. Email changes
 also require verification and send an email-updated notice after verification instead of a
 welcome email. Registration does not depend on email delivery.
+`POST /password-reset/request` sends a one-time password-reset link to a verified account
+email without disclosing whether the email is registered. Links expire after one hour.
+Complete a reset with `POST /password-reset/complete` and
+`{ "token": "...", "password": "..." }`.
 Every new account starts with `verificationStatus: "pending_verification"` and a generated
 six-digit `verificationCode`, both persisted when the user event is projected. Pending users
 cannot log in or use authenticated endpoints. Submit

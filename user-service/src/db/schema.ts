@@ -16,6 +16,7 @@ import {
   pgTable,
   serial,
   text,
+  timestamp,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 
@@ -42,6 +43,12 @@ export const usersTable = pgTable("users", {
 export const userBootstrapReservationsTable = pgTable("user_bootstrap_reservations", {
   id: integer().primaryKey(),
   userId: integer("user_id").notNull(),
+});
+
+export const passwordResetTokensTable = pgTable("password_reset_tokens", {
+  userId: integer("user_id").primaryKey().references(() => usersTable.id, { onDelete: "cascade" }),
+  tokenHash: text("token_hash").notNull().unique(),
+  expiresAt: timestamp("expires_at", { withTimezone: true, mode: "date" }).notNull(),
 });
 
 export const userEventSequence = pgSequence("user_event_sequence");

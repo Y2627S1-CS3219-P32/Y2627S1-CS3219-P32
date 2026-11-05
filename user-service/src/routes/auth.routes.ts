@@ -15,6 +15,8 @@ import {
   patchCurrentUser,
   postBootstrapAdministrator,
   postLogin,
+  postPasswordReset,
+  postPasswordResetRequest,
   postRegister,
   postVerifyUser,
 } from "../controllers/auth.controller";
@@ -25,6 +27,8 @@ const router = Router();
 router.post("/login", postLogin);
 router.post("/register", postRegister);
 router.post("/verify", postVerifyUser);
+router.post("/password-reset/request", postPasswordResetRequest);
+router.post("/password-reset/complete", postPasswordReset);
 router.post("/bootstrap", postBootstrapAdministrator);
 router.get("/bootstrap", getBootstrapAvailability);
 router.get("/me", requireAuthentication, getCurrentUser);

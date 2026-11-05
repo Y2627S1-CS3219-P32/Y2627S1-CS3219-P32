@@ -6,6 +6,7 @@
 **/
 import type {
   EmailUpdatedRecipient,
+  PasswordResetEmailRecipient,
   VerificationEmailRecipient,
   WelcomeEmailRecipient,
 } from "./welcome-email";
@@ -42,6 +43,36 @@ export function parseEmailUpdatedRecipient(value: unknown): EmailUpdatedRecipien
     return undefined;
   }
   return parseVerifiedEmailRecipient(value);
+}
+
+export function parsePasswordResetEmailRecipient(
+  value: unknown,
+): PasswordResetEmailRecipient | undefined {
+  if (!isRecord(value)) {
+    throw new InvalidUserEventError("User event must be an object");
+  }
+  if (value.type !== "password_reset.requested") return undefined;
+  if (
+    typeof value.eventId !== "string" ||
+    !value.eventId ||
+    typeof value.userId !== "number" ||
+    !Number.isSafeInteger(value.userId) ||
+    value.userId <= 0
+  ) {
+    throw new InvalidUserEventError("Password reset event must have a valid ID and version");
+  }
+  const { email, name, resetToken } = value;
+  if (
+    typeof email !== "string" ||
+    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ||
+    typeof name !== "string" ||
+    !name.trim() ||
+    typeof resetToken !== "string" ||
+    !/^[A-Za-z0-9_-]{43}$/.test(resetToken)
+  ) {
+    throw new InvalidUserEventError("Password reset event has invalid recipient details");
+  }
+  return { email, name: name.trim(), resetToken };
 }
 
 function parseVerifiedEmailRecipient(value: Record<string, unknown>): WelcomeEmailRecipient {
@@ -111,9 +142,20 @@ export async function processUserEvent(
   senders: {
     sendWelcomeEmail?: (recipient: WelcomeEmailRecipient) => Promise<void>;
     sendEmailUpdatedEmail?: (recipient: EmailUpdatedRecipient) => Promise<void>;
+    sendPasswordResetEmail?: (recipient: PasswordResetEmailRecipient) => Promise<void>;
     sendVerificationEmail?: (recipient: VerificationEmailRecipient) => Promise<void>;
   },
 ): Promise<void> {
+  const passwordResetRecipient = parsePasswordResetEmailRecipient(value);
+  if (passwordResetRecipient) {
+    if (!senders.sendPasswordResetEmail) {
+      console.warn("[mail-service] Mailjet is not configured; password reset email was not sent.");
+      return;
+    }
+    await senders.sendPasswordResetEmail(passwordResetRecipient);
+    return;
+  }
+
   const emailUpdatedRecipient = parseEmailUpdatedRecipient(value);
   if (emailUpdatedRecipient) {
     if (!senders.sendEmailUpdatedEmail) {

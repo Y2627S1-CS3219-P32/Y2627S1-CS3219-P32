@@ -36,9 +36,11 @@ SQL_TIER="${SQL_TIER:-db-f1-micro}"
 NETWORK="${NETWORK:-default}"
 SUBNET="${SUBNET:-default}"
 PUBSUB_TOPIC="${PUBSUB_TOPIC:-user-events}"
+PASSWORD_RESET_TOPIC="${PASSWORD_RESET_TOPIC:-password-reset-requests}"
 PUBSUB_SUBSCRIPTION="${PUBSUB_SUBSCRIPTION:-user-events-worker}"
 SUPPLIER_USER_EVENTS_SUBSCRIPTION="${SUPPLIER_USER_EVENTS_SUBSCRIPTION:-supplier-service-user-events}"
 MAIL_SERVICE_SUBSCRIPTION="${MAIL_SERVICE_SUBSCRIPTION:-mail-service-user-events}"
+PASSWORD_RESET_SUBSCRIPTION="${PASSWORD_RESET_SUBSCRIPTION:-password-reset-mail}"
 SUPPLIER_EVENTS_TOPIC="${SUPPLIER_EVENTS_TOPIC:-supplier-events}"
 PUBSUB_PUSH_SERVICE_ACCOUNT="${PUBSUB_PUSH_SERVICE_ACCOUNT:-user-event-push@${PROJECT_ID}.iam.gserviceaccount.com}"
 # Identity Cloud Scheduler uses to call the services' internal routes.
@@ -64,6 +66,9 @@ ensure_pubsub() {
   fi
   if ! run pubsub topics describe "$SUPPLIER_EVENTS_TOPIC" >/dev/null 2>&1; then
     run pubsub topics create "$SUPPLIER_EVENTS_TOPIC"
+  fi
+  if ! run pubsub topics describe "$PASSWORD_RESET_TOPIC" >/dev/null 2>&1; then
+    run pubsub topics create "$PASSWORD_RESET_TOPIC"
   fi
 
   local push_service_account_name
@@ -336,12 +341,14 @@ deploy() {
     mail_service_url="$(run_url mail-service)"
     run run deploy mail-service --region "$REGION" --image "${REGISTRY}/mail-service:${TAG}" \
       --port 3335 --no-allow-unauthenticated \
-      --set-env-vars "PUBSUB_PROJECT_ID=${PROJECT_ID},PUBSUB_TOPIC=${PUBSUB_TOPIC},PUBSUB_SUBSCRIPTION=${MAIL_SERVICE_SUBSCRIPTION}" \
+      --set-env-vars "PUBSUB_PROJECT_ID=${PROJECT_ID},PUBSUB_TOPIC=${PUBSUB_TOPIC},PUBSUB_SUBSCRIPTION=${MAIL_SERVICE_SUBSCRIPTION},PASSWORD_RESET_TOPIC=${PASSWORD_RESET_TOPIC},PASSWORD_RESET_SUBSCRIPTION=${PASSWORD_RESET_SUBSCRIPTION},FRONTEND_BASE_URL=${PUBLIC_ORIGINS%%,*}" \
       --set-secrets "MAILJET_API_KEY=mailjet-api-key:latest,MAILJET_SECRET_KEY=mailjet-secret-key:latest,MAILJET_FROM=mailjet-from:latest"
     run run services add-iam-policy-binding mail-service --region "$REGION" \
       --member "serviceAccount:${PUBSUB_PUSH_SERVICE_ACCOUNT}" --role roles/run.invoker >/dev/null
     ensure_push_subscription "$MAIL_SERVICE_SUBSCRIPTION" "$PUBSUB_TOPIC" \
       "${mail_service_url}/pubsub/user-events" "$mail_service_url"
+    ensure_push_subscription "$PASSWORD_RESET_SUBSCRIPTION" "$PASSWORD_RESET_TOPIC" \
+      "${mail_service_url}/pubsub/password-reset" "$mail_service_url"
   else
     echo "Mail service deployment skipped: create mailjet-api-key, mailjet-secret-key, and mailjet-from secrets to enable it."
   fi
@@ -360,7 +367,7 @@ deploy() {
   run run deploy user-service --region "$REGION" --image "${REGISTRY}/user-service:${TAG}" \
     --port 3333 --ingress internal --allow-unauthenticated \
     --add-cloudsql-instances "$SQL_CONNECTION" \
-    --set-env-vars "JWT_ACCESS_TOKEN_TTL=900,PUBSUB_PROJECT_ID=${PROJECT_ID},PUBSUB_TOPIC=${PUBSUB_TOPIC}" \
+    --set-env-vars "JWT_ACCESS_TOKEN_TTL=900,PUBSUB_PROJECT_ID=${PROJECT_ID},PUBSUB_TOPIC=${PUBSUB_TOPIC},PASSWORD_RESET_TOPIC=${PASSWORD_RESET_TOPIC}" \
     --set-secrets "$user_secrets"
   local user_url
   user_url="$(service_url user-service)"

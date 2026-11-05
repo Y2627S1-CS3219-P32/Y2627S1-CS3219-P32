@@ -10,6 +10,7 @@ import test from "node:test";
 import {
   InvalidUserEventError,
   parseEmailUpdatedRecipient,
+  parsePasswordResetEmailRecipient,
   parseVerificationEmailRecipient,
   parseWelcomeEmailRecipient,
   processUserEvent,
@@ -166,6 +167,42 @@ test("verification email delivery failures propagate for Pub/Sub retry", async (
   await assert.rejects(
     processUserEvent(pendingEvent, {
       sendVerificationEmail: async () => { throw new Error("SMTP unavailable"); },
+    }),
+    { message: "SMTP unavailable" },
+  );
+});
+
+test("password reset requests provide a validated email recipient", () => {
+  const resetEvent = {
+    type: "password_reset.requested",
+    eventId: "reset-event",
+    userId: 42,
+    email: "student@u.nus.edu",
+    name: "Alex Tan",
+    resetToken: "a".repeat(43),
+  };
+  assert.deepEqual(parsePasswordResetEmailRecipient(resetEvent), {
+    email: "student@u.nus.edu",
+    name: "Alex Tan",
+    resetToken: "a".repeat(43),
+  });
+  assert.throws(
+    () => parsePasswordResetEmailRecipient({ ...resetEvent, resetToken: "short" }),
+    InvalidUserEventError,
+  );
+});
+
+test("password reset email failures propagate for Pub/Sub retry", async () => {
+  await assert.rejects(
+    processUserEvent({
+      type: "password_reset.requested",
+      eventId: "reset-event",
+      userId: 42,
+      email: "student@u.nus.edu",
+      name: "Alex Tan",
+      resetToken: "a".repeat(43),
+    }, {
+      sendPasswordResetEmail: async () => { throw new Error("SMTP unavailable"); },
     }),
     { message: "SMTP unavailable" },
   );

@@ -20,6 +20,7 @@ import {
   findUserById,
   findUserByDisplayName,
   findUserByEmail,
+  invalidatePasswordResetToken,
   reserveUserId,
 } from "../repositories/users.repository";
 import { validateDisplayName } from "../registration-validation";
@@ -192,6 +193,9 @@ export async function updateUser(
   }
   if (password !== undefined) updates.passwordHash = hashPassword(password);
   const user: User = { ...current, ...updates };
+  if (password !== undefined || (fields.email && fields.email !== current.email)) {
+    await invalidatePasswordResetToken(id);
+  }
   await publishUserEvent({ type: "user.updated", user: userSnapshot(user) }, id);
   return toAdminUser(user);
 }
@@ -204,5 +208,6 @@ export async function deleteUser(idParam: string, actingUserId: number): Promise
   if (user.role === "admin" && await countAdministrators() === 1) {
     throw new HttpError(409, "The last administrator cannot be deleted");
   }
+  await invalidatePasswordResetToken(id);
   await publishUserEvent({ type: "user.deleted", userId: id }, id);
 }

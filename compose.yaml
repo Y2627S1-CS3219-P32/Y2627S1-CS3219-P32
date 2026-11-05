@@ -97,6 +97,7 @@ services:
       PUBSUB_PROJECT_ID: foc-local
       PUBSUB_TOPIC: user-events
       PUBSUB_SUBSCRIPTION: user-events-worker
+      PASSWORD_RESET_TOPIC: password-reset-requests
     ports:
       - "3333:3333"
     healthcheck:
@@ -136,6 +137,10 @@ services:
       PUBSUB_TOPIC: user-events
       PUBSUB_SUBSCRIPTION: mail-service-user-events
       PUBSUB_PUSH_ENDPOINT: http://mail-service:3335/pubsub/user-events
+      PASSWORD_RESET_TOPIC: password-reset-requests
+      PASSWORD_RESET_SUBSCRIPTION: password-reset-mail
+      PASSWORD_RESET_PUSH_ENDPOINT: http://mail-service:3335/pubsub/password-reset
+      FRONTEND_BASE_URL: http://localhost:3001
       MAILJET_API_KEY: ${MAILJET_API_KEY:-}
       MAILJET_SECRET_KEY: ${MAILJET_SECRET_KEY:-}
       MAILJET_FROM: ${MAILJET_FROM:-}

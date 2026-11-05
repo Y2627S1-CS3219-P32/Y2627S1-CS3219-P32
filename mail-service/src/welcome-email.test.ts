@@ -11,6 +11,7 @@ import type { SendMailOptions } from "nodemailer";
 
 import {
   createEmailUpdatedEmailSender,
+  createPasswordResetEmailSender,
   createVerificationEmailSender,
   createWelcomeEmailSender,
 } from "./welcome-email";
@@ -120,4 +121,29 @@ test("verification email sender rejects failed delivery", async () => {
     }),
     { message: "Mailjet unavailable" },
   );
+});
+
+test("password reset email contains a unique, expiring reset link", async () => {
+  let sentMessage: SendMailOptions | undefined;
+  const sendPasswordResetEmail = createPasswordResetEmailSender(
+    settings,
+    "https://foc.example",
+    {
+      async sendMail(message) {
+        sentMessage = message;
+        return {};
+      },
+    },
+  );
+  await sendPasswordResetEmail({
+    email: "student@u.nus.edu",
+    name: "Alex Tan",
+    resetToken: "a".repeat(43),
+  });
+  assert.deepEqual(sentMessage, {
+    from: "welcome@example.com",
+    to: "student@u.nus.edu",
+    subject: "Reset your NUS FOC password",
+    text: `Hi Alex Tan,\n\nUse the following link to reset your NUS Friends of Campus password. This link expires in one hour and can only be used once:\n\nhttps://foc.example/reset-password?token=${"a".repeat(43)}\n\nIf you did not request a password reset, you can ignore this email.\n`,
+  });
 });

@@ -10,7 +10,13 @@
 import { eq, sql } from "drizzle-orm";
 
 import { db, pool } from "../db";
-import { usersTable, type AdminUser, type PublicUser, type User } from "../db/schema";
+import {
+  passwordResetTokensTable,
+  usersTable,
+  type AdminUser,
+  type PublicUser,
+  type User,
+} from "../db/schema";
 
 const publicUserColumns = {
   id: usersTable.id,
@@ -57,6 +63,11 @@ export async function findUserByDisplayName(displayName: string): Promise<User |
     .where(sql`lower(${usersTable.displayName}) = ${displayName.toLowerCase()}`)
     .limit(1);
   return user;
+}
+
+export async function invalidatePasswordResetToken(userId: number): Promise<void> {
+  await db.delete(passwordResetTokensTable)
+    .where(eq(passwordResetTokensTable.userId, userId));
 }
 
 export async function countAdministrators(): Promise<number> {

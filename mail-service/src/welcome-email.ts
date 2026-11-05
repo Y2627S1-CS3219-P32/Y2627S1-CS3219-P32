@@ -23,6 +23,10 @@ export interface VerificationEmailRecipient extends WelcomeEmailRecipient {
   verificationCode: string;
 }
 
+export interface PasswordResetEmailRecipient extends WelcomeEmailRecipient {
+  resetToken: string;
+}
+
 interface MailTransport {
   sendMail(message: SendMailOptions): Promise<unknown>;
 }
@@ -74,6 +78,23 @@ export function createVerificationEmailSender(
       to: email,
       subject: "Verify your NUS FOC account",
       text: `Hi ${name},\n\nYour NUS Friends of Campus verification code is ${verificationCode}. Enter this code in the app to verify your account. If you did not request this code, you can ignore this email.\n`,
+    });
+  };
+}
+
+export function createPasswordResetEmailSender(
+  settings: MailjetConfiguration,
+  frontendBaseUrl: string,
+  transport: MailTransport = createTransport(settings),
+): (recipient: PasswordResetEmailRecipient) => Promise<void> {
+  return async ({ email, name, resetToken }) => {
+    const resetUrl = new URL("/reset-password", frontendBaseUrl);
+    resetUrl.searchParams.set("token", resetToken);
+    await transport.sendMail({
+      from: settings.from,
+      to: email,
+      subject: "Reset your NUS FOC password",
+      text: `Hi ${name},\n\nUse the following link to reset your NUS Friends of Campus password. This link expires in one hour and can only be used once:\n\n${resetUrl.toString()}\n\nIf you did not request a password reset, you can ignore this email.\n`,
     });
   };
 }
