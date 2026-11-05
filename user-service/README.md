@@ -67,8 +67,8 @@ emails must use `u.nus.edu`, `nus.edu.sg`, or `foc.com`. Passwords must contain 
 characters, an uppercase letter, a lowercase letter, and a number, and be no more than 256 bytes.
 Authenticated users can update their display name or email through `PATCH /me`, with the same
 validation and uniqueness rules. Email updates require a matching `confirmEmail`. Password
-updates require the current password, enforce the registration password rules, and reject a new
-password that matches the current password.
+updates require matching `newPassword` and `confirmNewPassword` fields and enforce the
+registration password rules.
 
 Public registration publishes `user.created`; the independent `mail-service` sends the
 welcome email after the account is verified, in response to `user.verified`. Email changes

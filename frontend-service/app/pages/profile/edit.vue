@@ -16,8 +16,8 @@ const displayName = ref(user.value?.displayName ?? "");
 const email = ref(user.value?.email ?? "");
 const confirmEmail = ref("");
 const verificationCode = ref("");
-const currentPassword = ref("");
 const newPassword = ref("");
+const confirmNewPassword = ref("");
 const pending = ref(false);
 const requestingVerificationCode = ref(false);
 const verifyingEmail = ref(false);
@@ -40,11 +40,22 @@ const passwordMeetsCriteria = computed(() =>
 async function saveProfile() {
   errorMessage.value = "";
   successMessage.value = "";
+  if (newPassword.value || confirmNewPassword.value) {
+    if (newPassword.value !== confirmNewPassword.value) {
+      errorMessage.value = "New passwords do not match.";
+      return;
+    }
+    if (!passwordMeetsCriteria.value) {
+      errorMessage.value = "Choose a password with 8 characters, an uppercase letter, a lowercase letter, and a number.";
+      return;
+    }
+  }
+
   const body: Record<string, string> = {};
   if (displayName.value !== user.value?.displayName) body.displayName = displayName.value;
-  if (currentPassword.value || newPassword.value) {
-    body.currentPassword = currentPassword.value;
+  if (newPassword.value || confirmNewPassword.value) {
     body.newPassword = newPassword.value;
+    body.confirmNewPassword = confirmNewPassword.value;
   }
   if (Object.keys(body).length === 0) {
     errorMessage.value = emailChanged.value
@@ -63,8 +74,8 @@ async function saveProfile() {
     displayName.value = updatedUser.displayName;
     email.value = updatedUser.email;
     confirmEmail.value = "";
-    currentPassword.value = "";
     newPassword.value = "";
+    confirmNewPassword.value = "";
     successMessage.value = "Your account details have been updated.";
     await refreshNuxtData("navigation-user");
   } catch (error) {
@@ -207,16 +218,6 @@ async function verifyNewEmail() {
 
         <h2 class="pt-2 text-lg font-semibold">Change password</h2>
         <div>
-          <label for="current-password" class="mb-1.5 block text-sm font-medium">Current password</label>
-          <input
-            id="current-password"
-            v-model="currentPassword"
-            type="password"
-            autocomplete="current-password"
-            class="w-full rounded-lg border border-[#cfd5da] px-3 py-2.5 text-[#25313c] focus:border-[#064784] focus:outline-none focus:ring-2 focus:ring-[#064784]/20"
-          >
-        </div>
-        <div>
           <label for="new-password" class="mb-1.5 block text-sm font-medium">New password</label>
           <input
             id="new-password"
@@ -235,6 +236,17 @@ async function verifyNewEmail() {
               ? "Password meets the requirements."
               : "Password must include 8 characters, an uppercase letter, a lowercase letter, and a number." }}
           </p>
+        </div>
+        <div>
+          <label for="confirm-new-password" class="mb-1.5 block text-sm font-medium">Confirm new password</label>
+          <input
+            id="confirm-new-password"
+            v-model="confirmNewPassword"
+            type="password"
+            autocomplete="new-password"
+            minlength="8"
+            class="w-full rounded-lg border border-[#cfd5da] px-3 py-2.5 text-[#25313c] focus:border-[#064784] focus:outline-none focus:ring-2 focus:ring-[#064784]/20"
+          >
         </div>
 
         <p v-if="errorMessage" class="text-sm text-red-700" role="alert">{{ errorMessage }}</p>

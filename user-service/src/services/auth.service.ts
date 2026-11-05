@@ -269,8 +269,8 @@ export async function updateAuthenticatedUser(userId: number, input: unknown) {
     "displayName",
     "email",
     "confirmEmail",
-    "currentPassword",
     "newPassword",
+    "confirmNewPassword",
   ]);
   if (Object.keys(body).some((key) => !allowedKeys.has(key))) {
     throw new HttpError(400, "Request contains unsupported fields");
@@ -300,17 +300,19 @@ export async function updateAuthenticatedUser(userId: number, input: unknown) {
     throw new HttpError(400, "An email address is required for email confirmation");
   }
 
-  if ("currentPassword" in body || "newPassword" in body) {
+  if ("newPassword" in body || "confirmNewPassword" in body) {
     if (
-      typeof body.currentPassword !== "string" ||
-      !body.currentPassword ||
-      typeof body.newPassword !== "string"
+      typeof body.newPassword !== "string" ||
+      typeof body.confirmNewPassword !== "string"
     ) {
-      throw new HttpError(400, "Current and new passwords are required");
+      throw new HttpError(400, "New password and confirmation are required");
     }
     currentUser = await findUserById(userId);
-    if (!currentUser || !verifyPassword(body.currentPassword, currentUser.passwordHash)) {
-      throw new HttpError(401, "Current password is incorrect");
+    if (!currentUser) {
+      throw new HttpError(401, "Token user no longer exists");
+    }
+    if (body.newPassword !== body.confirmNewPassword) {
+      throw new HttpError(400, "New passwords do not match");
     }
     const newPassword = validateRegistrationPassword(body.newPassword);
     if (verifyPassword(newPassword, currentUser.passwordHash)) {
