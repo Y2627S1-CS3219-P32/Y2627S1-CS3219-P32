@@ -6,11 +6,13 @@
 #
 # Claude Code (Opus 5.5), 2026-11-04: backend services sync shared/src into src/shared and log through
 # pino-pretty (LOG_PRETTY). Author review: Pending.
+# Claude Code (Opus 5.5), 2026-11-04: tsx loads the OpenTelemetry bootstrap first; it stays off
+# unless compose.observability.yaml is added too. Author review: Pending.
 services:
   supplier-service:
     build:
       target: tooling
-    command: ["npx", "tsx", "watch", "src/index.ts"]
+    command: ["npx", "tsx", "watch", "--import", "./src/shared/telemetry.mts", "src/index.ts"]
     environment:
       LOG_PRETTY: "true"
     develop:
@@ -30,7 +32,7 @@ services:
   supplier-event-worker:
     build:
       target: tooling
-    command: ["npx", "tsx", "watch", "src/worker.ts"]
+    command: ["npx", "tsx", "watch", "--import", "./src/shared/telemetry.mts", "src/worker.ts"]
     environment:
       LOG_PRETTY: "true"
     develop:
@@ -47,7 +49,7 @@ services:
           path: ./supplier-service/package.json
 
   user-service:
-    command: ["npx", "tsx", "watch", "src/index.ts"]
+    command: ["npx", "tsx", "watch", "--import", "./src/shared/telemetry.mts", "src/index.ts"]
     environment:
       LOG_PRETTY: "true"
     develop:
@@ -64,7 +66,7 @@ services:
           path: ./user-service/package.json
 
   user-event-worker:
-    command: ["npx", "tsx", "watch", "src/worker.ts"]
+    command: ["npx", "tsx", "watch", "--import", "./src/shared/telemetry.mts", "src/worker.ts"]
     environment:
       LOG_PRETTY: "true"
     develop:
@@ -103,7 +105,7 @@ services:
   order-service:
     build:
       target: tooling
-    command: ["npx", "tsx", "watch", "src/index.ts"]
+    command: ["npx", "tsx", "watch", "--import", "./src/shared/telemetry.mts", "src/index.ts"]
     environment:
       LOG_PRETTY: "true"
     develop:
@@ -123,7 +125,7 @@ services:
   notification-service:
     build:
       target: tooling
-    command: ["npx", "tsx", "watch", "src/index.ts"]
+    command: ["npx", "tsx", "watch", "--import", "./src/shared/telemetry.mts", "src/index.ts"]
     environment:
       LOG_PRETTY: "true"
     develop:
@@ -142,7 +144,7 @@ services:
   credit-service:
     build:
       target: tooling
-    command: ["npx", "tsx", "watch", "src/index.ts"]
+    command: ["npx", "tsx", "watch", "--import", "./src/shared/telemetry.mts", "src/index.ts"]
     environment:
       LOG_PRETTY: "true"
     develop:
@@ -161,7 +163,7 @@ services:
   credit-publisher:
     build:
       target: tooling
-    command: ["npx", "tsx", "watch", "src/outbox-publisher/publisher.ts"]
+    command: ["npx", "tsx", "watch", "--import", "./src/shared/telemetry.mts", "src/outbox-publisher/publisher.ts"]
     environment:
       LOG_PRETTY: "true"
     develop:
@@ -181,7 +183,7 @@ services:
   saga-orchestrator:
     build:
       target: tooling
-    command: ["npx", "tsx", "watch", "src/index.ts"]
+    command: ["npx", "tsx", "watch", "--import", "./src/shared/telemetry.mts", "src/index.ts"]
     environment:
       LOG_PRETTY: "true"
     develop:

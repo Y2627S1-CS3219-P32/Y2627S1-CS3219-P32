@@ -1,5 +1,5 @@
 {
-  "//": "AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-10-18. Scope: Saga orchestrator dependencies and scripts, mirroring order-service; package-lock.json is npm-generated. Author review: Pending. Claude Code (Opus 5.5), 2026-11-04: pino, and pino-pretty for development, for the shared logger. Author review: Pending.",
+  "//": "AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-10-18. Scope: Saga orchestrator dependencies and scripts, mirroring order-service; package-lock.json is npm-generated. Author review: Pending. Claude Code (Opus 5.5), 2026-11-04: pino, and pino-pretty for development, for the shared logger. Author review: Pending. Claude Code (Opus 5.5), 2026-11-04: OpenTelemetry SDK and instrumentations, loaded by the start scripts through shared/telemetry.mts. Author review: Pending.",
   "name": "saga-orchestrator",
   "version": "1.0.0",
   "description": "Orchestrates the order and credit saga",
@@ -8,7 +8,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "dev": "tsx watch src/index.ts",
-    "start": "node dist/index.js",
+    "start": "node --import ./dist/shared/telemetry.mjs dist/index.js",
     "typecheck": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
@@ -17,10 +17,19 @@
   "license": "ISC",
   "dependencies": {
     "@google-cloud/pubsub": "^6.3.0",
+    "@opentelemetry/api": "^1.10.0",
+    "@opentelemetry/instrumentation-express": "^0.72.0",
+    "@opentelemetry/instrumentation-http": "^0.300.0",
+    "@opentelemetry/instrumentation-pg": "^0.77.0",
+    "@opentelemetry/instrumentation-pino": "^0.70.0",
+    "@opentelemetry/instrumentation-runtime-node": "^0.37.0",
+    "@opentelemetry/instrumentation-undici": "^0.34.0",
+    "@opentelemetry/sdk-node": "^0.300.0",
     "dotenv": "^18.0.8",
     "drizzle-orm": "^0.45.4",
     "express": "^5.3.0",
     "google-auth-library": "^11.3.1",
+    "import-in-the-middle": "^3.5.3",
     "pg": "^8.23.1",
     "pino": "^10.4.0"
   },

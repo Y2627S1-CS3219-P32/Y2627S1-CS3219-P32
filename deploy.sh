@@ -366,8 +366,10 @@ deploy() {
   fi
 
   # Copies user-events into the supplier database, which supplier-service reads to authorize callers.
+  # (Claude Code (Opus 5.5), 2026-11-04: `npm run worker` loads OpenTelemetry first, which stays
+  # off without OTEL_EXPORTER_OTLP_ENDPOINT; author review: Pending.)
   run run deploy supplier-event-worker --region "$REGION" --image "${REGISTRY}/supplier-service:${TAG}" \
-    --command node --args dist/worker.js \
+    --command npm --args run,worker \
     --port 3004 --no-allow-unauthenticated \
     --clear-cloudsql-instances \
     --network "$NETWORK" --subnet "$SUBNET" --vpc-egress private-ranges-only \

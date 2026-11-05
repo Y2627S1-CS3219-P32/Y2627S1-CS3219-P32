@@ -109,15 +109,21 @@ Editing a `package.json` rebuilds that service's image. Outside Docker, run
 ## Observability (local)
 
 <!-- AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-11-04.
-Scope: Local observability stack instructions. Author review: Pending. -->
+Scope: Local observability stack instructions. Author review: Pending.
+Claude Code (Opus 5.5), 2026-11-04: the services' own OpenTelemetry data. Author review: Pending. -->
 
 [`compose.observability.yaml`](compose.observability.yaml) adds an OpenTelemetry
 Collector, Prometheus, Loki, Tempo and Grafana, configured in
-[`observability/`](observability/). Add it to any other Compose command:
+[`observability/`](observability/), and turns on OpenTelemetry in every app service.
+Add it after `compose.yaml` in any Compose command (after `compose.dev.yaml` too, for
+hot reloading):
 
 ```sh
 docker compose -f compose.yaml -f compose.observability.yaml up -d --build
 ```
+
+To run only the stack, for services started on the host, name its services:
+`docker compose -f compose.yaml -f compose.observability.yaml up -d otel-collector prometheus loki tempo grafana`.
 
 | What | Where |
 | --- | --- |
@@ -128,8 +134,15 @@ docker compose -f compose.yaml -f compose.observability.yaml up -d --build
 
 The collector sends traces to Tempo, metrics to Prometheus and logs to Loki, and
 reports CPU, memory and network use for every container, labelled `compose_service`.
-Grafana links traces, logs and metrics to one another by trace ID. The services do not
-send OpenTelemetry data yet; until they do, only container metrics appear.
+Grafana links traces, logs and metrics to one another by trace ID.
+
+Each service, frontend-service included, sends traces (HTTP, Express, PostgreSQL), HTTP and
+Node.js runtime metrics, and its pino logs, through
+[`shared/src/telemetry.mts`](shared/src/telemetry.mts). A request's trace follows it from
+frontend-service into the backends it calls. In Grafana, open **Explore → Tempo → Search**
+or **Service Graph**, or **Explore → Loki** with `{service_name="order-service"}`. Without
+`compose.observability.yaml`, and on Cloud Run, telemetry is off. See
+[`shared/README.md`](shared/README.md#telemetry) for what is recorded and the settings.
 
 ## Logging
 

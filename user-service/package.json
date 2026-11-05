@@ -1,13 +1,13 @@
 {
-  "//": "AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-30. Scope: PostgreSQL driver and Drizzle migration command. Author review: Done. ChatGPT (GPT-6), 2026-09-29. Scope: User-service auth test script. Author review: Done. Claude Code (Opus 5.5), 2026-09-29. Scope: tsx watch dev script. Author review: Done. Claude Code (Opus 5.5), 2026-11-04: pino, and pino-pretty for development, for the shared logger. Author review: Pending.",
+  "//": "AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-30. Scope: PostgreSQL driver and Drizzle migration command. Author review: Done. ChatGPT (GPT-6), 2026-09-29. Scope: User-service auth test script. Author review: Done. Claude Code (Opus 5.5), 2026-09-29. Scope: tsx watch dev script. Author review: Done. Claude Code (Opus 5.5), 2026-11-04: pino, and pino-pretty for development, for the shared logger. Author review: Pending. Claude Code (Opus 5.5), 2026-11-04: OpenTelemetry SDK and instrumentations, loaded by the start scripts through shared/telemetry.mts. Author review: Pending.",
   "name": "user-service",
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "start": "tsx src/index.ts",
-    "worker": "tsx src/worker.ts",
+    "start": "tsx --import ./src/shared/telemetry.mts src/index.ts",
+    "worker": "tsx --import ./src/shared/telemetry.mts src/worker.ts",
     "db:migrate": "drizzle-kit push",
     "test": "tsx --test src/auth.test.ts src/events/parse-user-event.test.ts"
   },
@@ -17,9 +17,18 @@
   "type": "commonjs",
   "dependencies": {
     "@google-cloud/pubsub": "^6.3.0",
+    "@opentelemetry/api": "^1.10.0",
+    "@opentelemetry/instrumentation-express": "^0.72.0",
+    "@opentelemetry/instrumentation-http": "^0.300.0",
+    "@opentelemetry/instrumentation-pg": "^0.77.0",
+    "@opentelemetry/instrumentation-pino": "^0.70.0",
+    "@opentelemetry/instrumentation-runtime-node": "^0.37.0",
+    "@opentelemetry/instrumentation-undici": "^0.34.0",
+    "@opentelemetry/sdk-node": "^0.300.0",
     "dotenv": "^18.0.4",
     "drizzle-orm": "^1.0.0-rc.4",
     "express": "^5.2.1",
+    "import-in-the-middle": "^3.5.3",
     "pg": "^8.23.0",
     "pino": "^10.4.0"
   },

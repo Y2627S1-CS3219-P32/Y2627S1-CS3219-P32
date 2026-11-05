@@ -191,6 +191,8 @@ services:
   frontend-service:
     build:
       context: ./frontend-service
+      # Claude Code (Opus 5.5), 2026-11-04: for shared/src/telemetry.mts. Author review: Pending.
+      additional_contexts: *shared-context
     environment:
       NITRO_HOST: 0.0.0.0
       NITRO_PORT: "3000"
@@ -266,7 +268,8 @@ services:
     build:
       context: ./supplier-service
       additional_contexts: *shared-context
-    command: ["node", "dist/worker.js"]
+    # Claude Code (Opus 5.5), 2026-11-04: OpenTelemetry loads first. Author review: Pending.
+    command: ["node", "--import", "./dist/shared/telemetry.mjs", "dist/worker.js"]
     environment:
       PORT: "3004"
       # Claude Code (Opus 5.5), 2026-11-04: the logger's service name. Author review: Pending.

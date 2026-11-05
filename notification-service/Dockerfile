@@ -31,4 +31,6 @@ COPY --from=build --chown=node:node /app/dist ./dist
 USER node
 EXPOSE 3000
 
-CMD ["node", "dist/index.js"]
+# Claude Code (Opus 5.5), 2026-11-04: OpenTelemetry loads first; it stays off unless
+# OTEL_EXPORTER_OTLP_ENDPOINT is set. See shared/README.md. Author review: Pending.
+CMD ["node", "--import", "./dist/shared/telemetry.mjs", "dist/index.js"]

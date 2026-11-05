@@ -89,6 +89,48 @@ Author review: Checked for correctness. -->
   on Cloud Build itself.
 - Author review: Pending.
 
+## 2026-11-04: OpenTelemetry in every service
+
+- Tool: Claude Code (Opus 5.5). Mode: Implementation and verification.
+- Exact prompt: `theres a observability stack already included in this setup with pino, but nothing
+  is done by otel, help me do that for each service.`
+- Key response: Added `shared/src/telemetry.mts`, an OpenTelemetry Node SDK bootstrap that every
+  service loads with `node --import` (`tsx --import` for user-service and dev mode) before its own
+  code. It registers the `import-in-the-middle` loader hook so ES modules can be patched, and sends
+  traces (http, fetch, Express, pg), metrics (HTTP durations, Node.js runtime) and pino logs (with
+  trace and span IDs) over OTLP. It does nothing unless `OTEL_EXPORTER_OTLP_ENDPOINT` is set;
+  `compose.observability.yaml` sets it, with a 15 s metric interval, on the ten app services, so
+  telemetry is off in tests, in plain Compose and on Cloud Run. Health-check requests and
+  parentless `pg` queries (pollers) are not traced; `token`, `ticket` and signature query
+  parameters are redacted from recorded URLs, as the Pub/Sub push endpoints carry the internal
+  secret as `?token=`. On SIGTERM it flushes, then exits with code 143 when the service has no
+  handler of its own (Node as PID 1 ignored the signal until Docker killed it). frontend-service
+  runs the same file uncompiled (Node strips its types) from packages installed in an image stage
+  of their own (`frontend-service/telemetry/`), so its server-side calls carry the trace into the
+  backends. Updated start scripts, Dockerfile `CMD`s, `compose.yaml`, `compose.dev.yaml`, the
+  supplier worker in `deploy.sh` (now `npm run worker`), the frontend's build context in
+  `compose.yaml` and `cloudbuild.yaml`, the services' `tsconfig` includes (`src/**/*.mts`), and
+  the READMEs. `compose.observability.yaml` now names the app's services, so it must be used with
+  `compose.yaml`. The `dev` scripts do not load telemetry, since `tsx watch` hangs while loading
+  it on Windows (it works in the Linux dev containers). Pub/Sub messages do not carry trace context.
+- Affected files: `shared/src/telemetry.mts`, `shared/README.md`; `package.json`,
+  `package-lock.json` and `tsconfig*.json` of the credit, notification, order, saga, supplier and
+  user services; the notification, order, saga, supplier and frontend `Dockerfile`s;
+  `frontend-service/telemetry/package.json` and `package-lock.json`; `compose.yaml`,
+  `compose.dev.yaml`, `compose.observability.yaml`, `cloudbuild.yaml`, `deploy.sh`, `README.md`,
+  and this log.
+- Verification: the five TypeScript services typecheck; user-service tests pass (9). Console
+  exporter smoke tests showed Express, http, fetch, pg and pino patched under `node` (ESM), `tsx`
+  (CommonJS) and `tsx watch` in the Linux tooling image, and the redaction working. Rebuilt and
+  ran the full stack with `compose.observability.yaml`: a login through the frontend appeared in
+  Tempo as one trace (frontend-service, then user-service's route and its PostgreSQL query); pino
+  logs from every pino-using service reached Loki, with `trace_id` and `span_id` on logs written
+  during a request; Prometheus had HTTP server metrics and Node.js runtime metrics for all ten
+  services; containers stop in about 2 s. `credit-publisher` stays unhealthy for a reason that
+  predates this change: its health-check script takes 7 to 11 s to exit, over the 5 s timeout.
+  Not run on Cloud Build or Cloud Run.
+- Author review: Pending.
+
 
 # AI usage log (User Service)
 
