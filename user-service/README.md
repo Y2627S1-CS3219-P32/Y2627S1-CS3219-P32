@@ -63,7 +63,7 @@ HS256 bearer token, which the login page can verify against `/me`.
 Public registration (`POST /register`) accepts a name, display name, university email,
 matching email confirmation, and password. Display names must be unique (case-insensitive),
 2–50 characters, and contain only letters and hyphens with a letter at each end. Registration
-emails must use `u.nus.edu`, `nus.edu.sg`, or `foc.com`. Passwords must contain at least 8
+emails must use `u.nus.edu`, `nus.edu.sg`, or `nusfoc.com`. Passwords must contain at least 8
 characters, an uppercase letter, a lowercase letter, and a number, and be no more than 256 bytes.
 Authenticated users can update their display name or email through `PATCH /me`, with the same
 validation and uniqueness rules. Email updates require a matching `confirmEmail`. Password

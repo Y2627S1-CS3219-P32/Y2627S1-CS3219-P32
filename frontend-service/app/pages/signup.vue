@@ -95,7 +95,7 @@ async function register() {
             required
             class="w-full rounded-lg border border-[#cfd5da] px-3 py-2.5 text-[#25313c] focus:border-[#064784] focus:outline-none focus:ring-2 focus:ring-[#064784]/20"
           >
-          <p class="mt-1 text-xs text-[#5b6570]">Use an address ending in @u.nus.edu, @nus.edu.sg, or @foc.com.</p>
+          <p class="mt-1 text-xs text-[#5b6570]">Use an address ending in @u.nus.edu, @nus.edu.sg, or @nusfoc.com.</p>
         </div>
         <div>
           <label for="confirm-email" class="mb-1.5 block text-sm font-medium">Confirm email</label>
