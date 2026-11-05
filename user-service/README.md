@@ -71,8 +71,9 @@ updates require the current password, enforce the registration password rules, a
 password that matches the current password.
 
 Public registration publishes `user.created`; the independent `mail-service` sends the
-welcome email after the account is verified, in response to `user.verified`. Registration
-does not depend on email delivery.
+welcome email after the account is verified, in response to `user.verified`. Email changes
+also require verification and send an email-updated notice after verification instead of a
+welcome email. Registration does not depend on email delivery.
 Every new account starts with `verificationStatus: "pending_verification"` and a generated
 six-digit `verificationCode`, both persisted when the user event is projected. Pending users
 cannot log in or use authenticated endpoints. Submit
@@ -87,4 +88,5 @@ The service publishes to `PUBSUB_TOPIC` (default `user-events`) in
 development. The worker exposes `POST /pubsub/user-events` for Pub/Sub push
 delivery and `GET /health` for readiness checks; GCP push requests use Cloud Run
 IAM authentication. The separate [mail-service](../mail-service/README.md) consumes
-the same topic and sends a welcome email for `user.verified` events.
+the same topic and sends a welcome email for account creation and an email-updated notice
+after a verified email change.

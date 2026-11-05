@@ -52,9 +52,9 @@ async function applyUserEvent(event: ReturnType<typeof parseUserEvent>): Promise
       await client.query(
         `INSERT INTO users (
            id, name, display_name, email, role, "passwordHash",
-           verification_status, verification_code
+           verification_status, verification_code, verification_purpose
          )
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
          ON CONFLICT (id) DO UPDATE SET
            name = EXCLUDED.name,
            display_name = EXCLUDED.display_name,
@@ -62,7 +62,8 @@ async function applyUserEvent(event: ReturnType<typeof parseUserEvent>): Promise
            role = EXCLUDED.role,
            "passwordHash" = EXCLUDED."passwordHash",
            verification_status = EXCLUDED.verification_status,
-           verification_code = EXCLUDED.verification_code`,
+           verification_code = EXCLUDED.verification_code,
+           verification_purpose = EXCLUDED.verification_purpose`,
         [
           event.user.id,
           event.user.name,
@@ -72,6 +73,7 @@ async function applyUserEvent(event: ReturnType<typeof parseUserEvent>): Promise
           event.user.passwordHash,
           event.user.verificationStatus,
           event.user.verificationCode,
+          event.user.verificationPurpose,
         ],
       );
       if (event.user.role === "admin") {

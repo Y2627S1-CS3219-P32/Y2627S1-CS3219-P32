@@ -148,6 +148,7 @@ export async function createUser(input: unknown): Promise<AdminUser> {
     passwordHash: hashPassword(password),
     verificationStatus: "pending_verification",
     verificationCode: createVerificationCode(),
+    verificationPurpose: "registration",
   };
   await publishUserEvent({ type: "user.created", user: userSnapshot(user) }, user.id);
   return toAdminUser(user);
@@ -182,10 +183,12 @@ export async function updateUser(
     | "passwordHash"
     | "verificationStatus"
     | "verificationCode"
+    | "verificationPurpose"
   >> = { ...fields };
   if (fields.email && fields.email !== current.email) {
     updates.verificationStatus = "pending_verification";
     updates.verificationCode = createVerificationCode();
+    updates.verificationPurpose = "email_update";
   }
   if (password !== undefined) updates.passwordHash = hashPassword(password);
   const user: User = { ...current, ...updates };

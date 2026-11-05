@@ -15,11 +15,21 @@ const { data: user } = await useAsyncData<User>(
 const displayName = ref(user.value?.displayName ?? "");
 const email = ref(user.value?.email ?? "");
 const confirmEmail = ref("");
+const verificationCode = ref("");
 const currentPassword = ref("");
 const newPassword = ref("");
 const pending = ref(false);
+const requestingVerificationCode = ref(false);
+const verifyingEmail = ref(false);
 const errorMessage = ref("");
 const successMessage = ref("");
+const emailChanged = computed(() =>
+  email.value.trim().toLowerCase() !== user.value?.email,
+);
+const emailVerificationPending = computed(() =>
+  user.value?.verificationStatus === "pending_verification" &&
+  email.value.trim().toLowerCase() === user.value.email,
+);
 const passwordMeetsCriteria = computed(() =>
   [...newPassword.value].length >= 8 &&
   /[A-Z]/.test(newPassword.value) &&
@@ -32,16 +42,14 @@ async function saveProfile() {
   successMessage.value = "";
   const body: Record<string, string> = {};
   if (displayName.value !== user.value?.displayName) body.displayName = displayName.value;
-  if (email.value.trim().toLowerCase() !== user.value?.email) {
-    body.email = email.value;
-    body.confirmEmail = confirmEmail.value;
-  }
   if (currentPassword.value || newPassword.value) {
     body.currentPassword = currentPassword.value;
     body.newPassword = newPassword.value;
   }
   if (Object.keys(body).length === 0) {
-    errorMessage.value = "Make a change before saving.";
+    errorMessage.value = emailChanged.value
+      ? "Request a verification code to update your email address."
+      : "Make a change before saving.";
     return;
   }
 
@@ -63,6 +71,54 @@ async function saveProfile() {
     errorMessage.value = getApiErrorMessage(error) ?? "Your account details could not be updated.";
   } finally {
     pending.value = false;
+  }
+}
+
+async function requestEmailVerificationCode() {
+  errorMessage.value = "";
+  successMessage.value = "";
+  requestingVerificationCode.value = true;
+  try {
+    const updatedUser = await $fetch<User>("/api/user-service/me", {
+      method: "PATCH",
+      body: { email: email.value, confirmEmail: confirmEmail.value },
+    });
+    user.value = updatedUser;
+    email.value = updatedUser.email;
+    confirmEmail.value = "";
+    verificationCode.value = "";
+    successMessage.value = `A verification code has been requested for ${updatedUser.email}.`;
+    await refreshNuxtData("navigation-user");
+  } catch (error) {
+    errorMessage.value = getApiErrorMessage(error) ?? "A verification code could not be requested.";
+  } finally {
+    requestingVerificationCode.value = false;
+  }
+}
+
+async function verifyNewEmail() {
+  errorMessage.value = "";
+  successMessage.value = "";
+  if (!/^\d{6}$/.test(verificationCode.value.trim())) {
+    errorMessage.value = "Enter the six-digit verification code.";
+    return;
+  }
+
+  verifyingEmail.value = true;
+  try {
+    const verifiedUser = await $fetch<User>("/api/user-service/verify", {
+      method: "POST",
+      body: { email: user.value?.email, verificationCode: verificationCode.value.trim() },
+    });
+    user.value = verifiedUser;
+    email.value = verifiedUser.email;
+    verificationCode.value = "";
+    successMessage.value = "Your new email address has been verified.";
+    await refreshNuxtData("navigation-user");
+  } catch (error) {
+    errorMessage.value = getApiErrorMessage(error) ?? "Email verification failed. Check your code.";
+  } finally {
+    verifyingEmail.value = false;
   }
 }
 </script>
@@ -102,7 +158,7 @@ async function saveProfile() {
           >
           <p class="mt-1 text-xs text-[#5b6570]">Use an address ending in @u.nus.edu, @nus.edu.sg, or @foc.com.</p>
         </div>
-        <div v-if="email.trim().toLowerCase() !== user?.email">
+        <div v-if="emailChanged">
           <label for="confirm-email" class="mb-1.5 block text-sm font-medium">Confirm new email</label>
           <input
             id="confirm-email"
@@ -113,6 +169,40 @@ async function saveProfile() {
             required
             class="w-full rounded-lg border border-[#cfd5da] px-3 py-2.5 text-[#25313c] focus:border-[#064784] focus:outline-none focus:ring-2 focus:ring-[#064784]/20"
           >
+          <button
+            type="button"
+            :disabled="requestingVerificationCode"
+            class="mt-3 rounded-lg border border-[#064784] px-4 py-2.5 text-sm font-medium text-[#064784] transition-colors hover:bg-[#f7f9fc] disabled:cursor-wait disabled:opacity-60"
+            @click="requestEmailVerificationCode"
+          >
+            {{ requestingVerificationCode ? "Requesting code..." : "Request verification code" }}
+          </button>
+        </div>
+        <div v-if="emailVerificationPending" class="space-y-3 rounded-lg bg-[#f7f9fc] p-4">
+          <p class="text-sm text-[#5b6570]">
+            Enter the six-digit verification code sent to {{ user?.email }}.
+          </p>
+          <div>
+            <label for="verification-code" class="mb-1.5 block text-sm font-medium">Verification code</label>
+            <input
+              id="verification-code"
+              v-model="verificationCode"
+              type="text"
+              inputmode="numeric"
+              autocomplete="one-time-code"
+              pattern="[0-9]{6}"
+              maxlength="6"
+              class="w-full rounded-lg border border-[#cfd5da] px-3 py-2.5 text-[#25313c] focus:border-[#064784] focus:outline-none focus:ring-2 focus:ring-[#064784]/20"
+            >
+          </div>
+          <button
+            type="button"
+            :disabled="verifyingEmail"
+            class="rounded-lg bg-[#064784] px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-[#053765] disabled:cursor-wait disabled:opacity-60"
+            @click="verifyNewEmail"
+          >
+            {{ verifyingEmail ? "Verifying..." : "Verify new email" }}
+          </button>
         </div>
 
         <h2 class="pt-2 text-lg font-semibold">Change password</h2>

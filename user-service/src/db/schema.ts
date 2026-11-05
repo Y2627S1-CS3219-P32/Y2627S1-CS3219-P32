@@ -30,6 +30,9 @@ export const usersTable = pgTable("users", {
     enum: ["pending_verification", "verified"],
   }).notNull().default("verified"),
   verificationCode: text("verification_code"),
+  verificationPurpose: text("verification_purpose", {
+    enum: ["registration", "email_update"],
+  }),
 }, (table) => [
   uniqueIndex("users_email_unique").on(table.email),
   uniqueIndex("users_display_name_unique").on(sql`lower(${table.displayName})`)
@@ -55,3 +58,4 @@ export type PublicUser = Pick<
   "id" | "name" | "displayName" | "email" | "role" | "verificationStatus"
 >;
 export type AdminUser = PublicUser & Pick<User, "verificationCode">;
+export type VerificationPurpose = NonNullable<User["verificationPurpose"]>;

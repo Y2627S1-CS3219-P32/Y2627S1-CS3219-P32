@@ -107,8 +107,9 @@ modules (frontend) on change.
 Editing a `package.json` rebuilds that service's image. Outside Docker, run
 `npm run dev` in any of these service folders.
 
-The `mail-service` sends verification codes for pending accounts and a welcome email
-after `user.verified`, through Mailjet. Set `MAILJET_API_KEY`, `MAILJET_SECRET_KEY`,
+The `mail-service` sends verification codes for pending accounts, a welcome email after
+signup verification, and an email-updated notice after a verified email change, through Mailjet.
+Set `MAILJET_API_KEY`, `MAILJET_SECRET_KEY`,
 and `MAILJET_FROM` in `.env`; the sender address must be verified with Mailjet. Accounts
 must be verified before users can sign in or access authenticated app functionality. If
 these settings are omitted, codes remain available in the admin user list, but emails

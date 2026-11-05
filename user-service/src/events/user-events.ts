@@ -11,7 +11,7 @@ import { randomUUID } from "node:crypto";
 
 import { PubSub } from "@google-cloud/pubsub";
 
-import type { User } from "../db/schema";
+import type { User, VerificationPurpose } from "../db/schema";
 import { reserveUserEventVersion } from "../repositories/users.repository";
 
 export const userEventsTopicName = process.env.PUBSUB_TOPIC ?? "user-events";
@@ -29,10 +29,16 @@ export type UserSnapshot = Pick<
   | "passwordHash"
   | "verificationStatus"
   | "verificationCode"
+  | "verificationPurpose"
 >;
 
 export type UserEventPayload =
-  | { type: "user.created" | "user.updated" | "user.verified"; user: UserSnapshot }
+  | { type: "user.created" | "user.updated"; user: UserSnapshot }
+  | {
+      type: "user.verified";
+      user: UserSnapshot;
+      verificationPurpose: VerificationPurpose;
+    }
   | { type: "user.deleted"; userId: number };
 
 export type UserEvent = UserEventPayload & { eventId: string; version: number };
@@ -97,5 +103,6 @@ export function userSnapshot(user: User): UserSnapshot {
     passwordHash: user.passwordHash,
     verificationStatus: user.verificationStatus,
     verificationCode: user.verificationCode,
+    verificationPurpose: user.verificationPurpose,
   };
 }

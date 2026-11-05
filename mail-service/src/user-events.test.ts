@@ -9,6 +9,7 @@ import test from "node:test";
 
 import {
   InvalidUserEventError,
+  parseEmailUpdatedRecipient,
   parseVerificationEmailRecipient,
   parseWelcomeEmailRecipient,
   processUserEvent,
@@ -18,12 +19,17 @@ const verifiedEvent = {
   eventId: "event-1",
   version: 1,
   type: "user.verified",
+  verificationPurpose: "registration",
   user: {
     id: 42,
     name: "Alex Tan",
     email: "student@u.nus.edu",
     verificationStatus: "verified",
   },
+};
+const emailUpdatedEvent = {
+  ...verifiedEvent,
+  verificationPurpose: "email_update",
 };
 
 const pendingEvent = {
@@ -39,11 +45,28 @@ const pendingEvent = {
   },
 };
 
-test("user.verified event provides the welcome email recipient", () => {
+test("signup verification provides the welcome email recipient", () => {
   assert.deepEqual(parseWelcomeEmailRecipient(verifiedEvent), {
     email: "student@u.nus.edu",
     name: "Alex Tan",
   });
+});
+
+test("email-update verification provides the updated-email recipient, not a welcome recipient", () => {
+  assert.deepEqual(parseEmailUpdatedRecipient(emailUpdatedEvent), {
+    email: "student@u.nus.edu",
+    name: "Alex Tan",
+  });
+  assert.equal(parseWelcomeEmailRecipient(emailUpdatedEvent), undefined);
+});
+
+test("email-update verification sends an email-updated email only", async () => {
+  const sent: string[] = [];
+  await processUserEvent(emailUpdatedEvent, {
+    sendWelcomeEmail: async () => { sent.push("welcome"); },
+    sendEmailUpdatedEmail: async () => { sent.push("updated"); },
+  });
+  assert.deepEqual(sent, ["updated"]);
 });
 
 test("verified snapshots in created and updated events do not trigger either email", async () => {
@@ -125,6 +148,15 @@ test("delivery failures propagate so Pub/Sub can retry", async () => {
   await assert.rejects(
     processUserEvent(verifiedEvent, {
       sendWelcomeEmail: async () => { throw new Error("SMTP unavailable"); },
+    }),
+    { message: "SMTP unavailable" },
+  );
+});
+
+test("email-updated delivery failures propagate so Pub/Sub can retry", async () => {
+  await assert.rejects(
+    processUserEvent(emailUpdatedEvent, {
+      sendEmailUpdatedEmail: async () => { throw new Error("SMTP unavailable"); },
     }),
     { message: "SMTP unavailable" },
   );

@@ -5,6 +5,7 @@
     Author review: Pending
 **/
 import type {
+  EmailUpdatedRecipient,
   VerificationEmailRecipient,
   WelcomeEmailRecipient,
 } from "./welcome-email";
@@ -25,6 +26,25 @@ export function parseWelcomeEmailRecipient(value: unknown): WelcomeEmailRecipien
     throw new InvalidUserEventError("User event must be an object");
   }
   if (value.type !== "user.verified") return undefined;
+  const verificationPurpose = value.verificationPurpose ?? "registration";
+  if (verificationPurpose === "email_update") return undefined;
+  if (verificationPurpose !== "registration") {
+    throw new InvalidUserEventError("Verified user event has an invalid verification purpose");
+  }
+  return parseVerifiedEmailRecipient(value);
+}
+
+export function parseEmailUpdatedRecipient(value: unknown): EmailUpdatedRecipient | undefined {
+  if (!isRecord(value)) {
+    throw new InvalidUserEventError("User event must be an object");
+  }
+  if (value.type !== "user.verified" || value.verificationPurpose !== "email_update") {
+    return undefined;
+  }
+  return parseVerifiedEmailRecipient(value);
+}
+
+function parseVerifiedEmailRecipient(value: Record<string, unknown>): WelcomeEmailRecipient {
   if (
     typeof value.eventId !== "string" ||
     !value.eventId ||
@@ -90,9 +110,20 @@ export async function processUserEvent(
   value: unknown,
   senders: {
     sendWelcomeEmail?: (recipient: WelcomeEmailRecipient) => Promise<void>;
+    sendEmailUpdatedEmail?: (recipient: EmailUpdatedRecipient) => Promise<void>;
     sendVerificationEmail?: (recipient: VerificationEmailRecipient) => Promise<void>;
   },
 ): Promise<void> {
+  const emailUpdatedRecipient = parseEmailUpdatedRecipient(value);
+  if (emailUpdatedRecipient) {
+    if (!senders.sendEmailUpdatedEmail) {
+      console.warn("[mail-service] Mailjet is not configured; email-updated email was not sent.");
+      return;
+    }
+    await senders.sendEmailUpdatedEmail(emailUpdatedRecipient);
+    return;
+  }
+
   const welcomeRecipient = parseWelcomeEmailRecipient(value);
   if (welcomeRecipient) {
     if (!senders.sendWelcomeEmail) {

@@ -8,6 +8,7 @@ import express, { type ErrorRequestHandler } from "express";
 
 import { InvalidUserEventError, processUserEvent } from "./user-events";
 import type {
+  EmailUpdatedRecipient,
   VerificationEmailRecipient,
   WelcomeEmailRecipient,
 } from "./welcome-email";
@@ -15,6 +16,7 @@ import type {
 export function createApp(
   senders: {
     sendWelcomeEmail?: (recipient: WelcomeEmailRecipient) => Promise<void>;
+    sendEmailUpdatedEmail?: (recipient: EmailUpdatedRecipient) => Promise<void>;
     sendVerificationEmail?: (recipient: VerificationEmailRecipient) => Promise<void>;
   },
 ) {

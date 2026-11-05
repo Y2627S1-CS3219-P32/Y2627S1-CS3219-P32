@@ -3,9 +3,10 @@ Scope: Mail-service verification/welcome email behavior and Mailjet setup. Autho
 # Mail Service
 
 The mail service consumes the user service's `user-events` Pub/Sub topic. It sends a
-verification-code email for pending `user.created` and `user.updated` events, then a
-welcome email for `user.verified` events. Other events are acknowledged without sending
-mail. Signup itself does not wait for email delivery.
+verification-code email for pending `user.created` and `user.updated` events. Verified
+signup accounts receive a welcome email, while verified email changes receive an
+"email updated" notice instead. Other events are acknowledged without sending mail.
+Signup itself does not wait for email delivery.
 
 ## Local development
 
@@ -20,7 +21,7 @@ MAILJET_FROM=
 
 `MAILJET_FROM` must be a sender address verified in Mailjet. The service connects to
 Mailjet's SMTP endpoint at `in-v3.mailjet.com:587` using Nodemailer. If the variables
-are unset, verification emails and welcome emails are skipped with a warning.
+are unset, verification, welcome, and email-updated emails are skipped with a warning.
 
 ## Delivery behavior
 

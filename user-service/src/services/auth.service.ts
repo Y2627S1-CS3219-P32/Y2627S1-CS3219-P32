@@ -91,6 +91,7 @@ export async function register(input: unknown) {
     passwordHash: hashPassword(password),
     verificationStatus: "pending_verification",
     verificationCode: createVerificationCode(),
+    verificationPurpose: "registration",
   };
   await publishUserEvent({ type: "user.created", user: userSnapshot(user) }, user.id);
 
@@ -158,9 +159,14 @@ export async function verifyUser(input: unknown) {
     ...user,
     verificationStatus: "verified",
     verificationCode: null,
+    verificationPurpose: null,
   };
   await publishUserEvent(
-    { type: "user.verified", user: userSnapshot(verifiedUser) },
+    {
+      type: "user.verified",
+      user: userSnapshot(verifiedUser),
+      verificationPurpose: user.verificationPurpose ?? "registration",
+    },
     user.id,
   );
   return toPublicUser(verifiedUser);
@@ -195,6 +201,7 @@ export async function updateAuthenticatedUser(userId: number, input: unknown) {
     passwordHash?: string;
     verificationStatus?: User["verificationStatus"];
     verificationCode?: string | null;
+    verificationPurpose?: User["verificationPurpose"];
   } = {};
   let currentUser: User | undefined;
   if ("displayName" in body) {
@@ -254,6 +261,7 @@ export async function updateAuthenticatedUser(userId: number, input: unknown) {
   if (updates.email && updates.email !== currentUser.email) {
     updates.verificationStatus = "pending_verification";
     updates.verificationCode = createVerificationCode();
+    updates.verificationPurpose = "email_update";
   }
 
   const user: User = { ...currentUser, ...updates };
@@ -331,6 +339,7 @@ export async function bootstrapAdministrator(
       passwordHash: hashPassword(password),
       verificationStatus: "pending_verification",
       verificationCode: createVerificationCode(),
+      verificationPurpose: "registration",
     };
     await publishUserEvent({ type: "user.created", user: userSnapshot(user) }, user.id);
     await tx.insert(userBootstrapReservationsTable).values({ id: 1, userId: user.id });

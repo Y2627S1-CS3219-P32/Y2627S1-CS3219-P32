@@ -9,6 +9,7 @@ import { PubSub } from "@google-cloud/pubsub";
 import { createApp } from "./app";
 import { config } from "./config";
 import {
+  createEmailUpdatedEmailSender,
   createVerificationEmailSender,
   createWelcomeEmailSender,
 } from "./welcome-email";
@@ -16,6 +17,7 @@ import {
 const app = createApp(config.mailjet
   ? {
       sendWelcomeEmail: createWelcomeEmailSender(config.mailjet),
+      sendEmailUpdatedEmail: createEmailUpdatedEmailSender(config.mailjet),
       sendVerificationEmail: createVerificationEmailSender(config.mailjet),
     }
   : {});

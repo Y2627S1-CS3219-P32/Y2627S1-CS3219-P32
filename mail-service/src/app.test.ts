@@ -15,6 +15,7 @@ const verifiedEvent = {
   eventId: "event-1",
   version: 1,
   type: "user.verified",
+  verificationPurpose: "registration",
   user: {
     id: 42,
     name: "Alex Tan",
@@ -22,6 +23,7 @@ const verifiedEvent = {
     verificationStatus: "verified",
   },
 };
+const emailUpdatedEvent = { ...verifiedEvent, verificationPurpose: "email_update" };
 
 const pendingEvent = {
   eventId: "event-2",
@@ -40,6 +42,7 @@ async function postEvent(
   event: unknown,
   senders: {
     sendWelcomeEmail?: (recipient: { name: string; email: string }) => Promise<void>;
+    sendEmailUpdatedEmail?: (recipient: { name: string; email: string }) => Promise<void>;
     sendVerificationEmail?: (
       recipient: { name: string; email: string; verificationCode: string }
     ) => Promise<void>;
@@ -70,6 +73,17 @@ test("user.verified push sends welcome email and acknowledges the event", async 
     sendWelcomeEmail: async (value) => {
       recipient = value;
     },
+  });
+
+  test("email-update verification push sends email-updated mail instead of welcome mail", async () => {
+    const sent: string[] = [];
+    const response = await postEvent(emailUpdatedEvent, {
+      sendWelcomeEmail: async () => { sent.push("welcome"); },
+      sendEmailUpdatedEmail: async () => { sent.push("updated"); },
+    });
+
+    assert.equal(response.status, 204);
+    assert.deepEqual(sent, ["updated"]);
   });
 
   assert.equal(response.status, 204);
@@ -111,6 +125,16 @@ test("delivery failures return 500 so Pub/Sub can retry", async () => {
     sendWelcomeEmail: async () => {
       throw new Error("SMTP unavailable");
     },
+  });
+
+  test("email-updated delivery failures return 500 so Pub/Sub can retry", async () => {
+    const response = await postEvent(emailUpdatedEvent, {
+      sendEmailUpdatedEmail: async () => {
+        throw new Error("SMTP unavailable");
+      },
+    });
+
+    assert.equal(response.status, 500);
   });
 
   assert.equal(response.status, 500);
