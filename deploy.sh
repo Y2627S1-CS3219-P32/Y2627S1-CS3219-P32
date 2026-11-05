@@ -10,6 +10,10 @@
 # Claude Code (Opus 5.5), 2026-10-18. Scope: order, notification, credit and saga services:
 # databases, topics, push subscriptions, Cloud Scheduler jobs and frontend wiring.
 # Author review: Pending.
+# ChatGPT (GPT-6), 2026-11-04: deploy mail-service and authenticated user-events subscription.
+# Author review: Pending.
+# ChatGPT (GPT-6), 2026-11-05: securely provision Mailjet Secret Manager versions.
+# Author review: Pending.
 # Claude Code (Opus 5.5), 2026-10-18: `github` command setting up Workload Identity Federation
 # for the GitHub Actions deploy workflow. Author review: Pending.
 #
@@ -18,6 +22,7 @@
 #   ./deploy.sh         # create anything new, run migrations, then deploy every service
 #   ./deploy.sh seed    # run the supplier seed job (safe to repeat)
 #   ./deploy.sh github  # one-time: let .github/workflows/deploy.yml deploy from main
+#   ./deploy.sh mailjet # securely add/update Mailjet secrets for mail-service
 #
 # Override any setting below with an environment variable, e.g. TAG=<build id> ./deploy.sh
 set -euo pipefail
@@ -33,6 +38,7 @@ SUBNET="${SUBNET:-default}"
 PUBSUB_TOPIC="${PUBSUB_TOPIC:-user-events}"
 PUBSUB_SUBSCRIPTION="${PUBSUB_SUBSCRIPTION:-user-events-worker}"
 SUPPLIER_USER_EVENTS_SUBSCRIPTION="${SUPPLIER_USER_EVENTS_SUBSCRIPTION:-supplier-service-user-events}"
+MAIL_SERVICE_SUBSCRIPTION="${MAIL_SERVICE_SUBSCRIPTION:-mail-service-user-events}"
 SUPPLIER_EVENTS_TOPIC="${SUPPLIER_EVENTS_TOPIC:-supplier-events}"
 PUBSUB_PUSH_SERVICE_ACCOUNT="${PUBSUB_PUSH_SERVICE_ACCOUNT:-user-event-push@${PROJECT_ID}.iam.gserviceaccount.com}"
 # Identity Cloud Scheduler uses to call the services' internal routes.
@@ -325,6 +331,21 @@ deploy_event_services() {
 deploy() {
   ensure_pubsub
 
+  if secret_exists mailjet-api-key && secret_exists mailjet-secret-key && secret_exists mailjet-from; then
+    local mail_service_url
+    mail_service_url="$(run_url mail-service)"
+    run run deploy mail-service --region "$REGION" --image "${REGISTRY}/mail-service:${TAG}" \
+      --port 3335 --no-allow-unauthenticated \
+      --set-env-vars "PUBSUB_PROJECT_ID=${PROJECT_ID},PUBSUB_TOPIC=${PUBSUB_TOPIC},PUBSUB_SUBSCRIPTION=${MAIL_SERVICE_SUBSCRIPTION}" \
+      --set-secrets "MAILJET_API_KEY=mailjet-api-key:latest,MAILJET_SECRET_KEY=mailjet-secret-key:latest,MAILJET_FROM=mailjet-from:latest"
+    run run services add-iam-policy-binding mail-service --region "$REGION" \
+      --member "serviceAccount:${PUBSUB_PUSH_SERVICE_ACCOUNT}" --role roles/run.invoker >/dev/null
+    ensure_push_subscription "$MAIL_SERVICE_SUBSCRIPTION" "$PUBSUB_TOPIC" \
+      "${mail_service_url}/pubsub/user-events" "$mail_service_url"
+  else
+    echo "Mail service deployment skipped: create mailjet-api-key, mailjet-secret-key, and mailjet-from secrets to enable it."
+  fi
+
   run_job supplier-migrate "${REGISTRY}/supplier-service-tooling:${TAG}" supplier-database-url \
     "${PRIVATE_DB_FLAGS[@]}" --command npm --args run,db:migrate
   run_job user-migrate "${REGISTRY}/user-service:${TAG}" user-database-url \
@@ -468,6 +489,45 @@ github_ci() {
   echo "  GCP_SERVICE_ACCOUNT=${deployer}"
 }
 
+configure_mailjet() {
+  if [ ! -t 0 ]; then
+    echo "Run './deploy.sh mailjet' in an interactive terminal to enter Mailjet settings securely." >&2
+    return 1
+  fi
+
+  local api_key secret_key sender
+  read -r -s -p "Mailjet API key: " api_key
+  printf '\n' >&2
+  read -r -s -p "Mailjet secret key: " secret_key
+  printf '\n' >&2
+  read -r -p "Verified Mailjet sender address: " sender
+
+  if [ -z "$api_key" ] || [ -z "$secret_key" ] || [ -z "$sender" ]; then
+    unset api_key secret_key sender
+    echo "All three Mailjet settings are required; no secrets were changed." >&2
+    return 1
+  fi
+
+  local name value
+  for name in mailjet-api-key mailjet-secret-key mailjet-from; do
+    case "$name" in
+      mailjet-api-key) value="$api_key" ;;
+      mailjet-secret-key) value="$secret_key" ;;
+      mailjet-from) value="$sender" ;;
+    esac
+
+    if secret_exists "$name"; then
+      printf '%s' "$value" | run secrets versions add "$name" --data-file -
+    else
+      printf '%s' "$value" |
+        run secrets create "$name" --replication-policy automatic --data-file -
+    fi
+  done
+
+  unset api_key secret_key sender value
+  echo "Mailjet secrets saved to Secret Manager. Run './deploy.sh' to deploy mail-service."
+}
+
 seed() {
   run_job supplier-seed "${REGISTRY}/supplier-service-tooling:${TAG}" supplier-database-url \
     "${PRIVATE_DB_FLAGS[@]}" --command npm --args run,db:seed
@@ -478,5 +538,6 @@ case "${1:-deploy}" in
   deploy) deploy ;;
   seed) seed ;;
   github) github_ci ;;
-  *) echo "Usage: $0 [setup|deploy|seed|github]" >&2; exit 1 ;;
+  mailjet) configure_mailjet ;;
+  *) echo "Usage: $0 [setup|deploy|seed|github|mailjet]" >&2; exit 1 ;;
 esac

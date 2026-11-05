@@ -28,7 +28,7 @@ withdrawn, or exchanged for money, and only circulate within the platform.
 
 This repository follows a **one-service-per-folder** structure: each
 microservice (`user-service/`, `supplier-service/`, `order-service/`,
-`credit-service/`) lives in its own top-level folder.
+`credit-service/`, `mail-service/`) lives in its own top-level folder.
 
 ```text
 .
@@ -36,6 +36,7 @@ microservice (`user-service/`, `supplier-service/`, `order-service/`,
 ├── supplier-service/
 ├── order-service/
 ├── credit-service/
+├── mail-service/
 ├── <n2h-service>/
 └── README.md
 ```
@@ -96,8 +97,8 @@ which Nuxt fetches over the Compose network. The supplier API remains on host po
 docker compose -f compose.yaml -f compose.dev.yaml up --watch
 ```
 
-[`compose.dev.yaml`](compose.dev.yaml) runs the supplier and user services with
-`tsx watch`, the user event worker with `tsx watch`, and the frontend with `nuxt dev`.
+[`compose.dev.yaml`](compose.dev.yaml) runs the supplier and user services and workers,
+plus mail-service, with `tsx watch`, and the frontend with `nuxt dev`.
 Compose also starts a local Pub/Sub emulator and PostgreSQL projection worker.
 User-service mutations are acknowledged when Pub/Sub accepts them; PostgreSQL
 updates asynchronously, so immediate reads or logins can briefly lag. Compose
@@ -105,6 +106,13 @@ syncs source edits into the containers, which restart (backends) or hot-swap
 modules (frontend) on change.
 Editing a `package.json` rebuilds that service's image. Outside Docker, run
 `npm run dev` in any of these service folders.
+
+The `mail-service` sends verification codes for pending accounts and a welcome email
+after `user.verified`, through Mailjet. Set `MAILJET_API_KEY`, `MAILJET_SECRET_KEY`,
+and `MAILJET_FROM` in `.env`; the sender address must be verified with Mailjet. Accounts
+must be verified before users can sign in or access authenticated app functionality. If
+these settings are omitted, codes remain available in the admin user list, but emails
+are skipped.
 
 ## Deploy to Google Cloud (Cloud Run)
 
@@ -143,6 +151,23 @@ The user service publishes state-change events to the `user-events` topic. The
 authenticated `user-event-worker` Cloud Run service consumes its push
 subscription and updates the PostgreSQL read model. Events contain password
 hashes only; GCP IAM restricts publishing and push invocation.
+
+The `mail-service` also consumes `user-events` through an authenticated Pub/Sub push
+subscription and sends verification and welcome emails. After `./deploy.sh setup`, run
+`./deploy.sh mailjet` from an interactive terminal to securely enter your Mailjet
+credentials and verified sender address. The API key and secret key are hidden while
+typing, and the values are saved as Secret Manager versions (updated when the secrets
+already exist). Then run `./deploy.sh` to deploy/redeploy the mail service:
+
+```sh
+./deploy.sh mailjet
+./deploy.sh
+```
+
+The sender address must be verified with Mailjet. The command requires an authenticated
+`gcloud` session with permission to create Secret Manager secrets and versions; it does not
+put credential values in shell history. If the secrets are not configured, deployment
+skips the mail service.
 
 To create the first administrator, add a `bootstrap-secret` in Secret Manager (at least 32
 bytes), re-run `./deploy.sh`, complete `/setup/admin`, then delete the secret and re-run.

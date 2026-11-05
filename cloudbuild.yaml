@@ -1,6 +1,7 @@
 # AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-09-30.
 # Scope: Cloud Build config that builds and pushes service images to Artifact Registry.
 # Author review: Done.
+# ChatGPT (GPT-6), 2026-11-04: build and publish mail-service image. Author review: Pending.
 #
 # Usage (from the repository root):
 #   gcloud builds submit --config cloudbuild.yaml
@@ -32,6 +33,15 @@ steps:
       - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/user-service:${BUILD_ID}
       - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/user-service:latest
       - user-service
+
+  - id: mail-service
+    name: gcr.io/cloud-builders/docker
+    waitFor: ["-"]
+    args:
+      - build
+      - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/mail-service:${BUILD_ID}
+      - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/mail-service:latest
+      - mail-service
 
   - id: supplier-service
     name: gcr.io/cloud-builders/docker
@@ -126,6 +136,8 @@ images:
   - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/frontend-service:latest
   - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/user-service:${BUILD_ID}
   - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/user-service:latest
+  - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/mail-service:${BUILD_ID}
+  - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/mail-service:latest
   - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/supplier-service:${BUILD_ID}
   - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/supplier-service:latest
   - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/supplier-service-tooling:${BUILD_ID}

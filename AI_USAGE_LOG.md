@@ -1562,6 +1562,174 @@ for context, frontend-service is being set up. The frontend’s supplier screen 
 
 - Author review: Pending.
 
+## 2026-10-19: Send Mailjet welcome email after user registration
+
+- Tool: ChatGPT (GPT-6). Mode: Implementation, tests, documentation, and verification.
+- User instruction: Add a Mailjet interface to the user service using Nodemailer and
+  send a welcome email after account signup.
+- Key response:
+  - Added a Nodemailer SMTP sender using Mailjet credentials and a configurable
+    verified sender address.
+  - Connected the welcome email to public registration after the user-created
+    event is published. Delivery failures are logged without undoing registration.
+  - Added optional environment and Compose configuration, validation for partial
+    settings, setup documentation, and sender tests.
+  - Added AI-assistance disclosures to the implementation files.
+- Affected files: `.env.example`, `compose.yaml`, `user-service/README.md`,
+  `user-service/package.json`, `user-service/package-lock.json`,
+  `user-service/src/config.ts`, `user-service/src/controllers/auth.controller.ts`,
+  `user-service/src/services/auth.service.ts`,
+  `user-service/src/services/mailjet.service.ts`,
+  `user-service/src/services/mailjet.service.test.ts`, and this log.
+- Verification: All 11 user-service tests passed; targeted strict TypeScript
+  checking, Compose configuration validation, package JSON parsing, and
+  `git diff --check` passed. Later verified the running container had all three
+  Mailjet settings and its SMTP connection/authentication succeeded; no live email
+  delivery confirmation was available.
+- Author review: Pending.
+
+## 2026-11-04: Move welcome email delivery to mail-service
+
+- Tool: ChatGPT (GPT-6). Mode: Refactoring, implementation, tests, and verification.
+- User instruction: Create a separate mail service that sends welcome email in
+  response to `user.created` events.
+- Key response:
+  - Added a standalone Express/Nodemailer service with a Pub/Sub push endpoint that
+    sends a welcome email only for `user.created`.
+  - Delivery failures return 500 so Pub/Sub retries; unrelated events and invalid
+    payloads are acknowledged without sending email.
+  - Removed SMTP configuration and email delivery from user-service; registration
+    now only publishes the existing user-created event.
+  - Wired a local emulator subscription and Cloud Run authenticated push
+    subscription, plus Cloud Build, Compose, Secret Manager, and service docs.
+- Affected files: `mail-service/`, `.env.example`, `compose.yaml`,
+  `compose.dev.yaml`, `cloudbuild.yaml`, `deploy.sh`, `README.md`,
+  `user-service/README.md`, `user-service/package.json`,
+  `user-service/package-lock.json`, `user-service/src/config.ts`,
+  `user-service/src/controllers/auth.controller.ts`,
+  `user-service/src/services/auth.service.ts`, and this log.
+- Verification: Mail-service tests (10/10) and user-service tests (9/9) passed;
+  strict TypeScript checks for both services and `docker compose config --quiet`
+  passed. Cloud Build YAML parsed; deployment script syntax passed; the mail and
+  user service container images built successfully, and the mail image test suite
+  passed.
+- Author review: Pending.
+
+## 2026-11-04: Add account verification status and codes
+
+- Tool: ChatGPT (GPT-6). Mode: Implementation, tests, and verification.
+- User instruction: Track pending/verified account status, generate and persist a
+  verification code, provide a verification command, and expose pending codes on
+  the administrator user page without sending verification email.
+- Key response:
+  - New accounts start pending verification with a generated six-digit code;
+    status and code are included in user events and persisted by the projection.
+  - Added `POST /verify` and an administrator action to verify accounts using the
+    displayed code. Successful verification clears the code.
+  - Public user responses expose verification status but not the code. No
+    verification email is sent.
+- Affected files: `frontend-service/app/pages/admin/users.vue`,
+  `frontend-service/server/api/user-service/verify.post.ts`,
+  `frontend-service/shared/services/user-service/types.ts`,
+  `user-service/README.md`, `user-service/package.json`,
+  `user-service/src/controllers/auth.controller.ts`, `user-service/src/db/schema.ts`,
+  `user-service/src/events/parse-user-event.test.ts`,
+  `user-service/src/events/parse-user-event.ts`,
+  `user-service/src/events/user-events.ts`,
+  `user-service/src/repositories/users.repository.ts`,
+  `user-service/src/routes/auth.routes.ts`,
+  `user-service/src/services/auth.service.ts`,
+  `user-service/src/services/users.service.ts`, `user-service/src/verification.test.ts`,
+  `user-service/src/verification.ts`, `user-service/src/worker.ts`, and this log.
+- Verification: All 12 user-service tests passed; strict user-service TypeScript
+  checking, frontend Nuxt typechecking, `docker compose config --quiet`, and
+  `git diff --check` passed.
+- Author review: Pending.
+
+## 2026-11-04: Gate app access on account verification
+
+- Tool: ChatGPT (GPT-6). Mode: Implementation, tests, and verification.
+- User instruction: Restrict app access to verified users, redirect after signup to
+  verification, and send welcome email when the mail service receives `user.verified`.
+- Key response:
+  - Pending accounts no longer receive a session on registration, cannot log in, and
+    are rejected by user-service authentication and authenticated frontend API proxies.
+    Protected page middleware sends pending users to `/verification`.
+  - Added a public code-entry verification page; successful verification publishes
+    `user.verified`, which is the only event that triggers the welcome email.
+  - Updated service documentation and tests for verified-user mail delivery.
+- Affected files: `README.md`, `frontend-service/app/app.vue`,
+  `frontend-service/app/middleware/admin.global.ts`,
+  `frontend-service/app/middleware/auth.ts`, `frontend-service/app/pages/signup.vue`,
+  `frontend-service/app/pages/verification.vue`,
+  `frontend-service/server/api/user-service/register.post.ts`,
+  `frontend-service/server/middleware/verified-user.ts`,
+  `mail-service/README.md`, `mail-service/src/app.test.ts`, `mail-service/src/app.ts`,
+  `mail-service/src/user-events.test.ts`, `mail-service/src/user-events.ts`,
+  `user-service/README.md`, `user-service/src/controllers/auth.controller.ts`,
+  `user-service/src/events/parse-user-event.test.ts`,
+  `user-service/src/events/parse-user-event.ts`, `user-service/src/events/user-events.ts`,
+  `user-service/src/middleware/authentication.ts`,
+  `user-service/src/services/auth.service.ts`, and this log.
+- Verification: All 12 user-service tests passed; the 8 targeted mail event tests,
+  strict TypeScript checks for user-service and mail-service, frontend Nuxt
+  typechecking, Compose configuration, and `git diff --check` passed. The full
+  mail-service suite has one pre-existing failure in
+  `welcome-email.test.ts`: its expected message text does not match the unchanged
+  sender implementation; 9 of 10 tests pass.
+- Author review: Pending.
+
+## 2026-11-04: Refine verification navigation
+
+- Tool: ChatGPT (GPT-6). Mode: Frontend implementation and verification.
+- User instruction: Use `/verify`, route unverified login attempts to verification,
+  and continue to login after verification.
+- Key response:
+  - Renamed the frontend verification page route to `/verify` and updated signup
+    and protected-page redirects.
+  - A 403 from login now redirects to `/verify` with the email prefilled.
+  - Successful verification redirects to `/login` with the email prefilled and
+    a success message.
+- Affected files: `frontend-service/app/app.vue`,
+  `frontend-service/app/middleware/admin.global.ts`,
+  `frontend-service/app/middleware/auth.ts`, `frontend-service/app/pages/login.vue`,
+  `frontend-service/app/pages/signup.vue`, `frontend-service/app/pages/verify.vue`,
+  and this log.
+- Verification: Frontend Nuxt typechecking and `git diff --check` passed.
+- Author review: Pending.
+
+## 2026-11-04: Send account verification emails
+
+- Tool: ChatGPT (GPT-6). Mode: Implementation, tests, and verification.
+- User instruction: Add email verification.
+- Key response:
+  - Mail-service now emails the six-digit verification code for pending account
+    creation and pending account email updates.
+  - Successful verification continues to trigger the separate welcome email.
+  - Delivery errors remain retryable through Pub/Sub; missing Mailjet settings
+    produce a warning and acknowledge events as before.
+- Affected files: `README.md`, `mail-service/README.md`, `mail-service/src/app.test.ts`,
+  `mail-service/src/app.ts`, `mail-service/src/index.ts`,
+  `mail-service/src/user-events.test.ts`, `mail-service/src/user-events.ts`,
+  `mail-service/src/welcome-email.test.ts`, `mail-service/src/welcome-email.ts`,
+  `user-service/README.md`, and this log.
+- Verification: All 18 mail-service tests passed; strict mail-service TypeScript
+  checking, `docker compose config --quiet`, and `git diff --check` passed.
+
+## 2026-11-05: Configure Mailjet secrets for deployment
+
+- Tool: ChatGPT (GPT-6). Mode: Deployment tooling and documentation.
+- User instruction: Add a way to provide Mailjet API keys for deployment.
+- Key response:
+  - Added `./deploy.sh mailjet`, an interactive command that hides the API and
+    secret keys while entered and saves all three Mailjet settings to Secret
+    Manager without placing the values in shell history.
+  - Existing secrets receive new versions; missing secrets are created.
+  - Documented the command and the subsequent deployment step.
+- Affected files: `deploy.sh`, `README.md`, and this log.
+- Verification: `bash -n` passed with Windows CRLF line endings normalized,
+  and `git diff --check` passed. No live Secret Manager update was run.
+- Author review: Pending.
 ## 2026-10-18: Automatic deployment with GitHub Actions
 
 - Tool: Claude Code (Opus 5.5). Mode: Boilerplate generation (deployment config).

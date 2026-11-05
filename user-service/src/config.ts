@@ -5,6 +5,9 @@ import "dotenv/config";
     Tool: ChatGPT (model: GPT-6), date: 2026-09-30
     Scope: JWT and optional first-administrator bootstrap secret configuration
     Author review: Done
+    Tool: ChatGPT (GPT-6), date: 2026-11-04
+    Scope: No mail settings are needed; welcome delivery runs in mail-service
+    Author review: Pending
 **/
 const jwtSecret = process.env.JWT_SECRET;
 if (!jwtSecret || Buffer.byteLength(jwtSecret) < 32) {
