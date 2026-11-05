@@ -12,6 +12,8 @@
 # Author review: Pending.
 # ChatGPT (GPT-6), 2026-11-04: deploy mail-service and authenticated user-events subscription.
 # Author review: Pending.
+# ChatGPT (GPT-6), 2026-11-05: securely provision Mailjet Secret Manager versions.
+# Author review: Pending.
 # Claude Code (Opus 5.5), 2026-10-18: `github` command setting up Workload Identity Federation
 # for the GitHub Actions deploy workflow. Author review: Pending.
 #
@@ -20,6 +22,7 @@
 #   ./deploy.sh         # create anything new, run migrations, then deploy every service
 #   ./deploy.sh seed    # run the supplier seed job (safe to repeat)
 #   ./deploy.sh github  # one-time: let .github/workflows/deploy.yml deploy from main
+#   ./deploy.sh mailjet # securely add/update Mailjet secrets for mail-service
 #
 # Override any setting below with an environment variable, e.g. TAG=<build id> ./deploy.sh
 set -euo pipefail
@@ -486,6 +489,45 @@ github_ci() {
   echo "  GCP_SERVICE_ACCOUNT=${deployer}"
 }
 
+configure_mailjet() {
+  if [ ! -t 0 ]; then
+    echo "Run './deploy.sh mailjet' in an interactive terminal to enter Mailjet settings securely." >&2
+    return 1
+  fi
+
+  local api_key secret_key sender
+  read -r -s -p "Mailjet API key: " api_key
+  printf '\n' >&2
+  read -r -s -p "Mailjet secret key: " secret_key
+  printf '\n' >&2
+  read -r -p "Verified Mailjet sender address: " sender
+
+  if [ -z "$api_key" ] || [ -z "$secret_key" ] || [ -z "$sender" ]; then
+    unset api_key secret_key sender
+    echo "All three Mailjet settings are required; no secrets were changed." >&2
+    return 1
+  fi
+
+  local name value
+  for name in mailjet-api-key mailjet-secret-key mailjet-from; do
+    case "$name" in
+      mailjet-api-key) value="$api_key" ;;
+      mailjet-secret-key) value="$secret_key" ;;
+      mailjet-from) value="$sender" ;;
+    esac
+
+    if secret_exists "$name"; then
+      printf '%s' "$value" | run secrets versions add "$name" --data-file -
+    else
+      printf '%s' "$value" |
+        run secrets create "$name" --replication-policy automatic --data-file -
+    fi
+  done
+
+  unset api_key secret_key sender value
+  echo "Mailjet secrets saved to Secret Manager. Run './deploy.sh' to deploy mail-service."
+}
+
 seed() {
   run_job supplier-seed "${REGISTRY}/supplier-service-tooling:${TAG}" supplier-database-url \
     "${PRIVATE_DB_FLAGS[@]}" --command npm --args run,db:seed
@@ -496,5 +538,6 @@ case "${1:-deploy}" in
   deploy) deploy ;;
   seed) seed ;;
   github) github_ci ;;
-  *) echo "Usage: $0 [setup|deploy|seed|github]" >&2; exit 1 ;;
+  mailjet) configure_mailjet ;;
+  *) echo "Usage: $0 [setup|deploy|seed|github|mailjet]" >&2; exit 1 ;;
 esac

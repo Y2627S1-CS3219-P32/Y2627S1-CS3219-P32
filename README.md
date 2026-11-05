@@ -153,16 +153,20 @@ subscription and updates the PostgreSQL read model. Events contain password
 hashes only; GCP IAM restricts publishing and push invocation.
 
 The `mail-service` also consumes `user-events` through an authenticated Pub/Sub push
-subscription and sends welcome email for `user.verified`. To enable it in Cloud Run,
-create the following Secret Manager secrets before running `./deploy.sh`:
+subscription and sends verification and welcome emails. After `./deploy.sh setup`, run
+`./deploy.sh mailjet` from an interactive terminal to securely enter your Mailjet
+credentials and verified sender address. The API key and secret key are hidden while
+typing, and the values are saved as Secret Manager versions (updated when the secrets
+already exist). Then run `./deploy.sh` to deploy/redeploy the mail service:
 
 ```sh
-printf '%s' "$MAILJET_API_KEY" | gcloud secrets create mailjet-api-key --data-file=-
-printf '%s' "$MAILJET_SECRET_KEY" | gcloud secrets create mailjet-secret-key --data-file=-
-printf '%s' "$MAILJET_FROM" | gcloud secrets create mailjet-from --data-file=-
+./deploy.sh mailjet
+./deploy.sh
 ```
 
-The sender address must be verified with Mailjet. If any secret is missing, deployment
+The sender address must be verified with Mailjet. The command requires an authenticated
+`gcloud` session with permission to create Secret Manager secrets and versions; it does not
+put credential values in shell history. If the secrets are not configured, deployment
 skips the mail service.
 
 To create the first administrator, add a `bootstrap-secret` in Secret Manager (at least 32

@@ -1715,6 +1715,21 @@ for context, frontend-service is being set up. The frontend’s supplier screen 
   `user-service/README.md`, and this log.
 - Verification: All 18 mail-service tests passed; strict mail-service TypeScript
   checking, `docker compose config --quiet`, and `git diff --check` passed.
+
+## 2026-11-05: Configure Mailjet secrets for deployment
+
+- Tool: ChatGPT (GPT-6). Mode: Deployment tooling and documentation.
+- User instruction: Add a way to provide Mailjet API keys for deployment.
+- Key response:
+  - Added `./deploy.sh mailjet`, an interactive command that hides the API and
+    secret keys while entered and saves all three Mailjet settings to Secret
+    Manager without placing the values in shell history.
+  - Existing secrets receive new versions; missing secrets are created.
+  - Documented the command and the subsequent deployment step.
+- Affected files: `deploy.sh`, `README.md`, and this log.
+- Verification: `bash -n` passed with Windows CRLF line endings normalized,
+  and `git diff --check` passed. No live Secret Manager update was run.
+- Author review: Pending.
 ## 2026-10-18: Automatic deployment with GitHub Actions
 
 - Tool: Claude Code (Opus 5.5). Mode: Boilerplate generation (deployment config).
