@@ -1,0 +1,24 @@
+{
+  "//": "AI Assistance Disclosure: ChatGPT (GPT-6), 2026-11-04. Scope: Event-driven Mailjet email service. Author review: Pending.",
+  "name": "mail-service",
+  "version": "1.0.0",
+  "description": "User event email delivery service",
+  "private": true,
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "test": "tsx --test src/app.test.ts src/user-events.test.ts src/welcome-email.test.ts"
+  },
+  "dependencies": {
+    "@google-cloud/pubsub": "^6.3.0",
+    "dotenv": "^18.0.4",
+    "express": "^5.2.1",
+    "nodemailer": "^10.1.7"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/nodemailer": "^8.0.2",
+    "tsx": "^4.23.15"
+  },
+  "type": "commonjs"
+}

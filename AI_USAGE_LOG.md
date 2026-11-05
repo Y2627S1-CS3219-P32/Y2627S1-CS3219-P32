@@ -1043,6 +1043,87 @@ for context, frontend-service is being set up. The frontend’s supplier screen 
   panel (mobile and desktop), toast, and marking as read worked.
 - Author review: Pending.
 
+# AI usage log (Synchronization Service)
+
+## 2026-10-17: Group orders with collaborative descriptions
+
+- Tool: Claude Code (Opus 5.5). Mode: Implementation, tests, documentation, and verification.
+- Exact prompt: `yes`, confirming the student's group-order design: a SYNCHRONISING state before
+  PENDING; `isGroupOrder` on creation with a shareable, login-protected join link; members
+  stored in a separate table; the description kept as a CRDT and edited over WebSockets through
+  a new synchronization service (tickets as for notifications, updates relayed between
+  instances); `order.member_joined` events that also notify; the requester placing the order
+  through the sync service (`group.placed`), after which the order moves to PENDING and emits
+  `order.created` with the member ids; members notified like the requester; and cancelling by
+  the requester any time before acceptance. Claude proposed Yjs and the event and storage
+  details, which the student accepted.
+- Key response:
+  - order-service: SYNCHRONISING state, `is_group_order`, `order_members`, `POST
+    /orders/:orderId/join`, `group.placed` consumer, `memberIds` in event payloads, cancelling
+    from SYNCHRONISING/PENDING/OPEN, and `/orders/me` including joined orders.
+  - New `sync-service`: Yjs documents per group order over the y-websocket protocol, an
+    append-only update log with compaction, per-instance relay subscriptions, a shared order
+    events subscription, access checks from member events, tickets, and placing.
+  - notification-service: members receive the requester's notifications plus joins, placing
+    and cancelling; members' pages refresh live.
+  - frontend: group order option, Group Draft state, group panel with share link and members,
+    join page, and a collaborative description editor with presence and Place Order.
+- Affected files: `sync-service/` (all files), `order-service/` (schema, migration, write path,
+  queries, consumers, routes, tests, README), `notification-service/` (rules, routing, tests,
+  README), `frontend-service/` (order types and views, card, form, details and join pages,
+  group panel, sync-service editor and routes, notification text), `compose.yaml`,
+  `compose.dev.yaml`, and this log.
+- Verification: order-service (19/19), sync-service (7/7) and notification-service (9/9) tests,
+  and the Nuxt typecheck passed. End to end on the Pub/Sub emulator: a group order created in
+  Chrome, a second user joining and typing through the real APIs, both edits appearing on both
+  sides, placing moving the order to PENDING and then OPEN with the agreed description, and the
+  join/placed/opened notifications. A bug where the joined member was read from the wrong place
+  in the event was found this way and fixed.
+- Author review: Pending.
+
+## 2026-10-17: Group order fixes, shared cursors
+
+- Tool: Claude Code (Opus 5.5). Mode: Debugging, implementation, tests, and verification.
+- Exact prompts: `this shoudlnt be possible right` (with a screenshot of a group member
+  accepting their own group order), `also only the requester can make it complete`, and
+  `yes do both` (after asking whether Yjs can show where each person is).
+- Key response: group members can no longer accept their own group order (order-service and
+  frontend); a test confirms only the requester can complete it; the sync service relays
+  presence between instances; the description editor is now CodeMirror 6 with
+  y-codemirror.next, showing everyone's cursor and selection with their name.
+- Affected files: `order-service/src/orders/write.ts`, `order-service/test/orders.test.mjs`,
+  `sync-service/src/documents.ts`, `sync-service/src/subscriptions.ts`,
+  `sync-service/test/sync.test.mjs`, `sync-service/README.md`,
+  `frontend-service/app/services/order-service/order-view.ts`,
+  `frontend-service/app/services/sync-service/components/GroupEditor.vue`,
+  `frontend-service/package.json`, and this log.
+- Verification: order-service (19/19) and sync-service (8/8) tests and the Nuxt typecheck
+  passed; in Chrome, a second user's cursor and selection appeared with their name.
+- Author review: Pending.
+
+## 2026-10-30: Merge main into group-orders
+
+- Tool: Claude Code (Opus 5.5). Mode: Merge conflict resolution, small fixes, and verification.
+- Exact prompt: `ask claude to merge main into the group order branch while i sleep`
+- Key response: merged the current team `main` (credit service, saga orchestrator, credit
+  notifications, publishing before responding, Postman collection, custom domain origins) into
+  `group-orders`, keeping both sides in every conflict. Group joins and placing now also wait
+  for the publish before responding, as `main` does for every other write. The sync service is
+  published on host port `3005`, because the credit service now uses `3004`. Kept every entry
+  of this log.
+- Affected files: `AI_USAGE_LOG.md`, `compose.yaml`, `compose.dev.yaml`,
+  `frontend-service/nuxt.config.ts`,
+  `frontend-service/shared/services/notification-service/types.ts`,
+  `notification-service/src/rules.ts`, `notification-service/README.md`,
+  `notification-service/test/notifications.test.mjs`, `order-service/src/orders/write.ts`,
+  `order-service/test/orders.test.mjs`, and `sync-service/README.md`.
+- Verification: order-service (21/21), notification-service (14/14) and sync-service (8/8)
+  tests passed against a disposable local PostgreSQL. The new test for publishing group joins
+  and placing failed without the fix and passed with it. Both Compose files parse with no
+  duplicate host ports, and the merged notification text and types type-check. The full Nuxt
+  typecheck, the saga-orchestrator and credit-service tests, Docker Compose and Cloud
+  deployment were not run.
+- Author review: Pending.
 
 # AI usage log (Credit Service)
 
@@ -1618,4 +1699,185 @@ for context, frontend-service is being set up. The frontend’s supplier screen 
 - Verification: ran the main flow and the internal push requests with Newman against the local
   stack on the Pub/Sub emulator; fixed a variable-scope bug this found.
 
+- Author review: Pending.
+
+## 2026-10-19: Send Mailjet welcome email after user registration
+
+- Tool: ChatGPT (GPT-6). Mode: Implementation, tests, documentation, and verification.
+- User instruction: Add a Mailjet interface to the user service using Nodemailer and
+  send a welcome email after account signup.
+- Key response:
+  - Added a Nodemailer SMTP sender using Mailjet credentials and a configurable
+    verified sender address.
+  - Connected the welcome email to public registration after the user-created
+    event is published. Delivery failures are logged without undoing registration.
+  - Added optional environment and Compose configuration, validation for partial
+    settings, setup documentation, and sender tests.
+  - Added AI-assistance disclosures to the implementation files.
+- Affected files: `.env.example`, `compose.yaml`, `user-service/README.md`,
+  `user-service/package.json`, `user-service/package-lock.json`,
+  `user-service/src/config.ts`, `user-service/src/controllers/auth.controller.ts`,
+  `user-service/src/services/auth.service.ts`,
+  `user-service/src/services/mailjet.service.ts`,
+  `user-service/src/services/mailjet.service.test.ts`, and this log.
+- Verification: All 11 user-service tests passed; targeted strict TypeScript
+  checking, Compose configuration validation, package JSON parsing, and
+  `git diff --check` passed. Later verified the running container had all three
+  Mailjet settings and its SMTP connection/authentication succeeded; no live email
+  delivery confirmation was available.
+- Author review: Pending.
+
+## 2026-11-04: Move welcome email delivery to mail-service
+
+- Tool: ChatGPT (GPT-6). Mode: Refactoring, implementation, tests, and verification.
+- User instruction: Create a separate mail service that sends welcome email in
+  response to `user.created` events.
+- Key response:
+  - Added a standalone Express/Nodemailer service with a Pub/Sub push endpoint that
+    sends a welcome email only for `user.created`.
+  - Delivery failures return 500 so Pub/Sub retries; unrelated events and invalid
+    payloads are acknowledged without sending email.
+  - Removed SMTP configuration and email delivery from user-service; registration
+    now only publishes the existing user-created event.
+  - Wired a local emulator subscription and Cloud Run authenticated push
+    subscription, plus Cloud Build, Compose, Secret Manager, and service docs.
+- Affected files: `mail-service/`, `.env.example`, `compose.yaml`,
+  `compose.dev.yaml`, `cloudbuild.yaml`, `deploy.sh`, `README.md`,
+  `user-service/README.md`, `user-service/package.json`,
+  `user-service/package-lock.json`, `user-service/src/config.ts`,
+  `user-service/src/controllers/auth.controller.ts`,
+  `user-service/src/services/auth.service.ts`, and this log.
+- Verification: Mail-service tests (10/10) and user-service tests (9/9) passed;
+  strict TypeScript checks for both services and `docker compose config --quiet`
+  passed. Cloud Build YAML parsed; deployment script syntax passed; the mail and
+  user service container images built successfully, and the mail image test suite
+  passed.
+- Author review: Pending.
+
+## 2026-11-04: Add account verification status and codes
+
+- Tool: ChatGPT (GPT-6). Mode: Implementation, tests, and verification.
+- User instruction: Track pending/verified account status, generate and persist a
+  verification code, provide a verification command, and expose pending codes on
+  the administrator user page without sending verification email.
+- Key response:
+  - New accounts start pending verification with a generated six-digit code;
+    status and code are included in user events and persisted by the projection.
+  - Added `POST /verify` and an administrator action to verify accounts using the
+    displayed code. Successful verification clears the code.
+  - Public user responses expose verification status but not the code. No
+    verification email is sent.
+- Affected files: `frontend-service/app/pages/admin/users.vue`,
+  `frontend-service/server/api/user-service/verify.post.ts`,
+  `frontend-service/shared/services/user-service/types.ts`,
+  `user-service/README.md`, `user-service/package.json`,
+  `user-service/src/controllers/auth.controller.ts`, `user-service/src/db/schema.ts`,
+  `user-service/src/events/parse-user-event.test.ts`,
+  `user-service/src/events/parse-user-event.ts`,
+  `user-service/src/events/user-events.ts`,
+  `user-service/src/repositories/users.repository.ts`,
+  `user-service/src/routes/auth.routes.ts`,
+  `user-service/src/services/auth.service.ts`,
+  `user-service/src/services/users.service.ts`, `user-service/src/verification.test.ts`,
+  `user-service/src/verification.ts`, `user-service/src/worker.ts`, and this log.
+- Verification: All 12 user-service tests passed; strict user-service TypeScript
+  checking, frontend Nuxt typechecking, `docker compose config --quiet`, and
+  `git diff --check` passed.
+- Author review: Pending.
+
+## 2026-11-04: Gate app access on account verification
+
+- Tool: ChatGPT (GPT-6). Mode: Implementation, tests, and verification.
+- User instruction: Restrict app access to verified users, redirect after signup to
+  verification, and send welcome email when the mail service receives `user.verified`.
+- Key response:
+  - Pending accounts no longer receive a session on registration, cannot log in, and
+    are rejected by user-service authentication and authenticated frontend API proxies.
+    Protected page middleware sends pending users to `/verification`.
+  - Added a public code-entry verification page; successful verification publishes
+    `user.verified`, which is the only event that triggers the welcome email.
+  - Updated service documentation and tests for verified-user mail delivery.
+- Affected files: `README.md`, `frontend-service/app/app.vue`,
+  `frontend-service/app/middleware/admin.global.ts`,
+  `frontend-service/app/middleware/auth.ts`, `frontend-service/app/pages/signup.vue`,
+  `frontend-service/app/pages/verification.vue`,
+  `frontend-service/server/api/user-service/register.post.ts`,
+  `frontend-service/server/middleware/verified-user.ts`,
+  `mail-service/README.md`, `mail-service/src/app.test.ts`, `mail-service/src/app.ts`,
+  `mail-service/src/user-events.test.ts`, `mail-service/src/user-events.ts`,
+  `user-service/README.md`, `user-service/src/controllers/auth.controller.ts`,
+  `user-service/src/events/parse-user-event.test.ts`,
+  `user-service/src/events/parse-user-event.ts`, `user-service/src/events/user-events.ts`,
+  `user-service/src/middleware/authentication.ts`,
+  `user-service/src/services/auth.service.ts`, and this log.
+- Verification: All 12 user-service tests passed; the 8 targeted mail event tests,
+  strict TypeScript checks for user-service and mail-service, frontend Nuxt
+  typechecking, Compose configuration, and `git diff --check` passed. The full
+  mail-service suite has one pre-existing failure in
+  `welcome-email.test.ts`: its expected message text does not match the unchanged
+  sender implementation; 9 of 10 tests pass.
+- Author review: Pending.
+
+## 2026-11-04: Refine verification navigation
+
+- Tool: ChatGPT (GPT-6). Mode: Frontend implementation and verification.
+- User instruction: Use `/verify`, route unverified login attempts to verification,
+  and continue to login after verification.
+- Key response:
+  - Renamed the frontend verification page route to `/verify` and updated signup
+    and protected-page redirects.
+  - A 403 from login now redirects to `/verify` with the email prefilled.
+  - Successful verification redirects to `/login` with the email prefilled and
+    a success message.
+- Affected files: `frontend-service/app/app.vue`,
+  `frontend-service/app/middleware/admin.global.ts`,
+  `frontend-service/app/middleware/auth.ts`, `frontend-service/app/pages/login.vue`,
+  `frontend-service/app/pages/signup.vue`, `frontend-service/app/pages/verify.vue`,
+  and this log.
+- Verification: Frontend Nuxt typechecking and `git diff --check` passed.
+- Author review: Pending.
+
+## 2026-11-04: Send account verification emails
+
+- Tool: ChatGPT (GPT-6). Mode: Implementation, tests, and verification.
+- User instruction: Add email verification.
+- Key response:
+  - Mail-service now emails the six-digit verification code for pending account
+    creation and pending account email updates.
+  - Successful verification continues to trigger the separate welcome email.
+  - Delivery errors remain retryable through Pub/Sub; missing Mailjet settings
+    produce a warning and acknowledge events as before.
+- Affected files: `README.md`, `mail-service/README.md`, `mail-service/src/app.test.ts`,
+  `mail-service/src/app.ts`, `mail-service/src/index.ts`,
+  `mail-service/src/user-events.test.ts`, `mail-service/src/user-events.ts`,
+  `mail-service/src/welcome-email.test.ts`, `mail-service/src/welcome-email.ts`,
+  `user-service/README.md`, and this log.
+- Verification: All 18 mail-service tests passed; strict mail-service TypeScript
+  checking, `docker compose config --quiet`, and `git diff --check` passed.
+
+## 2026-11-05: Configure Mailjet secrets for deployment
+
+- Tool: ChatGPT (GPT-6). Mode: Deployment tooling and documentation.
+- User instruction: Add a way to provide Mailjet API keys for deployment.
+- Key response:
+  - Added `./deploy.sh mailjet`, an interactive command that hides the API and
+    secret keys while entered and saves all three Mailjet settings to Secret
+    Manager without placing the values in shell history.
+  - Existing secrets receive new versions; missing secrets are created.
+  - Documented the command and the subsequent deployment step.
+- Affected files: `deploy.sh`, `README.md`, and this log.
+- Verification: `bash -n` passed with Windows CRLF line endings normalized,
+  and `git diff --check` passed. No live Secret Manager update was run.
+- Author review: Pending.
+## 2026-10-18: Automatic deployment with GitHub Actions
+
+- Tool: Claude Code (Opus 5.5). Mode: Boilerplate generation (deployment config).
+- Exact prompt: `create github actions to automatically deploy this to google cloud.`
+- Key response: A workflow that, on every push to `main` (or a manual run, optionally seeding),
+  signs in to Google Cloud through Workload Identity Federation, submits `cloudbuild.yaml` and
+  waits for it, then runs `deploy.sh` with the build ID as the image tag. `./deploy.sh github`
+  creates the deployer service account and its roles, and an identity pool whose provider only
+  accepts this repository's `main` branch, and prints the repository variables to add.
+- Affected files: `.github/workflows/deploy.yml`, `deploy.sh`, `README.md`, and this log.
+- Verification: `bash -n deploy.sh` and workflow YAML parsing. Not yet run against GCP or GitHub.
 - Author review: Pending.

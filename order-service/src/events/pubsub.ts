@@ -7,6 +7,7 @@
  * event type. Author review: Pending.
  * Claude Code (Opus 5.5), 2026-11-05: publishes through the shared helper, which logs and
  * traces each message. Author review: Pending.
+ * Claude Code (Opus 5.5), 2026-10-17: sync-events topic and subscription. Author review: Pending.
  */
 import { PubSub } from "@google-cloud/pubsub";
 import { config } from "../config.js";
@@ -72,6 +73,7 @@ export async function ensureEmulatorResources(): Promise<void> {
     config.pubsub.userEventsTopic,
     config.pubsub.supplierEventsTopic,
     config.pubsub.orderCommandsTopic,
+    config.pubsub.syncEventsTopic,
   ];
   for (const name of topics) {
     await pubsub().createTopic(name).catch((error: unknown) => {
@@ -84,6 +86,7 @@ export async function ensureEmulatorResources(): Promise<void> {
     ["order-service-user-events", config.pubsub.userEventsTopic, "user-events"],
     ["order-service-supplier-events", config.pubsub.supplierEventsTopic, "supplier-events"],
     ["order-service-order-commands", config.pubsub.orderCommandsTopic, "order-commands"],
+    ["order-service-sync-events", config.pubsub.syncEventsTopic, "sync-events"],
   ] as const;
   for (const [name, topic, path] of subscriptions) {
     const pushEndpoint = `${pushBaseUrl}/internal/pubsub/${path}?token=${encodeURIComponent(internalSharedSecret)}`;

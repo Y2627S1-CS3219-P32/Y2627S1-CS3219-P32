@@ -1,6 +1,7 @@
 <!-- AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-30; Copilot SDK in VS Code,
 2026-10-15. Scope: Administrator user management controls and event-gated refresh.
-Author review: Pending for event-gated refresh. -->
+ChatGPT (GPT-6), 2026-11-04. Scope: Show and test pending account verification.
+Author review: Pending. -->
 <script setup lang="ts">
 import { getApiErrorMessage } from "../../utils/get-api-error-message";
 import { useUsers } from "../../services/user-service/composables/useUsers";
@@ -66,6 +67,27 @@ async function changeRole(user: User) {
   }
 }
 
+async function verifyUser(user: User) {
+  if (user.verificationStatus !== "pending_verification" || !user.verificationCode) return;
+
+  pendingUserId.value = user.id;
+  actionError.value = "";
+  actionMessage.value = "";
+  try {
+    await $fetch("/api/user-service/verify", {
+      method: "POST",
+      body: { email: user.email, verificationCode: user.verificationCode },
+    });
+    user.verificationStatus = "verified";
+    user.verificationCode = null;
+    actionMessage.value = "Verification accepted. The user account is now verified.";
+  } catch (error) {
+    actionError.value = getApiErrorMessage(error) ?? "Unable to verify this account.";
+  } finally {
+    pendingUserId.value = null;
+  }
+}
+
 async function removeUser(user: User) {
   if (!window.confirm(`Delete ${user.displayName || user.name}? This cannot be undone.`)) return;
 
@@ -119,10 +141,32 @@ async function removeUser(user: User) {
           <h2 class="text-lg font-semibold">{{ user.displayName || user.name }}</h2>
           <p v-if="user.displayName" class="mt-1 text-sm text-[#5b6570]">{{ user.name }}</p>
           <p class="mt-1 text-sm text-[#5b6570]">{{ user.email }}</p>
+          <p class="mt-3 text-sm">
+            Account status:
+            <span class="font-medium">
+              {{ user.verificationStatus === "verified" ? "Verified" : "Pending verification" }}
+            </span>
+          </p>
+          <div
+            v-if="user.verificationStatus === 'pending_verification'"
+            class="mt-2 rounded-md bg-amber-50 p-3 text-sm text-amber-900"
+          >
+            Verification code:
+            <code class="ml-1 font-semibold">{{ user.verificationCode ?? "Unavailable" }}</code>
+          </div>
           <p class="mt-4 inline-flex rounded-full bg-[#eef4fa] px-3 py-1 text-xs font-medium capitalize">
             {{ user.role }}
           </p>
           <div class="mt-5 flex flex-wrap gap-2">
+            <button
+              v-if="user.verificationStatus === 'pending_verification'"
+              type="button"
+              :disabled="pendingUserId !== null || !user.verificationCode"
+              class="rounded-lg border border-[#cfd5da] px-3 py-2 text-sm font-medium text-[#064784] hover:bg-[#f7f9fc] disabled:opacity-50"
+              @click="verifyUser(user)"
+            >
+              {{ pendingUserId === user.id ? "Verifying..." : "Verify account" }}
+            </button>
             <button
               v-if="currentUser && (user.id !== currentUser.id || user.role !== 'admin')"
               type="button"

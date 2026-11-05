@@ -28,7 +28,7 @@ withdrawn, or exchanged for money, and only circulate within the platform.
 
 This repository follows a **one-service-per-folder** structure: each
 microservice (`user-service/`, `supplier-service/`, `order-service/`,
-`credit-service/`) lives in its own top-level folder.
+`credit-service/`, `mail-service/`) lives in its own top-level folder.
 
 ```text
 .
@@ -36,6 +36,7 @@ microservice (`user-service/`, `supplier-service/`, `order-service/`,
 ├── supplier-service/
 ├── order-service/
 ├── credit-service/
+├── mail-service/
 ├── <n2h-service>/
 └── README.md
 ```
@@ -96,8 +97,8 @@ which Nuxt fetches over the Compose network. The supplier API remains on host po
 docker compose -f compose.yaml -f compose.dev.yaml up --watch
 ```
 
-[`compose.dev.yaml`](compose.dev.yaml) runs the supplier and user services with
-`tsx watch`, the user event worker with `tsx watch`, and the frontend with `nuxt dev`.
+[`compose.dev.yaml`](compose.dev.yaml) runs the supplier and user services and workers,
+plus mail-service, with `tsx watch`, and the frontend with `nuxt dev`.
 Compose also starts a local Pub/Sub emulator and PostgreSQL projection worker.
 User-service mutations are acknowledged when Pub/Sub accepts them; PostgreSQL
 updates asynchronously, so immediate reads or logins can briefly lag. Compose
@@ -165,6 +166,12 @@ node shared/sync.mjs
 
 See [`shared/README.md`](shared/README.md) for usage and the `LOG_LEVEL`, `LOG_PRETTY`
 and `OTEL_SERVICE_NAME` settings.
+The `mail-service` sends verification codes for pending accounts and a welcome email
+after `user.verified`, through Mailjet. Set `MAILJET_API_KEY`, `MAILJET_SECRET_KEY`,
+and `MAILJET_FROM` in `.env`; the sender address must be verified with Mailjet. Accounts
+must be verified before users can sign in or access authenticated app functionality. If
+these settings are omitted, codes remain available in the admin user list, but emails
+are skipped.
 
 ## Deploy to Google Cloud (Cloud Run)
 
@@ -182,10 +189,44 @@ gcloud builds submit --config cloudbuild.yaml --region asia-southeast1  # build 
 ./deploy.sh seed    # load supplier seed data (safe to repeat)
 ```
 
+### Automatic deployment (GitHub Actions)
+
+<!-- AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-10-18.
+Scope: GitHub Actions deployment instructions. Author review: Pending. -->
+
+[`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) builds the images and runs
+`./deploy.sh` on every push to `main` (it can also be run manually from the Actions tab, with an
+option to seed). It signs in through Workload Identity Federation, so no service account key is
+stored in GitHub. One-time setup, after `./deploy.sh setup`:
+
+```sh
+./deploy.sh github  # deployer service account, identity pool restricted to this repo's main branch
+```
+
+Then add the three printed values (`GCP_PROJECT_ID`, `GCP_WORKLOAD_IDENTITY_PROVIDER`,
+`GCP_SERVICE_ACCOUNT`) as repository variables under Settings > Secrets and variables > Actions.
+
 The user service publishes state-change events to the `user-events` topic. The
 authenticated `user-event-worker` Cloud Run service consumes its push
 subscription and updates the PostgreSQL read model. Events contain password
 hashes only; GCP IAM restricts publishing and push invocation.
+
+The `mail-service` also consumes `user-events` through an authenticated Pub/Sub push
+subscription and sends verification and welcome emails. After `./deploy.sh setup`, run
+`./deploy.sh mailjet` from an interactive terminal to securely enter your Mailjet
+credentials and verified sender address. The API key and secret key are hidden while
+typing, and the values are saved as Secret Manager versions (updated when the secrets
+already exist). Then run `./deploy.sh` to deploy/redeploy the mail service:
+
+```sh
+./deploy.sh mailjet
+./deploy.sh
+```
+
+The sender address must be verified with Mailjet. The command requires an authenticated
+`gcloud` session with permission to create Secret Manager secrets and versions; it does not
+put credential values in shell history. If the secrets are not configured, deployment
+skips the mail service.
 
 To create the first administrator, add a `bootstrap-secret` in Secret Manager (at least 32
 bytes), re-run `./deploy.sh`, complete `/setup/admin`, then delete the secret and re-run.

@@ -1,5 +1,5 @@
 {
-  "id": "fa23bc12-68f9-4252-b882-3f2eb05b58d8",
+  "id": "d56c388d-74f0-483d-b8a4-eade27ddf78e",
   "prevId": "5d4d8034-84a1-479a-a541-942cb6804eee",
   "version": "7",
   "dialect": "postgresql",
@@ -67,12 +67,6 @@
         "published_at": {
           "name": "published_at",
           "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "traceparent": {
-          "name": "traceparent",
-          "type": "text",
           "primaryKey": false,
           "notNull": false
         }
@@ -145,9 +139,92 @@
       "checkConstraints": {
         "order_events_state_check": {
           "name": "order_events_state_check",
-          "value": "\"order_events\".\"state\" in ('PENDING', 'OPEN', 'REJECTED', 'ABORTED', 'ACCEPTED', 'CANCELLED', 'EXPIRED', 'PICKED_UP', 'DELIVERED', 'COMPLETE', 'SETTLED')"
+          "value": "\"order_events\".\"state\" in ('SYNCHRONISING', 'PENDING', 'OPEN', 'REJECTED', 'ABORTED', 'ACCEPTED', 'CANCELLED', 'EXPIRED', 'PICKED_UP', 'DELIVERED', 'COMPLETE', 'SETTLED')"
         }
       },
+      "isRLSEnabled": false
+    },
+    "public.order_members": {
+      "name": "order_members",
+      "schema": "",
+      "columns": {
+        "order_id": {
+          "name": "order_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "joined_at": {
+          "name": "joined_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "order_members_user_idx": {
+          "name": "order_members_user_idx",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "order_members_order_id_orders_id_fk": {
+          "name": "order_members_order_id_orders_id_fk",
+          "tableFrom": "order_members",
+          "tableTo": "orders",
+          "columnsFrom": [
+            "order_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "order_members_user_id_users_id_fk": {
+          "name": "order_members_user_id_users_id_fk",
+          "tableFrom": "order_members",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "order_members_order_id_user_id_pk": {
+          "name": "order_members_order_id_user_id_pk",
+          "columns": [
+            "order_id",
+            "user_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.orders": {
@@ -208,6 +285,13 @@
           "type": "integer",
           "primaryKey": false,
           "notNull": true
+        },
+        "is_group_order": {
+          "name": "is_group_order",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
         },
         "current_state": {
           "name": "current_state",
@@ -409,7 +493,7 @@
         },
         "orders_current_state_check": {
           "name": "orders_current_state_check",
-          "value": "\"orders\".\"current_state\" in ('PENDING', 'OPEN', 'REJECTED', 'ABORTED', 'ACCEPTED', 'CANCELLED', 'EXPIRED', 'PICKED_UP', 'DELIVERED', 'COMPLETE', 'SETTLED')"
+          "value": "\"orders\".\"current_state\" in ('SYNCHRONISING', 'PENDING', 'OPEN', 'REJECTED', 'ABORTED', 'ACCEPTED', 'CANCELLED', 'EXPIRED', 'PICKED_UP', 'DELIVERED', 'COMPLETE', 'SETTLED')"
         }
       },
       "isRLSEnabled": false

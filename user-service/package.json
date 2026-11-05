@@ -1,5 +1,5 @@
 {
-  "//": "AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-30. Scope: PostgreSQL driver and Drizzle migration command. Author review: Done. ChatGPT (GPT-6), 2026-09-29. Scope: User-service auth test script. Author review: Done. Claude Code (Opus 5.5), 2026-09-29. Scope: tsx watch dev script. Author review: Done. Claude Code (Opus 5.5), 2026-11-04: pino, and pino-pretty for development, for the shared logger. Author review: Pending. Claude Code (Opus 5.5), 2026-11-04: OpenTelemetry SDK and instrumentations, loaded by the start scripts through shared/telemetry.mts. Author review: Pending.",
+  "//": "AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-30. Scope: PostgreSQL driver and Drizzle migration command. Author review: Done. ChatGPT (GPT-6), 2026-09-29. Scope: User-service auth test script. Author review: Done. Claude Code (Opus 5.5), 2026-09-29. Scope: tsx watch dev script. Author review: Done. Claude Code (Opus 5.5), 2026-11-04: pino, and pino-pretty for development, for the shared logger. Author review: Pending. Claude Code (Opus 5.5), 2026-11-04: OpenTelemetry SDK and instrumentations, loaded by the start scripts through shared/telemetry.mts. Author review: Pending. AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-30. Scope: PostgreSQL driver and Drizzle migration command. Author review: Done. ChatGPT (GPT-6), 2026-09-29. Scope: User-service auth test script. Author review: Done. Claude Code (Opus 5.5), 2026-09-29. Scope: tsx watch dev script. Author review: Done. ChatGPT (GPT-6), 2026-11-04. Scope: Remove mail delivery; welcome emails are handled by mail-service. Author review: Pending.",
   "name": "user-service",
   "version": "1.0.0",
   "description": "",
@@ -9,7 +9,7 @@
     "start": "tsx --import ./src/shared/telemetry.mts src/index.ts",
     "worker": "tsx --import ./src/shared/telemetry.mts src/worker.ts",
     "db:migrate": "drizzle-kit push",
-    "test": "tsx --test src/auth.test.ts src/events/parse-user-event.test.ts"
+    "test": "tsx --test src/auth.test.ts src/events/parse-user-event.test.ts src/verification.test.ts"
   },
   "keywords": [],
   "author": "",

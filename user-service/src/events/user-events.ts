@@ -3,6 +3,9 @@
     Tool: Copilot SDK in VS Code, 2026-10-15
     Scope: User state-change event contract and Pub/Sub publisher
     Author review: Pending
+    Tool: ChatGPT (GPT-6), 2026-11-04
+    Scope: Include account verification fields in user event snapshots
+    Author review: Pending
 **/
 import { randomUUID } from "node:crypto";
 
@@ -19,11 +22,18 @@ const projectId = process.env.PUBSUB_PROJECT_ID
 
 export type UserSnapshot = Pick<
   User,
-  "id" | "name" | "displayName" | "email" | "role" | "passwordHash"
+  | "id"
+  | "name"
+  | "displayName"
+  | "email"
+  | "role"
+  | "passwordHash"
+  | "verificationStatus"
+  | "verificationCode"
 >;
 
 export type UserEventPayload =
-  | { type: "user.created" | "user.updated"; user: UserSnapshot }
+  | { type: "user.created" | "user.updated" | "user.verified"; user: UserSnapshot }
   | { type: "user.deleted"; userId: number };
 
 export type UserEvent = UserEventPayload & { eventId: string; version: number };
@@ -90,5 +100,7 @@ export function userSnapshot(user: User): UserSnapshot {
     email: user.email,
     role: user.role,
     passwordHash: user.passwordHash,
+    verificationStatus: user.verificationStatus,
+    verificationCode: user.verificationCode,
   };
 }

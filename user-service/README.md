@@ -1,5 +1,6 @@
 <!-- AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-30.
-Scope: PostgreSQL setup, demo credentials, and registration requirements. Author review: Done. -->
+Scope: PostgreSQL setup, demo credentials, and registration requirements. Author review: Done.
+ChatGPT (GPT-6), 2026-11-04: document verification-gated access and verified-user welcome email. Author review: Pending. -->
 # Local Development
 
 Run the following commands:
@@ -20,7 +21,7 @@ No user accounts are created automatically.
 The root Compose configuration also starts a Pub/Sub emulator and the
 `user-event-worker`. Registration, administrator bootstrap, admin CRUD, and
 self-service profile/password changes publish `user.created`, `user.updated`,
-or `user.deleted` events. The worker applies these events to PostgreSQL; a
+`user.verified`, or `user.deleted` events. The worker applies these events to PostgreSQL; a
 successful mutation response means Pub/Sub accepted the event, and the database
 read model may briefly lag. Events contain password hashes only, never plaintext
 passwords. Start the local stack with `docker compose up --build` from the
@@ -47,6 +48,7 @@ The service listens on port `3333` by default (override with `PORT`). It serves 
 | `GET` | `/users` | List users |
 | `GET` | `/users/:id` | Get a user |
 | `POST` | `/users` | Create a user (name, email, password, optional display name; role defaults to `student`) |
+| `POST` | `/verify` | Verify an account using its email and verification code |
 | `PUT` / `PATCH` | `/users/:id` | Update user fields; password may also be changed |
 | `DELETE` | `/users/:id` | Delete a user |
 | `GET` / `PATCH` | `/me` | View or update the authenticated user's own account |
@@ -68,8 +70,21 @@ validation and uniqueness rules. Email updates require a matching `confirmEmail`
 updates require the current password, enforce the registration password rules, and reject a new
 password that matches the current password.
 
+Public registration publishes `user.created`; the independent `mail-service` sends the
+welcome email after the account is verified, in response to `user.verified`. Registration
+does not depend on email delivery.
+Every new account starts with `verificationStatus: "pending_verification"` and a generated
+six-digit `verificationCode`, both persisted when the user event is projected. Pending users
+cannot log in or use authenticated endpoints. Submit
+`POST /verify` with `{ "email": "...", "verificationCode": "012345" }` to mark the account
+verified; this publishes `user.verified` and clears the code after verification. Changing an
+account email issues a new code and returns the account to pending verification. The mail-service emails the
+verification code after account creation or an email change. The administrator user list
+also exposes the current code for pending accounts to support testing.
+
 The service publishes to `PUBSUB_TOPIC` (default `user-events`) in
 `PUBSUB_PROJECT_ID` (default `foc-local`). Set `PUBSUB_EMULATOR_HOST` for local
 development. The worker exposes `POST /pubsub/user-events` for Pub/Sub push
 delivery and `GET /health` for readiness checks; GCP push requests use Cloud Run
-IAM authentication.
+IAM authentication. The separate [mail-service](../mail-service/README.md) consumes
+the same topic and sends a welcome email for `user.verified` events.

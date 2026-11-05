@@ -3,6 +3,15 @@
     Tool: ChatGPT (model: GPT-6), date: 2026-09-29
     Scope: PostgreSQL auth and profile updates, plus protected first-admin bootstrap
     Author review: Done
+    Tool: ChatGPT (GPT-6), date: 2026-11-04
+    Scope: Registration publishes user.created for mail-service to consume
+    Author review: Pending
+    Tool: ChatGPT (GPT-6), date: 2026-11-04
+    Scope: Generate verification codes and verify accounts
+    Author review: Pending
+    Tool: ChatGPT (GPT-6), date: 2026-11-04
+    Scope: Gate access on verification and publish user.verified after successful verification
+    Author review: Pending
 **/
 import { createHash, timingSafeEqual } from "node:crypto";
 import { eq, sql } from "drizzle-orm";
@@ -23,6 +32,7 @@ import {
   findUserByEmail,
   reserveUserId,
 } from "../repositories/users.repository";
+import { createVerificationCode, verificationCodeMatches } from "../verification";
 import {
   validateDisplayName,
   validateRegistrationPassword,
@@ -36,11 +46,11 @@ export interface AuthConfiguration {
 }
 
 function toPublicUser(user: User) {
-  const { id, name, displayName, email, role } = user;
-  return { id, name, displayName, email, role };
+  const { id, name, displayName, email, role, verificationStatus } = user;
+  return { id, name, displayName, email, role, verificationStatus };
 }
 
-export async function register(input: unknown, config: AuthConfiguration) {
+export async function register(input: unknown) {
   if (typeof input !== "object" || input === null || Array.isArray(input)) {
     throw new HttpError(400, "Request body must be an object");
   }
@@ -79,13 +89,12 @@ export async function register(input: unknown, config: AuthConfiguration) {
     email,
     role: "student",
     passwordHash: hashPassword(password),
+    verificationStatus: "pending_verification",
+    verificationCode: createVerificationCode(),
   };
   await publishUserEvent({ type: "user.created", user: userSnapshot(user) }, user.id);
 
-  return {
-    token: createAccessToken(user.id, config.jwtSecret, config.accessTokenTtl),
-    user: toPublicUser(user),
-  };
+  return { user: toPublicUser(user) };
 }
 
 export async function login(email: unknown, password: unknown, config: AuthConfiguration) {
@@ -103,6 +112,9 @@ export async function login(email: unknown, password: unknown, config: AuthConfi
   if (!user || !verifyPassword(password, user.passwordHash)) {
     throw new HttpError(401, "Invalid email or password");
   }
+  if (user.verificationStatus !== "verified") {
+    throw new HttpError(403, "Your account is pending verification");
+  }
 
   return {
     token: createAccessToken(user.id, config.jwtSecret, config.accessTokenTtl),
@@ -112,8 +124,46 @@ export async function login(email: unknown, password: unknown, config: AuthConfi
       displayName: user.displayName,
       email: user.email,
       role: user.role,
+      verificationStatus: user.verificationStatus,
     },
   };
+}
+
+export async function verifyUser(input: unknown) {
+  if (typeof input !== "object" || input === null || Array.isArray(input)) {
+    throw new HttpError(400, "Request body must be an object");
+  }
+  const body = input as Record<string, unknown>;
+  if (Object.keys(body).some((key) => key !== "email" && key !== "verificationCode")) {
+    throw new HttpError(400, "Request contains unsupported fields");
+  }
+  if (typeof body.email !== "string" || typeof body.verificationCode !== "string") {
+    throw new HttpError(400, "Email and verification code are required");
+  }
+  const email = body.email.trim().toLowerCase();
+  const code = body.verificationCode.trim();
+  if (!email || !/^\d{6}$/.test(code)) {
+    throw new HttpError(400, "Invalid email or verification code");
+  }
+
+  const user = await findUserByEmail(email);
+  if (!user || user.verificationStatus !== "pending_verification") {
+    throw new HttpError(400, "Invalid email or verification code");
+  }
+  if (!user.verificationCode || !verificationCodeMatches(user.verificationCode, code)) {
+    throw new HttpError(400, "Invalid email or verification code");
+  }
+
+  const verifiedUser: User = {
+    ...user,
+    verificationStatus: "verified",
+    verificationCode: null,
+  };
+  await publishUserEvent(
+    { type: "user.verified", user: userSnapshot(verifiedUser) },
+    user.id,
+  );
+  return toPublicUser(verifiedUser);
 }
 
 export async function getAuthenticatedUser(userId: number) {
@@ -143,6 +193,8 @@ export async function updateAuthenticatedUser(userId: number, input: unknown) {
     displayName?: string;
     email?: string;
     passwordHash?: string;
+    verificationStatus?: User["verificationStatus"];
+    verificationCode?: string | null;
   } = {};
   let currentUser: User | undefined;
   if ("displayName" in body) {
@@ -199,6 +251,11 @@ export async function updateAuthenticatedUser(userId: number, input: unknown) {
 
   currentUser ??= await findUserById(userId);
   if (!currentUser) throw new HttpError(401, "Token user no longer exists");
+  if (updates.email && updates.email !== currentUser.email) {
+    updates.verificationStatus = "pending_verification";
+    updates.verificationCode = createVerificationCode();
+  }
+
   const user: User = { ...currentUser, ...updates };
   await publishUserEvent({ type: "user.updated", user: userSnapshot(user) }, userId);
   return toPublicUser(user);
@@ -272,6 +329,8 @@ export async function bootstrapAdministrator(
       email,
       role: "admin",
       passwordHash: hashPassword(password),
+      verificationStatus: "pending_verification",
+      verificationCode: createVerificationCode(),
     };
     await publishUserEvent({ type: "user.created", user: userSnapshot(user) }, user.id);
     await tx.insert(userBootstrapReservationsTable).values({ id: 1, userId: user.id });

@@ -4,11 +4,12 @@
  * (users: id, display name, role, soft delete; suppliers: append-only versions
  * without imageUrl), and parsing saga commands from order-commands.
  * Author review: Pending.
+ * Claude Code (Opus 5.5), 2026-10-17: group.placed from the sync service. Author review: Pending.
  */
 import { sql } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { supplierVersions, users, type OperatingPeriod } from "../db/schema.js";
-import { UUID_PATTERN } from "../orders/input.js";
+import { MAX_GROUP_DESCRIPTION, UUID_PATTERN } from "../orders/input.js";
 import { SAGA_COMMANDS, type SagaCommandType } from "../orders/write.js";
 
 export class InvalidMessageError extends Error {}
@@ -135,3 +136,20 @@ export function parseSagaCommand(message: unknown): { commandId: string; type: S
     orderId: uuid(command.orderId, "orderId"),
   };
 }
+
+// sync-events from the sync service: { eventId, type: "group.placed", orderId, description, placedBy }.
+export function parseGroupPlaced(message: unknown): { eventId: string; orderId: string; description: string; placedBy: number } | undefined {
+  const event = record(message, "sync event");
+  if (event.type !== "group.placed") return undefined; // other sync events are not for the order service
+  const description = string(event.description, "description").trim();
+  if (!description || description.length > MAX_GROUP_DESCRIPTION) {
+    throw new InvalidMessageError(`description must be 1 to ${MAX_GROUP_DESCRIPTION} characters`);
+  }
+  return {
+    eventId: uuid(event.eventId, "eventId"),
+    orderId: uuid(event.orderId, "orderId"),
+    description,
+    placedBy: positiveInteger(event.placedBy, "placedBy"),
+  };
+}
+

@@ -10,11 +10,19 @@
 # Claude Code (Opus 5.5), 2026-10-18. Scope: order, notification, credit and saga services:
 # databases, topics, push subscriptions, Cloud Scheduler jobs and frontend wiring.
 # Author review: Pending.
+# ChatGPT (GPT-6), 2026-11-04: deploy mail-service and authenticated user-events subscription.
+# Author review: Pending.
+# ChatGPT (GPT-6), 2026-11-05: securely provision Mailjet Secret Manager versions.
+# Author review: Pending.
+# Claude Code (Opus 5.5), 2026-10-18: `github` command setting up Workload Identity Federation
+# for the GitHub Actions deploy workflow. Author review: Pending.
 #
 # Usage (from the repository root, after `gcloud builds submit --config cloudbuild.yaml`):
 #   ./deploy.sh setup   # one-time: Cloud SQL, databases, secrets, IAM, networking
 #   ./deploy.sh         # create anything new, run migrations, then deploy every service
 #   ./deploy.sh seed    # run the supplier seed job (safe to repeat)
+#   ./deploy.sh github  # one-time: let .github/workflows/deploy.yml deploy from main
+#   ./deploy.sh mailjet # securely add/update Mailjet secrets for mail-service
 #
 # Override any setting below with an environment variable, e.g. TAG=<build id> ./deploy.sh
 set -euo pipefail
@@ -30,6 +38,7 @@ SUBNET="${SUBNET:-default}"
 PUBSUB_TOPIC="${PUBSUB_TOPIC:-user-events}"
 PUBSUB_SUBSCRIPTION="${PUBSUB_SUBSCRIPTION:-user-events-worker}"
 SUPPLIER_USER_EVENTS_SUBSCRIPTION="${SUPPLIER_USER_EVENTS_SUBSCRIPTION:-supplier-service-user-events}"
+MAIL_SERVICE_SUBSCRIPTION="${MAIL_SERVICE_SUBSCRIPTION:-mail-service-user-events}"
 SUPPLIER_EVENTS_TOPIC="${SUPPLIER_EVENTS_TOPIC:-supplier-events}"
 PUBSUB_PUSH_SERVICE_ACCOUNT="${PUBSUB_PUSH_SERVICE_ACCOUNT:-user-event-push@${PROJECT_ID}.iam.gserviceaccount.com}"
 # Identity Cloud Scheduler uses to call the services' internal routes.
@@ -322,6 +331,21 @@ deploy_event_services() {
 deploy() {
   ensure_pubsub
 
+  if secret_exists mailjet-api-key && secret_exists mailjet-secret-key && secret_exists mailjet-from; then
+    local mail_service_url
+    mail_service_url="$(run_url mail-service)"
+    run run deploy mail-service --region "$REGION" --image "${REGISTRY}/mail-service:${TAG}" \
+      --port 3335 --no-allow-unauthenticated \
+      --set-env-vars "PUBSUB_PROJECT_ID=${PROJECT_ID},PUBSUB_TOPIC=${PUBSUB_TOPIC},PUBSUB_SUBSCRIPTION=${MAIL_SERVICE_SUBSCRIPTION}" \
+      --set-secrets "MAILJET_API_KEY=mailjet-api-key:latest,MAILJET_SECRET_KEY=mailjet-secret-key:latest,MAILJET_FROM=mailjet-from:latest"
+    run run services add-iam-policy-binding mail-service --region "$REGION" \
+      --member "serviceAccount:${PUBSUB_PUSH_SERVICE_ACCOUNT}" --role roles/run.invoker >/dev/null
+    ensure_push_subscription "$MAIL_SERVICE_SUBSCRIPTION" "$PUBSUB_TOPIC" \
+      "${mail_service_url}/pubsub/user-events" "$mail_service_url"
+  else
+    echo "Mail service deployment skipped: create mailjet-api-key, mailjet-secret-key, and mailjet-from secrets to enable it."
+  fi
+
   run_job supplier-migrate "${REGISTRY}/supplier-service-tooling:${TAG}" supplier-database-url \
     "${PRIVATE_DB_FLAGS[@]}" --command npm --args run,db:migrate
   run_job user-migrate "${REGISTRY}/user-service:${TAG}" user-database-url \
@@ -425,6 +449,87 @@ deploy() {
   echo "Frontend: $(service_url frontend-service)"
 }
 
+# One-time: lets GitHub Actions in GITHUB_REPOSITORY deploy from main through Workload
+# Identity Federation (no service account keys), then prints the variables the workflow reads.
+github_ci() {
+  local repository="${GITHUB_REPOSITORY:-Y2627S1-CS3219-P32/Y2627S1-CS3219-P32}"
+  local deployer="${DEPLOYER_SERVICE_ACCOUNT:-github-deployer@${PROJECT_ID}.iam.gserviceaccount.com}"
+  local pool=github provider=github number
+  number="$(project_number)"
+
+  run services enable iamcredentials.googleapis.com sts.googleapis.com cloudbuild.googleapis.com
+  if ! run iam service-accounts describe "$deployer" >/dev/null 2>&1; then
+    run iam service-accounts create "${deployer%@*}" --display-name "GitHub Actions deployer"
+  fi
+  # deploy.sh creates databases, secrets, topics, service accounts and IAM bindings as it goes.
+  for role in roles/viewer roles/cloudbuild.builds.editor roles/storage.admin roles/run.admin \
+    roles/iam.serviceAccountUser roles/iam.serviceAccountAdmin roles/resourcemanager.projectIamAdmin \
+    roles/secretmanager.admin roles/cloudsql.admin roles/pubsub.admin roles/cloudscheduler.admin \
+    roles/serviceusage.serviceUsageAdmin roles/compute.networkUser; do
+    run projects add-iam-policy-binding "$PROJECT_ID" \
+      --member "serviceAccount:${deployer}" --role "$role" --condition None >/dev/null
+  done
+
+  if ! run iam workload-identity-pools describe "$pool" --location global >/dev/null 2>&1; then
+    run iam workload-identity-pools create "$pool" --location global --display-name "GitHub Actions"
+  fi
+  if ! run iam workload-identity-pools providers describe "$provider" --location global \
+    --workload-identity-pool "$pool" >/dev/null 2>&1; then
+    run iam workload-identity-pools providers create-oidc "$provider" --location global \
+      --workload-identity-pool "$pool" --display-name "GitHub" \
+      --issuer-uri https://token.actions.githubusercontent.com \
+      --attribute-mapping "google.subject=assertion.sub,attribute.repository=assertion.repository,attribute.ref=assertion.ref" \
+      --attribute-condition "assertion.repository == '${repository}' && assertion.ref == 'refs/heads/main'"
+  fi
+  run iam service-accounts add-iam-policy-binding "$deployer" --role roles/iam.workloadIdentityUser \
+    --member "principalSet://iam.googleapis.com/projects/${number}/locations/global/workloadIdentityPools/${pool}/attribute.repository/${repository}" \
+    --condition None >/dev/null
+
+  echo "Add these GitHub repository variables (Settings > Secrets and variables > Actions):"
+  echo "  GCP_PROJECT_ID=${PROJECT_ID}"
+  echo "  GCP_WORKLOAD_IDENTITY_PROVIDER=projects/${number}/locations/global/workloadIdentityPools/${pool}/providers/${provider}"
+  echo "  GCP_SERVICE_ACCOUNT=${deployer}"
+}
+
+configure_mailjet() {
+  if [ ! -t 0 ]; then
+    echo "Run './deploy.sh mailjet' in an interactive terminal to enter Mailjet settings securely." >&2
+    return 1
+  fi
+
+  local api_key secret_key sender
+  read -r -s -p "Mailjet API key: " api_key
+  printf '\n' >&2
+  read -r -s -p "Mailjet secret key: " secret_key
+  printf '\n' >&2
+  read -r -p "Verified Mailjet sender address: " sender
+
+  if [ -z "$api_key" ] || [ -z "$secret_key" ] || [ -z "$sender" ]; then
+    unset api_key secret_key sender
+    echo "All three Mailjet settings are required; no secrets were changed." >&2
+    return 1
+  fi
+
+  local name value
+  for name in mailjet-api-key mailjet-secret-key mailjet-from; do
+    case "$name" in
+      mailjet-api-key) value="$api_key" ;;
+      mailjet-secret-key) value="$secret_key" ;;
+      mailjet-from) value="$sender" ;;
+    esac
+
+    if secret_exists "$name"; then
+      printf '%s' "$value" | run secrets versions add "$name" --data-file -
+    else
+      printf '%s' "$value" |
+        run secrets create "$name" --replication-policy automatic --data-file -
+    fi
+  done
+
+  unset api_key secret_key sender value
+  echo "Mailjet secrets saved to Secret Manager. Run './deploy.sh' to deploy mail-service."
+}
+
 seed() {
   run_job supplier-seed "${REGISTRY}/supplier-service-tooling:${TAG}" supplier-database-url \
     "${PRIVATE_DB_FLAGS[@]}" --command npm --args run,db:seed
@@ -434,5 +539,7 @@ case "${1:-deploy}" in
   setup) setup ;;
   deploy) deploy ;;
   seed) seed ;;
-  *) echo "Usage: $0 [setup|deploy|seed]" >&2; exit 1 ;;
+  github) github_ci ;;
+  mailjet) configure_mailjet ;;
+  *) echo "Usage: $0 [setup|deploy|seed|github|mailjet]" >&2; exit 1 ;;
 esac
