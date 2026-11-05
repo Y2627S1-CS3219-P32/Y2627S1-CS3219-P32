@@ -22,6 +22,13 @@
       "when": 1792327523266,
       "tag": "0002_supplier_events",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1793846109374,
+      "tag": "0003_supplier_events_traceparent",
+      "breakpoints": true
     }
   ]
 }

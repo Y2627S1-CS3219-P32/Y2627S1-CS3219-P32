@@ -1,11 +1,13 @@
 <!-- AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-11-04.
 Scope: Shared code instructions. Author review: Pending.
-Claude Code (Opus 5.5), 2026-11-04: the OpenTelemetry bootstrap. Author review: Pending. -->
+Claude Code (Opus 5.5), 2026-11-04: the OpenTelemetry bootstrap. Author review: Pending.
+Claude Code (Opus 5.5), 2026-11-05: Pub/Sub message logs and traces. Author review: Pending. -->
 # Shared code
 
 Code used by more than one backend service: the logger,
-[`src/logger.ts`](src/logger.ts), built on [pino](https://getpino.io), and the
-OpenTelemetry bootstrap, [`src/telemetry.mts`](src/telemetry.mts).
+[`src/logger.ts`](src/logger.ts), built on [pino](https://getpino.io), the
+OpenTelemetry bootstrap, [`src/telemetry.mts`](src/telemetry.mts), and the Pub/Sub
+message logging and tracing in [`src/messaging.ts`](src/messaging.ts).
 Edit files here only. The services get copies:
 
 - **Docker** (Compose and Cloud Build): every backend build gets `shared/src` as an
@@ -69,7 +71,7 @@ tests and on Cloud Run). With it on, each service sends over OTLP (HTTP/protobuf
 
 | Signal | What |
 | --- | --- |
-| Traces | Incoming and outgoing HTTP (`http`, `fetch`), Express routes and middleware, and PostgreSQL queries made while handling a request. `traceparent` headers carry a trace from frontend-service into the backends. |
+| Traces | Incoming and outgoing HTTP (`http`, `fetch`), Express routes and middleware, PostgreSQL queries made while handling a request or message, and every Pub/Sub message sent and processed (see [Pub/Sub messages](#pubsub-messages)). `traceparent` headers carry a trace from frontend-service into the backends, and message attributes carry it on through Pub/Sub. |
 | Metrics | `http.server.request.duration` and `http.client.request.duration` by route and status; Node.js event loop delay, heap and GC. |
 | Logs | Every pino line, linked to the trace and span it was written in. They still go to stdout, now with `trace_id` and `span_id`. |
 
@@ -92,5 +94,54 @@ Notes:
   and Node strips the types.
 - On Windows, `tsx watch` hangs while loading it, so the `dev` scripts in `package.json`
   do not load it. `compose.dev.yaml` runs `tsx watch` in Linux, where it works.
-- Pub/Sub messages do not carry trace context yet, so work that one service starts in
-  another through an event or command shows up as a separate trace.
+
+## Pub/Sub messages
+
+Every message the services publish or receive goes through
+[`src/messaging.ts`](src/messaging.ts), which writes one log line on each side and, with
+telemetry on, a span:
+
+```ts
+import { publishMessage, receivePush, processMessage, withTraceparent } from "./shared/messaging.js";
+
+await publishMessage(topic, { json, orderingKey, attributes });  // instead of topic.publishMessage
+router.post("/pubsub/order-events", receivePush(async (req: Request, res: Response) => { ... }));
+subscription.on("message", (m) => processMessage(name, m, async () => "ack"));  // pull
+```
+
+`receivePush` wraps the push route's handler rather than being a middleware: the Express
+instrumentation makes the HTTP request's span current again at every `next()`, so only the
+handler itself can run in the message's trace.
+
+| Log message | Level | Fields |
+| --- | --- | --- |
+| `Published message` | info | `topic`, `messageId`, `eventType`, `orderingKey`, other `attributes` |
+| `Processed message` | info | `subscription`, `messageId`, `eventType`, `orderingKey`, `attributes`, `outcome` (`ack`), `durationMs`, `deliveryDelayMs` (from publish to receipt), `deliveryAttempt`; for push, `statusCode` |
+| `Message not acknowledged; Pub/Sub will redeliver it` | warn, or error for a push 5xx | as above, with `outcome` `nack` |
+| `Failed to process message` | error | as above, with `err` (pull handler threw) |
+
+`messageId` is the same on both sides, so one message can be followed from its publisher
+to every subscriber. In Grafana (**Explore → Loki**), the fields are structured metadata:
+`{service_name=~".+"} | messageId="<id>"`, or every message of one kind with
+`{service_name=~".+"} |= "message" | eventType="order.created"`. A failed publish is logged by the caller,
+which decides whether it is retried.
+
+With telemetry on, publishing adds the trace to the message's attributes (`traceparent`),
+and each subscriber processes the message in that trace, so one trace in Tempo follows a
+request through every service its events and commands reach: for an order, from
+frontend-service through order-service, the saga, credit-service and notification-service.
+The spans are `send <topic>` and `process <subscription>`. A push request's own HTTP span
+starts without trace context (Pub/Sub does not send it), so it is linked to the
+`process` span instead.
+
+The outbox tables (`order_events`, saga `outbox`, `supplier_events`, `credit_outbox`) have
+a `traceparent` column, filled in on insert with the trace the row was written in. The
+relay publishes each row in its own trace, even when it runs later or in another process,
+as credit-publisher does:
+
+```ts
+traceparent: text("traceparent").$defaultFn(() => currentTraceparent() ?? sql`null`), // schema
+await withTraceparent(row.traceparent, () => publish(...));                          // relay
+```
+
+Without telemetry the column stays null and only the log lines are written.

@@ -6,6 +6,9 @@ import { pool } from '../db/index.js';
 import { withPublisherLock } from '../repositories/outbox.js';
 // Claude Code (Opus 5.5), 2026-11-04: logs through the shared pino logger. Author review: Pending.
 import { logger } from '../shared/logger.js';
+// Claude Code (Opus 5.5), 2026-11-05: each event is logged, traced, and published in the
+// trace it was written in. Author review: Pending.
+import { publishMessage, withTraceparent } from '../shared/messaging.js';
 
 export async function publishBatch(topic: Topic) {
   return withPublisherLock(async ({ rows, markPublished }) => {
@@ -16,11 +19,13 @@ export async function publishBatch(topic: Topic) {
       const attributes: Record<string, string> = { type: payload.type };
       if (payload.orderId) attributes.orderId = payload.orderId;
       try {
-        await topic.publishMessage({
-          data: Buffer.from(JSON.stringify(payload)),
-          attributes,
-          orderingKey: key,
-        });
+        await withTraceparent(row.traceparent, () =>
+          publishMessage(topic, {
+            data: Buffer.from(JSON.stringify(payload)),
+            attributes,
+            orderingKey: key,
+          }),
+        );
         await markPublished(row.event_id);
         count++;
       } catch (error) {

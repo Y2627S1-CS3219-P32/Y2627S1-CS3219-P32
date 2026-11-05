@@ -18,6 +18,7 @@ import { getOrder, listOrderEvents, listOrders } from "./orders/queries.js";
 import { createOrder, editOrder, expireOverdueOrders, handleSagaCommand, performUserAction, USER_ACTIONS, type UserAction } from "./orders/write.js";
 // Claude Code (Opus 5.5), 2026-11-04: logs through the shared pino logger. Author review: Pending.
 import { logger } from "./shared/logger.js";
+import { receivePush } from "./shared/messaging.js";
 
 export const app = express();
 app.use(express.json({ limit: "10kb" }));
@@ -87,7 +88,9 @@ internal.use(requireInternal);
 // Pub/Sub push: 204 acknowledges; 5xx makes Pub/Sub redeliver. Malformed messages
 // are acknowledged (and logged) so they do not block their ordering key forever.
 function pushHandler(name: string, handle: (message: unknown) => Promise<void>) {
-  return async (req: Request, res: Response) => {
+  // Claude Code (Opus 5.5), 2026-11-05: in the message's trace, and logged with its outcome,
+  // through the shared helper. Author review: Pending.
+  return receivePush(async (req: Request, res: Response) => {
     const message = decodePushMessage(req.body);
     try {
       if (message === undefined) throw new InvalidMessageError("Push request has no JSON message data");
@@ -97,7 +100,7 @@ function pushHandler(name: string, handle: (message: unknown) => Promise<void>) 
       logger.error({ source: name, reason: error.message }, "Dropped invalid message");
     }
     res.status(204).end();
-  };
+  });
 }
 
 internal.post("/pubsub/user-events", pushHandler("user-events", applyUserEvent));

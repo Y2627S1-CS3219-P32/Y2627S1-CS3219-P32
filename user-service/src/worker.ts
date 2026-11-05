@@ -6,7 +6,7 @@
 **/
 import "dotenv/config";
 
-import express from "express";
+import express, { type Request, type Response } from "express";
 
 import { initializeDatabase, pool } from "./db";
 import { parseUserEvent } from "./events/parse-user-event";
@@ -18,6 +18,7 @@ import {
 } from "./events/user-events";
 // Claude Code (Opus 5.5), 2026-11-04: logs through the shared pino logger. Author review: Pending.
 import { logger } from "./shared/logger";
+import { receivePush } from "./shared/messaging";
 
 const port = Number(process.env.PORT ?? 3334);
 const subscriptionName = process.env.PUBSUB_SUBSCRIPTION ?? "user-events-worker";
@@ -87,7 +88,9 @@ app.get("/health", (_req, res) => {
   res.json({ status: "ok" });
 });
 
-app.post("/pubsub/user-events", async (req, res) => {
+// Claude Code (Opus 5.5), 2026-11-05: in the message's trace, and logged with its outcome,
+// through the shared helper. Author review: Pending.
+app.post("/pubsub/user-events", receivePush(async (req: Request, res: Response) => {
   const message = typeof req.body === "object" && req.body !== null
     ? (req.body as Record<string, unknown>).message
     : undefined;
@@ -116,7 +119,7 @@ app.post("/pubsub/user-events", async (req, res) => {
     logger.error({ err: error, eventId: event.eventId }, "Failed to apply event");
     res.status(500).json({ error: "Could not apply Pub/Sub user event" });
   }
-});
+}));
 
 async function ensureLocalSubscription(): Promise<void> {
   if (!process.env.PUBSUB_EMULATOR_HOST) return;

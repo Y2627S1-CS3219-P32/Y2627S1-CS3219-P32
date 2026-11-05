@@ -8,6 +8,13 @@
       "when": 1792323329650,
       "tag": "0000_saga_schema",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1793846105460,
+      "tag": "0001_outbox_traceparent",
+      "breakpoints": true
     }
   ]
 }

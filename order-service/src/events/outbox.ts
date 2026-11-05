@@ -6,6 +6,8 @@
  * filters. Author review: Pending.
  * Claude Code (Opus 5.5), 2026-10-18: callers wait for the publish before responding, since
  * Cloud Run throttles CPU after a response. Author review: Pending.
+ * Claude Code (Opus 5.5), 2026-11-05: each event is published in the trace it was recorded
+ * in. Author review: Pending.
  */
 import { asc, inArray, isNull, sql } from "drizzle-orm";
 import { config } from "../config.js";
@@ -14,6 +16,7 @@ import { orderEvents } from "../db/schema.js";
 import { publish } from "./pubsub.js";
 // Claude Code (Opus 5.5), 2026-11-04: logs through the shared pino logger. Author review: Pending.
 import { logger } from "../shared/logger.js";
+import { withTraceparent } from "../shared/messaging.js";
 
 const BATCH = 100;
 
@@ -43,7 +46,7 @@ export async function publishPendingEvents(): Promise<number> {
       // After a failure, later events of the same order must wait for the next run.
       if (blocked.has(event.orderId)) continue;
       try {
-        await publish(config.pubsub.orderEventsTopic, {
+        await withTraceparent(event.traceparent, () => publish(config.pubsub.orderEventsTopic, {
           eventId: event.id,
           type: event.type,
           orderId: event.orderId,
@@ -53,7 +56,7 @@ export async function publishPendingEvents(): Promise<number> {
           commandId: event.commandId,
           occurredAt: event.createdAt.toISOString(),
           order: event.payload,
-        }, event.orderId, { type: event.type, orderId: event.orderId });
+        }, event.orderId, { type: event.type, orderId: event.orderId }));
         published.push(event.id);
       } catch (error) {
         logger.error({ err: error, eventId: event.id }, "Failed to publish event");

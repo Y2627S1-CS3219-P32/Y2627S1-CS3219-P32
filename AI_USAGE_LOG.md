@@ -131,6 +131,48 @@ Author review: Checked for correctness. -->
   Not run on Cloud Build or Cloud Run.
 - Author review: Pending.
 
+## 2026-11-05: Logs and traces for every Pub/Sub message
+
+- Tool: Claude Code (Opus 5.5). Mode: Implementation and verification.
+- Exact prompt: `log every event, particularly the interactions between the services through pubsub.`
+- Key response: Added `shared/src/messaging.ts`. `publishMessage` replaces `topic.publishMessage`
+  in every publisher (user, order, saga, supplier, credit-publisher). It logs `Published message`
+  with the topic, Pub/Sub `messageId`, `eventType` (the `type` attribute) and ordering key, and with
+  telemetry on adds a `send <topic>` span and the trace's `traceparent` to the message attributes.
+  `receivePush` wraps every push route handler (order, saga, credit, supplier and user workers) and
+  `processMessage` the notification-service pull subscriptions. Each message is handled in a
+  `process <subscription>` span in the publisher's trace and logged once as `Processed message`
+  (or a warning or error when not acknowledged) with the outcome, status, duration and delay since
+  publishing. `receivePush` wraps handlers rather than being a middleware, because the Express
+  instrumentation makes the request's span current again at each `next()`. That was found when
+  the first, middleware version stored the wrong trace. The outbox tables (`order_events`, saga
+  `outbox`, `supplier_events`, `credit_outbox`) gained a nullable `traceparent` column, set on
+  insert by a Drizzle `$defaultFn`, and the relays publish each row in that trace (Drizzle-generated
+  migrations). user-events messages now carry a `type` attribute, as the other topics do. The credit
+  migration test counts migrations from the journal instead of expecting exactly one. Logs are
+  written with or without telemetry; spans and trace attributes only with it.
+- Affected files: `shared/src/messaging.ts`, `shared/README.md`, `README.md`;
+  `user-service/src/events/user-events.ts`, `user-service/src/worker.ts`;
+  `order-service/src/app.ts`, `src/db/schema.ts`, `src/events/outbox.ts`, `src/events/pubsub.ts`,
+  `drizzle/0001_order_events_traceparent.sql`; `saga-orchestrator/src/app.ts`, `src/db/schema.ts`,
+  `src/outbox.ts`, `src/pubsub.ts`, `drizzle/0001_outbox_traceparent.sql`;
+  `supplier-service/src/db/schema.ts`, `src/supplier-events.ts`, `src/worker.ts`,
+  `drizzle/0003_supplier_events_traceparent.sql`; `credit-service/src/db/schema.ts`,
+  `src/event-handler/handlers.ts`, `src/outbox-publisher/publisher.ts`,
+  `migrations/0001_credit_outbox_traceparent.sql`, `test/postgres.test.mjs`;
+  `notification-service/src/subscription.ts`; the Drizzle `meta` journals and snapshots; this log.
+- Verification: the five TypeScript services and user-service's changed files typecheck. Tests pass
+  against a disposable PostgreSQL: order 18, saga 9, notification 12, supplier 50, user 9, and
+  credit 40 of 41. The remaining credit failure, the architecture test, fails on Windows before
+  this change too (it matches `/` in paths); with the separators normalised it passes. Rebuilt the
+  stack with `compose.observability.yaml` (migrations applied) and ran a signup and an order. Every
+  publish and every subscriber's receipt was logged with matching `messageId`s. The signup
+  (user-events to four subscribers, then credit-publisher's `credit.account_allocated`) was one
+  trace. The order was one 93-span trace in Tempo from `POST /orders` through the saga,
+  credit-service, credit-publisher, back to order-service and notification-service. Loki returned
+  both sides of a message for `{service_name=~".+"} | messageId="14"`. Not run on Cloud Run.
+- Author review: Pending.
+
 
 # AI usage log (User Service)
 

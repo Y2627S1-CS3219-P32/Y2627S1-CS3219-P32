@@ -3,6 +3,10 @@ Tool: Claude Code (model: Opus 5.5), date: 2026-10-18
 Scope: supplier-events contract (shape given by the student), outbox writes in the same
 transaction as each change, and the relay that publishes unpublished rows to Pub/Sub in
 version order (mirroring order-service/src/events/outbox.ts).
+Author review: Pending.
+Tool: Claude Code (model: Opus 5.5), date: 2026-11-05
+Scope: publishing through the shared helper, which logs and traces each message, in the
+trace each event was recorded in.
 Author review: Pending. **/
 
 import { PubSub, type Topic } from "@google-cloud/pubsub";
@@ -11,6 +15,7 @@ import { db } from "./db/index.js";
 import { buildings, operatingHours, supplierEvents, suppliers, types } from "./db/schema.js";
 // Claude Code (Opus 5.5), 2026-11-04: logs through the shared pino logger. Author review: Pending.
 import { logger } from "./shared/logger.js";
+import { publishMessage, withTraceparent } from "./shared/messaging.js";
 
 export interface SupplierSnapshot {
   id: string;
@@ -96,7 +101,7 @@ const publishToPubSub: Publisher = async (data, orderingKey, attributes) => {
   topic ??= new PubSub({ projectId: process.env.PUBSUB_PROJECT_ID ?? process.env.GOOGLE_CLOUD_PROJECT ?? "foc-local" })
     .topic(topicName, { messageOrdering: true });
   try {
-    await topic.publishMessage({ json: data, orderingKey, attributes });
+    await publishMessage(topic, { json: data, orderingKey, attributes });
   } catch (error) {
     // An ordering key pauses after a failure until resumed.
     topic.resumePublishing(orderingKey);
@@ -140,7 +145,8 @@ export async function publishPendingSupplierEvents(): Promise<number> {
             supplier: row.payload as SupplierSnapshot,
           };
       try {
-        await publisher(event, row.supplierId, { type: row.type, supplierId: row.supplierId });
+        await withTraceparent(row.traceparent, () =>
+          publisher(event, row.supplierId, { type: row.type, supplierId: row.supplierId }));
         published.push(row.id);
       } catch (error) {
         logger.error({ err: error, eventId: row.id }, "Failed to publish supplier event");

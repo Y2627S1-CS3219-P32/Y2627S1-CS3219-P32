@@ -4,6 +4,8 @@
  * order-service (at least once; credit and order-service deduplicate). Author review: Pending.
  * Claude Code (Opus 5.5), 2026-10-18: callers wait for the publish before responding, since
  * Cloud Run throttles CPU after a response. Author review: Pending.
+ * Claude Code (Opus 5.5), 2026-11-05: each command is published in the trace it was written
+ * in. Author review: Pending.
  */
 import { asc, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "./db/index.js";
@@ -11,6 +13,7 @@ import { outbox } from "./db/schema.js";
 import { publish } from "./pubsub.js";
 // Claude Code (Opus 5.5), 2026-11-04: logs through the shared pino logger. Author review: Pending.
 import { logger } from "./shared/logger.js";
+import { withTraceparent } from "./shared/messaging.js";
 
 const BATCH = 100;
 
@@ -28,7 +31,7 @@ export async function publishPending(): Promise<number> {
       // After a failure, later commands for the same order wait for the next run.
       if (blocked.has(row.orderingKey)) continue;
       try {
-        await publish(row.topic, row.payload, row.orderingKey, { type: row.type });
+        await withTraceparent(row.traceparent, () => publish(row.topic, row.payload, row.orderingKey, { type: row.type }));
         published.push(row.id);
       } catch (error) {
         logger.error({ err: error, commandType: row.type, orderingKey: row.orderingKey }, "Failed to publish command");

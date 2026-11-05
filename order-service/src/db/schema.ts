@@ -4,6 +4,8 @@
  * append-only supplier copies, orders, and the order event log / outbox.
  * Author review: Pending.
  * Claude Code (Opus 5.5), 2026-10-17: student-requested title column. Author review: Pending.
+ * Claude Code (Opus 5.5), 2026-11-05: order_events.traceparent, the trace each event was
+ * recorded in, for publishing it in that trace. Author review: Pending.
  */
 import { sql } from "drizzle-orm";
 import {
@@ -23,6 +25,7 @@ import {
   uuid,
   varchar,
 } from "drizzle-orm/pg-core";
+import { currentTraceparent } from "../shared/messaging.js";
 
 export const ORDER_STATES = [
   "PENDING",
@@ -150,6 +153,8 @@ export const orderEvents = pgTable(
     payload: jsonb("payload").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     publishedAt: timestamp("published_at", { withTimezone: true }),
+    // The trace the event was recorded in (null without telemetry); the relay publishes in it.
+    traceparent: text("traceparent").$defaultFn(() => currentTraceparent() ?? sql`null`),
   },
   (table) => [
     unique("order_events_order_sequence_unique").on(table.orderId, table.sequence),

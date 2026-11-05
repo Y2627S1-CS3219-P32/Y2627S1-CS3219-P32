@@ -8,6 +8,13 @@
       "when": 1792218413700,
       "tag": "0000_order_schema",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1793846101435,
+      "tag": "0001_order_events_traceparent",
+      "breakpoints": true
     }
   ]
 }

@@ -110,7 +110,8 @@ Editing a `package.json` rebuilds that service's image. Outside Docker, run
 
 <!-- AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-11-04.
 Scope: Local observability stack instructions. Author review: Pending.
-Claude Code (Opus 5.5), 2026-11-04: the services' own OpenTelemetry data. Author review: Pending. -->
+Claude Code (Opus 5.5), 2026-11-04: the services' own OpenTelemetry data. Author review: Pending.
+Claude Code (Opus 5.5), 2026-11-05: Pub/Sub messages in logs and traces. Author review: Pending. -->
 
 [`compose.observability.yaml`](compose.observability.yaml) adds an OpenTelemetry
 Collector, Prometheus, Loki, Tempo and Grafana, configured in
@@ -139,7 +140,10 @@ Grafana links traces, logs and metrics to one another by trace ID.
 Each service, frontend-service included, sends traces (HTTP, Express, PostgreSQL), HTTP and
 Node.js runtime metrics, and its pino logs, through
 [`shared/src/telemetry.mts`](shared/src/telemetry.mts). A request's trace follows it from
-frontend-service into the backends it calls. In Grafana, open **Explore → Tempo → Search**
+frontend-service into the backends it calls, and on through Pub/Sub into every service its
+events and commands reach. Every Pub/Sub message is logged when published and when processed
+(with or without this file), with the same `messageId` on both sides; see
+[`shared/README.md`](shared/README.md#pubsub-messages). In Grafana, open **Explore → Tempo → Search**
 or **Service Graph**, or **Explore → Loki** with `{service_name="order-service"}`. Without
 `compose.observability.yaml`, and on Cloud Run, telemetry is off. See
 [`shared/README.md`](shared/README.md#telemetry) for what is recorded and the settings.

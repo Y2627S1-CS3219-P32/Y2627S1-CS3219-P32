@@ -3,9 +3,12 @@
  * Scope: Saga orchestrator tables: one saga per order (its step and the request ids sent
  * to credit), processed message ids, and the outbox of commands to publish.
  * Author review: Pending.
+ * Claude Code (Opus 5.5), 2026-11-05: outbox.traceparent, the trace each command was written
+ * in, for publishing it in that trace. Author review: Pending.
  */
 import { sql } from "drizzle-orm";
 import { check, index, integer, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { currentTraceparent } from "../shared/messaging.js";
 
 export const SAGA_STATES = [
   "RESERVING", // credit.reserve sent, waiting for credit
@@ -66,6 +69,8 @@ export const outbox = pgTable(
     payload: jsonb("payload").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     publishedAt: timestamp("published_at", { withTimezone: true }),
+    // The trace the command was written in (null without telemetry); the relay publishes in it.
+    traceparent: text("traceparent").$defaultFn(() => currentTraceparent() ?? sql`null`),
   },
   (table) => [index("outbox_unpublished_idx").on(table.createdAt).where(sql`${table.publishedAt} is null`)],
 );
