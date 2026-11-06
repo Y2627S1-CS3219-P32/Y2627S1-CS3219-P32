@@ -5,6 +5,8 @@
  * the instance disappears without deleting it. Author review: Pending.
  * Claude Code (Opus 5.5), 2026-10-17: a shared subscription for storing notifications,
  * which Pub/Sub splits between instances and retries until stored. Author review: Pending.
+ * Claude Code (Opus 5.5), 2026-11-05: each message is handled in the trace that published
+ * it and logged with its outcome, through the shared helper. Author review: Pending.
  */
 import { randomUUID } from "node:crypto";
 import { PubSub, type Message, type Subscription } from "@google-cloud/pubsub";
@@ -13,6 +15,9 @@ import { routeOrderEvent } from "./order-events.js";
 import { routeCreditEvent } from "./credit-events.js";
 import { notificationsForCreditEvent, notificationsForOrderEvent, type Notification } from "./rules.js";
 import { storeNotifications } from "./store.js";
+// Claude Code (Opus 5.5), 2026-11-04: logs through the shared pino logger. Author review: Pending.
+import { logger } from "./shared/logger.js";
+import { processMessage } from "./shared/messaging.js";
 
 export const ORDER_EVENTS_FILTER = 'hasPrefix(attributes.type, "order.")';
 
@@ -50,7 +55,7 @@ async function subscribe(pubsub: PubSub, source: EventSource) {
   const store = topic.subscription(source.storeSubscription);
   const stop = async () => {
     await Promise.allSettled([live.close(), store.close()]);
-    await live.delete().catch((error: unknown) => console.error("[notification-service] Could not delete subscription", error));
+    await live.delete().catch((error: unknown) => logger.error({ err: error }, "Could not delete subscription"));
   };
   try {
     await topic.createSubscription(source.storeSubscription, {
@@ -59,33 +64,34 @@ async function subscribe(pubsub: PubSub, source: EventSource) {
     }).catch((error: unknown) => {
       if (!isAlreadyExists(error)) throw error;
     });
-    live.on("message", (message) => {
-      try {
-        source.route(parse(message));
-      } catch (error) {
-        console.error(`[notification-service] Dropped unreadable event from ${source.topic}`, error);
-      }
-      message.ack();
-    });
-    live.on("error", (error) => console.error("[notification-service] Live subscription error", error));
-    store.on("message", async (message) => {
-      let event: unknown;
-      try {
-        event = parse(message);
-      } catch (error) {
-        console.error(`[notification-service] Dropped unreadable event from ${source.topic}`, error);
-        message.ack();
-        return;
-      }
-      try {
-        await storeNotifications(source.notifications(event));
-        message.ack();
-      } catch (error) {
-        console.error("[notification-service] Could not store notifications", error);
-        message.nack();
-      }
-    });
-    store.on("error", (error) => console.error("[notification-service] Store subscription error", error));
+    live.on("message", (message) =>
+      processMessage(name, message, () => {
+        try {
+          source.route(parse(message));
+        } catch (error) {
+          logger.error({ err: error, topic: source.topic }, "Dropped unreadable event");
+        }
+        return "ack";
+      }));
+    live.on("error", (error) => logger.error({ err: error }, "Live subscription error"));
+    store.on("message", (message) =>
+      processMessage(source.storeSubscription, message, async () => {
+        let event: unknown;
+        try {
+          event = parse(message);
+        } catch (error) {
+          logger.error({ err: error, topic: source.topic }, "Dropped unreadable event");
+          return "ack";
+        }
+        try {
+          await storeNotifications(source.notifications(event));
+          return "ack";
+        } catch (error) {
+          logger.error({ err: error }, "Could not store notifications");
+          return "nack";
+        }
+      }));
+    store.on("error", (error) => logger.error({ err: error }, "Store subscription error"));
     return { name, stop };
   } catch (error) {
     await stop();

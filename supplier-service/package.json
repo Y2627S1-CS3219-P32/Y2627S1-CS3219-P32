@@ -1,5 +1,5 @@
 {
-  "//": "AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-28. Scope: Drizzle dependencies and scripts; package-lock.json is npm-generated. Author review: Check for correctness. Claude Code (Opus 5.5), 2026-09-29. Scope: tsx watch dev script. Author review: Check for correctness. Claude Code (Opus 5.5), 2026-10-18. Scope: Pub/Sub dependency and event worker scripts. Author review: Pending.",
+  "//": "AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-28. Scope: Drizzle dependencies and scripts; package-lock.json is npm-generated. Author review: Check for correctness. Claude Code (Opus 5.5), 2026-09-29. Scope: tsx watch dev script. Author review: Check for correctness. Claude Code (Opus 5.5), 2026-10-18. Scope: Pub/Sub dependency and event worker scripts. Author review: Pending. Claude Code (Opus 5.5), 2026-11-04: pino, and pino-pretty for development, for the shared logger. Author review: Pending. Claude Code (Opus 5.5), 2026-11-04: OpenTelemetry SDK and instrumentations, loaded by the start scripts through shared/telemetry.mts. Author review: Pending.",
   "name": "supplier-service",
   "version": "1.0.0",
   "description": "Supplier Service",
@@ -11,8 +11,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "dev": "tsx watch src/index.ts",
-    "start": "node dist/index.js",
-    "worker": "node dist/worker.js",
+    "start": "node --import ./dist/shared/telemetry.mjs dist/index.js",
+    "worker": "node --import ./dist/shared/telemetry.mjs dist/worker.js",
     "dev:worker": "tsx watch src/worker.ts",
     "typecheck": "tsc --noEmit",
     "db:check": "npm run build && node dist/db/check.js",
@@ -30,15 +30,26 @@
     "@types/node": "^26.6.3",
     "@types/pg": "^8.23.1",
     "drizzle-kit": "^0.31.11",
+    "pino-pretty": "^13.2.0",
     "ts-node": "^10.9.2",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2"
   },
   "dependencies": {
     "@google-cloud/pubsub": "^6.3.0",
+    "@opentelemetry/api": "^1.10.0",
+    "@opentelemetry/instrumentation-express": "^0.72.0",
+    "@opentelemetry/instrumentation-http": "^0.300.0",
+    "@opentelemetry/instrumentation-pg": "^0.77.0",
+    "@opentelemetry/instrumentation-pino": "^0.70.0",
+    "@opentelemetry/instrumentation-runtime-node": "^0.37.0",
+    "@opentelemetry/instrumentation-undici": "^0.34.0",
+    "@opentelemetry/sdk-node": "^0.300.0",
     "dotenv": "^18.0.4",
     "drizzle-orm": "^0.45.3",
     "express": "^5.2.1",
-    "pg": "^8.23.0"
+    "import-in-the-middle": "^3.5.3",
+    "pg": "^8.23.0",
+    "pino": "^10.4.0"
   }
 }

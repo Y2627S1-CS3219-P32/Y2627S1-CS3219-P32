@@ -107,6 +107,65 @@ modules (frontend) on change.
 Editing a `package.json` rebuilds that service's image. Outside Docker, run
 `npm run dev` in any of these service folders.
 
+## Observability (local)
+
+<!-- AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-11-04.
+Scope: Local observability stack instructions. Author review: Pending.
+Claude Code (Opus 5.5), 2026-11-04: the services' own OpenTelemetry data. Author review: Pending.
+Claude Code (Opus 5.5), 2026-11-05: Pub/Sub messages in logs and traces. Author review: Pending. -->
+
+[`compose.observability.yaml`](compose.observability.yaml) adds an OpenTelemetry
+Collector, Prometheus, Loki, Tempo and Grafana, configured in
+[`observability/`](observability/), and turns on OpenTelemetry in every app service.
+Add it after `compose.yaml` in any Compose command (after `compose.dev.yaml` too, for
+hot reloading):
+
+```sh
+docker compose -f compose.yaml -f compose.observability.yaml up -d --build
+```
+
+To run only the stack, for services started on the host, name its services:
+`docker compose -f compose.yaml -f compose.observability.yaml up -d otel-collector prometheus loki tempo grafana`.
+
+| What | Where |
+| --- | --- |
+| Grafana (log in as `admin` / `admin`) | http://127.0.0.1:3030 |
+| Prometheus | http://127.0.0.1:9090 |
+| OTLP from containers | `http://otel-collector:4318` (HTTP), `otel-collector:4317` (gRPC) |
+| OTLP from the host | `http://127.0.0.1:4318`, `127.0.0.1:4317` |
+
+The collector sends traces to Tempo, metrics to Prometheus and logs to Loki, and
+reports CPU, memory and network use for every container, labelled `compose_service`.
+Grafana links traces, logs and metrics to one another by trace ID.
+
+Each service, frontend-service included, sends traces (HTTP, Express, PostgreSQL), HTTP and
+Node.js runtime metrics, and its pino logs, through
+[`shared/src/telemetry.mts`](shared/src/telemetry.mts). A request's trace follows it from
+frontend-service into the backends it calls, and on through Pub/Sub into every service its
+events and commands reach. Every Pub/Sub message is logged when published and when processed
+(with or without this file), with the same `messageId` on both sides; see
+[`shared/README.md`](shared/README.md#pubsub-messages). In Grafana, open **Explore → Tempo → Search**
+or **Service Graph**, or **Explore → Loki** with `{service_name="order-service"}`. Without
+`compose.observability.yaml`, and on Cloud Run, telemetry is off. See
+[`shared/README.md`](shared/README.md#telemetry) for what is recorded and the settings.
+
+## Logging
+
+<!-- AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-11-04.
+Scope: Shared logger instructions. Author review: Pending. -->
+
+The backend services log through one shared [pino](https://getpino.io) logger in
+[`shared/src/logger.ts`](shared/src/logger.ts): JSON lines on stdout, with auth headers,
+passwords and tokens redacted. Docker builds pass `shared/src` in as a build context. To
+run or test a service outside Docker, copy it in first (again after each change to
+`shared/src`):
+
+```sh
+node shared/sync.mjs
+```
+
+See [`shared/README.md`](shared/README.md) for usage and the `LOG_LEVEL`, `LOG_PRETTY`
+and `OTEL_SERVICE_NAME` settings.
 The `mail-service` sends verification codes for pending accounts and a welcome email
 after `user.verified`, through Mailjet. Set `MAILJET_API_KEY`, `MAILJET_SECRET_KEY`,
 and `MAILJET_FROM` in `.env`; the sender address must be verified with Mailjet. Accounts

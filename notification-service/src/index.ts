@@ -8,6 +8,8 @@ import { config } from "./config.js";
 import { pool } from "./db/index.js";
 import { createNotificationServer } from "./server.js";
 import { subscribeToEvents } from "./subscription.js";
+// Claude Code (Opus 5.5), 2026-11-04: logs through the shared pino logger. Author review: Pending.
+import { logger } from "./shared/logger.js";
 
 const { server, closeAll } = createNotificationServer();
 
@@ -15,7 +17,7 @@ pool.query("select 1")
   .then(subscribeToEvents)
   .then((subscription) => {
     server.listen(config.port, "0.0.0.0", () => {
-      console.log(`Notification service listening on http://localhost:${config.port} (subscription ${subscription.name})`);
+      logger.info({ port: config.port, subscription: subscription.name }, "Notification service listening");
     });
 
     // Cloud Run sends SIGTERM before stopping an instance.
@@ -30,6 +32,6 @@ pool.query("select 1")
     process.once("SIGINT", shutdown);
   })
   .catch((error: unknown) => {
-    console.error("[notification-service] Startup failed", error);
+    logger.error({ err: error }, "Startup failed");
     process.exitCode = 1;
   });

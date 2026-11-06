@@ -11,10 +11,13 @@ Author review: Pending. **/
 import "dotenv/config";
 import { pathToFileURL } from "node:url";
 import { PubSub } from "@google-cloud/pubsub";
-import express, { type ErrorRequestHandler } from "express";
+import express, { type ErrorRequestHandler, type Request, type Response } from "express";
 import { pool } from "./db/index.js";
 import { publishPendingSupplierEvents } from "./supplier-events.js";
 import { applyUserEvent, InvalidUserEventError } from "./user-events.js";
+// Claude Code (Opus 5.5), 2026-11-04: logs through the shared pino logger. Author review: Pending.
+import { logger } from "./shared/logger.js";
+import { receivePush } from "./shared/messaging.js";
 
 const port = Number(process.env.PORT ?? 3004);
 const projectId = process.env.PUBSUB_PROJECT_ID ?? process.env.GOOGLE_CLOUD_PROJECT ?? "foc-local";
@@ -43,17 +46,19 @@ function decodePushMessage(body: unknown): unknown {
 
 // 204 acknowledges; 5xx makes Pub/Sub redeliver. Malformed messages are acknowledged
 // (and logged) so they do not block their ordering key forever.
-app.post("/pubsub/user-events", async (req, res) => {
+// Claude Code (Opus 5.5), 2026-11-05: in the message's trace, and logged with its outcome,
+// through the shared helper. Author review: Pending.
+app.post("/pubsub/user-events", receivePush(async (req: Request, res: Response) => {
   const message = decodePushMessage(req.body);
   try {
     if (message === undefined) throw new InvalidUserEventError("Push request has no JSON message data");
     await applyUserEvent(message);
   } catch (error) {
     if (!(error instanceof InvalidUserEventError)) throw error;
-    console.error(`[supplier-event-worker] Dropped invalid user event: ${error.message}`);
+    logger.error({ reason: error.message }, "Dropped invalid user event");
   }
   res.status(204).end();
-});
+}));
 
 // Called every minute by Cloud Scheduler (locally by the supplier-ticker container) to
 // publish outbox rows that the API's relay after each commit did not.
@@ -62,7 +67,7 @@ app.post("/outbox/publish", async (_req, res) => {
 });
 
 const errorHandler: ErrorRequestHandler = (error, _req, res, _next) => {
-  console.error("[supplier-event-worker] Request failed", error);
+  logger.error({ err: error }, "Request failed");
   res.status(500).json({ error: "Internal server error" });
 };
 
@@ -97,11 +102,11 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     .then(() => {
       app.listen(port, "0.0.0.0", (error) => {
         if (error) throw error;
-        console.log(`[supplier-event-worker] Listening on port ${port} for ${topicName}`);
+        logger.info({ port, topic: topicName }, "Supplier event worker listening");
       });
     })
     .catch(async (error: unknown) => {
-      console.error("[supplier-event-worker] Startup failed", error);
+      logger.error({ err: error }, "Startup failed");
       await pool.end();
       process.exitCode = 1;
     });

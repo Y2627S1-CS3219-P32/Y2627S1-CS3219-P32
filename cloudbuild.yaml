@@ -7,6 +7,10 @@
 #   gcloud builds submit --config cloudbuild.yaml
 #
 # Images are tagged with the build ID and `latest`. Deploying is handled by deploy.sh.
+#
+# Claude Code (Opus 5.5), 2026-11-04: backend images take shared/src (the shared logger) as
+# the `shared` build context. That flag needs buildx: this builder's own `docker build` is
+# Docker 20.10 and has no --build-context. Author review: Pending.
 substitutions:
   _REGION: asia-southeast1
   _REPOSITORY: foc
@@ -16,11 +20,15 @@ options:
   logging: CLOUD_LOGGING_ONLY
 
 steps:
+  # Claude Code (Opus 5.5), 2026-11-04: the frontend image also takes shared/src, for
+  # telemetry.mts. Author review: Pending.
   - id: frontend-service
     name: gcr.io/cloud-builders/docker
     waitFor: ["-"]
     args:
+      - buildx
       - build
+      - --build-context=shared=shared/src
       - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/frontend-service:${BUILD_ID}
       - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/frontend-service:latest
       - frontend-service
@@ -29,7 +37,9 @@ steps:
     name: gcr.io/cloud-builders/docker
     waitFor: ["-"]
     args:
+      - buildx
       - build
+      - --build-context=shared=shared/src
       - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/user-service:${BUILD_ID}
       - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/user-service:latest
       - user-service
@@ -47,7 +57,9 @@ steps:
     name: gcr.io/cloud-builders/docker
     waitFor: ["-"]
     args:
+      - buildx
       - build
+      - --build-context=shared=shared/src
       - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/supplier-service:${BUILD_ID}
       - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/supplier-service:latest
       - supplier-service
@@ -57,7 +69,9 @@ steps:
     name: gcr.io/cloud-builders/docker
     waitFor: ["-"]
     args:
+      - buildx
       - build
+      - --build-context=shared=shared/src
       - --target=tooling
       - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/supplier-service-tooling:${BUILD_ID}
       - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/supplier-service-tooling:latest
@@ -69,7 +83,9 @@ steps:
     name: gcr.io/cloud-builders/docker
     waitFor: ["-"]
     args:
+      - buildx
       - build
+      - --build-context=shared=shared/src
       - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/order-service:${BUILD_ID}
       - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/order-service:latest
       - order-service
@@ -78,7 +94,9 @@ steps:
     name: gcr.io/cloud-builders/docker
     waitFor: ["-"]
     args:
+      - buildx
       - build
+      - --build-context=shared=shared/src
       - --target=tooling
       - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/order-service-tooling:${BUILD_ID}
       - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/order-service-tooling:latest
@@ -88,7 +106,9 @@ steps:
     name: gcr.io/cloud-builders/docker
     waitFor: ["-"]
     args:
+      - buildx
       - build
+      - --build-context=shared=shared/src
       - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/notification-service:${BUILD_ID}
       - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/notification-service:latest
       - notification-service
@@ -97,7 +117,9 @@ steps:
     name: gcr.io/cloud-builders/docker
     waitFor: ["-"]
     args:
+      - buildx
       - build
+      - --build-context=shared=shared/src
       - --target=tooling
       - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/notification-service-tooling:${BUILD_ID}
       - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/notification-service-tooling:latest
@@ -107,7 +129,9 @@ steps:
     name: gcr.io/cloud-builders/docker
     waitFor: ["-"]
     args:
+      - buildx
       - build
+      - --build-context=shared=shared/src
       - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/credit-service:${BUILD_ID}
       - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/credit-service:latest
       - credit-service
@@ -116,7 +140,9 @@ steps:
     name: gcr.io/cloud-builders/docker
     waitFor: ["-"]
     args:
+      - buildx
       - build
+      - --build-context=shared=shared/src
       - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/saga-orchestrator:${BUILD_ID}
       - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/saga-orchestrator:latest
       - saga-orchestrator
@@ -125,7 +151,9 @@ steps:
     name: gcr.io/cloud-builders/docker
     waitFor: ["-"]
     args:
+      - buildx
       - build
+      - --build-context=shared=shared/src
       - --target=tooling
       - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/saga-orchestrator-tooling:${BUILD_ID}
       - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/saga-orchestrator-tooling:latest
