@@ -166,8 +166,13 @@ node shared/sync.mjs
 
 See [`shared/README.md`](shared/README.md) for usage and the `LOG_LEVEL`, `LOG_PRETTY`
 and `OTEL_SERVICE_NAME` settings.
-The `mail-service` sends verification codes for pending accounts and a welcome email
-after `user.verified`, through Mailjet. Set `MAILJET_API_KEY`, `MAILJET_SECRET_KEY`,
+The `mail-service` sends verification codes for pending accounts, a welcome email after
+signup verification, an email-updated notice after a verified email change, and one-time
+password-reset links, through Mailjet.
+
+## Mailjet
+
+Set `MAILJET_API_KEY`, `MAILJET_SECRET_KEY`,
 and `MAILJET_FROM` in `.env`; the sender address must be verified with Mailjet. Accounts
 must be verified before users can sign in or access authenticated app functionality. If
 these settings are omitted, codes remain available in the admin user list, but emails

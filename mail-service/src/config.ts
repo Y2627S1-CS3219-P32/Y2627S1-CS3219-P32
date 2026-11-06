@@ -22,6 +22,10 @@ export const config = {
   topicName: process.env.PUBSUB_TOPIC ?? "user-events",
   subscriptionName: process.env.PUBSUB_SUBSCRIPTION ?? "mail-service-user-events",
   pushEndpoint: process.env.PUBSUB_PUSH_ENDPOINT,
+  passwordResetTopicName: process.env.PASSWORD_RESET_TOPIC ?? "password-reset-requests",
+  passwordResetSubscriptionName: process.env.PASSWORD_RESET_SUBSCRIPTION ?? "password-reset-mail",
+  passwordResetPushEndpoint: process.env.PASSWORD_RESET_PUSH_ENDPOINT,
+  frontendBaseUrl: process.env.FRONTEND_BASE_URL ?? "http://localhost:3001",
   useEmulator: Boolean(process.env.PUBSUB_EMULATOR_HOST),
   mailjet: mailjetApiKey && mailjetSecretKey && mailjetFrom
     ? { apiKey: mailjetApiKey, secretKey: mailjetSecretKey, from: mailjetFrom }

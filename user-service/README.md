@@ -63,16 +63,21 @@ HS256 bearer token, which the login page can verify against `/me`.
 Public registration (`POST /register`) accepts a name, display name, university email,
 matching email confirmation, and password. Display names must be unique (case-insensitive),
 2–50 characters, and contain only letters and hyphens with a letter at each end. Registration
-emails must use `u.nus.edu`, `nus.edu.sg`, or `foc.com`. Passwords must contain at least 8
+emails must use `u.nus.edu`, `nus.edu.sg`, or `nusfoc.com`. Passwords must contain at least 8
 characters, an uppercase letter, a lowercase letter, and a number, and be no more than 256 bytes.
 Authenticated users can update their display name or email through `PATCH /me`, with the same
 validation and uniqueness rules. Email updates require a matching `confirmEmail`. Password
-updates require the current password, enforce the registration password rules, and reject a new
-password that matches the current password.
+updates require matching `newPassword` and `confirmNewPassword` fields and enforce the
+registration password rules.
 
 Public registration publishes `user.created`; the independent `mail-service` sends the
-welcome email after the account is verified, in response to `user.verified`. Registration
-does not depend on email delivery.
+welcome email after the account is verified, in response to `user.verified`. Email changes
+also require verification and send an email-updated notice after verification instead of a
+welcome email. Registration does not depend on email delivery.
+`POST /password-reset/request` sends a one-time password-reset link to a verified account
+email without disclosing whether the email is registered. Links expire after one hour.
+Complete a reset with `POST /password-reset/complete` and
+`{ "token": "...", "password": "..." }`.
 Every new account starts with `verificationStatus: "pending_verification"` and a generated
 six-digit `verificationCode`, both persisted when the user event is projected. Pending users
 cannot log in or use authenticated endpoints. Submit
@@ -87,4 +92,5 @@ The service publishes to `PUBSUB_TOPIC` (default `user-events`) in
 development. The worker exposes `POST /pubsub/user-events` for Pub/Sub push
 delivery and `GET /health` for readiness checks; GCP push requests use Cloud Run
 IAM authentication. The separate [mail-service](../mail-service/README.md) consumes
-the same topic and sends a welcome email for `user.verified` events.
+the same topic and sends a welcome email for account creation and an email-updated notice
+after a verified email change.

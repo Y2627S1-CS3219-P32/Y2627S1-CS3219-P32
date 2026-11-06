@@ -8,6 +8,8 @@ import express, { type ErrorRequestHandler } from "express";
 
 import { InvalidUserEventError, processUserEvent } from "./user-events";
 import type {
+  EmailUpdatedRecipient,
+  PasswordResetEmailRecipient,
   VerificationEmailRecipient,
   WelcomeEmailRecipient,
 } from "./welcome-email";
@@ -15,6 +17,8 @@ import type {
 export function createApp(
   senders: {
     sendWelcomeEmail?: (recipient: WelcomeEmailRecipient) => Promise<void>;
+    sendEmailUpdatedEmail?: (recipient: EmailUpdatedRecipient) => Promise<void>;
+    sendPasswordResetEmail?: (recipient: PasswordResetEmailRecipient) => Promise<void>;
     sendVerificationEmail?: (recipient: VerificationEmailRecipient) => Promise<void>;
   },
 ) {
@@ -25,7 +29,7 @@ export function createApp(
     res.json({ status: "ok" });
   });
 
-  app.post("/pubsub/user-events", async (req, res) => {
+  const handlePush = async (req: express.Request, res: express.Response) => {
     const message = typeof req.body === "object" && req.body !== null
       ? (req.body as Record<string, unknown>).message
       : undefined;
@@ -59,7 +63,9 @@ export function createApp(
       console.error("[mail-service] Failed to send user email", error);
       res.status(500).json({ error: "Could not process user event" });
     }
-  });
+  };
+  app.post("/pubsub/user-events", handlePush);
+  app.post("/pubsub/password-reset", handlePush);
 
   app.use(((error, _req, res, _next) => {
     console.error("[mail-service] Request failed", error);

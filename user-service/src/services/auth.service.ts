@@ -14,25 +14,36 @@
     Author review: Pending
 **/
 import { createHash, timingSafeEqual } from "node:crypto";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, gt, sql } from "drizzle-orm";
 
 import { createAccessToken, hashPassword, verifyPassword } from "../auth";
 import { HttpError } from "../errors";
 import { db } from "../db";
 import {
+  passwordResetTokensTable,
   userBootstrapReservationsTable,
   usersTable,
   type User,
 } from "../db/schema";
-import { publishUserEvent, userSnapshot } from "../events/user-events";
+import {
+  publishPasswordResetRequest,
+  publishUserEvent,
+  userSnapshot,
+} from "../events/user-events";
 import {
   findPublicUserById,
   findUserById,
   findUserByDisplayName,
   findUserByEmail,
+  invalidatePasswordResetToken,
   reserveUserId,
 } from "../repositories/users.repository";
 import { createVerificationCode, verificationCodeMatches } from "../verification";
+import {
+  createPasswordResetToken,
+  hashPasswordResetToken,
+  PASSWORD_RESET_TTL_MS,
+} from "../password-reset";
 import {
   validateDisplayName,
   validateRegistrationPassword,
@@ -91,6 +102,7 @@ export async function register(input: unknown) {
     passwordHash: hashPassword(password),
     verificationStatus: "pending_verification",
     verificationCode: createVerificationCode(),
+    verificationPurpose: "registration",
   };
   await publishUserEvent({ type: "user.created", user: userSnapshot(user) }, user.id);
 
@@ -158,12 +170,87 @@ export async function verifyUser(input: unknown) {
     ...user,
     verificationStatus: "verified",
     verificationCode: null,
+    verificationPurpose: null,
   };
   await publishUserEvent(
-    { type: "user.verified", user: userSnapshot(verifiedUser) },
+    {
+      type: "user.verified",
+      user: userSnapshot(verifiedUser),
+      verificationPurpose: user.verificationPurpose ?? "registration",
+    },
     user.id,
   );
   return toPublicUser(verifiedUser);
+}
+
+export async function requestPasswordReset(input: unknown): Promise<{ message: string }> {
+  const message = "If an account exists for that email, a password reset link will be sent.";
+  if (typeof input !== "object" || input === null || Array.isArray(input)) return { message };
+
+  const emailValue = (input as Record<string, unknown>).email;
+  if (typeof emailValue !== "string") return { message };
+  const email = emailValue.trim().toLowerCase();
+  if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { message };
+
+  const user = await findUserByEmail(email);
+  if (!user || user.verificationStatus !== "verified") return { message };
+
+  const resetToken = createPasswordResetToken();
+  const expiresAt = new Date(Date.now() + PASSWORD_RESET_TTL_MS);
+  await db.insert(passwordResetTokensTable).values({
+    userId: user.id,
+    tokenHash: hashPasswordResetToken(resetToken),
+    expiresAt,
+  }).onConflictDoUpdate({
+    target: passwordResetTokensTable.userId,
+    set: {
+      tokenHash: hashPasswordResetToken(resetToken),
+      expiresAt,
+    },
+  });
+  await publishPasswordResetRequest({
+    userId: user.id,
+    email: user.email,
+    name: user.name,
+    resetToken,
+  });
+  return { message };
+}
+
+export async function resetPassword(input: unknown): Promise<{ message: string }> {
+  if (typeof input !== "object" || input === null || Array.isArray(input)) {
+    throw new HttpError(400, "A valid reset link and new password are required");
+  }
+  const body = input as Record<string, unknown>;
+  if (Object.keys(body).some((key) => key !== "token" && key !== "password")) {
+    throw new HttpError(400, "Request contains unsupported fields");
+  }
+  if (
+    typeof body.token !== "string" ||
+    !/^[A-Za-z0-9_-]{43}$/.test(body.token) ||
+    typeof body.password !== "string"
+  ) {
+    throw new HttpError(400, "A valid reset link and new password are required");
+  }
+  const password = validateRegistrationPassword(body.password);
+  const [resetToken] = await db.delete(passwordResetTokensTable)
+    .where(and(
+      eq(passwordResetTokensTable.tokenHash, hashPasswordResetToken(body.token)),
+      gt(passwordResetTokensTable.expiresAt, new Date()),
+    ))
+    .returning({ userId: passwordResetTokensTable.userId });
+  if (!resetToken) {
+    throw new HttpError(400, "This password reset link is invalid or has expired.");
+  }
+
+  const user = await findUserById(resetToken.userId);
+  if (!user || user.verificationStatus !== "verified") {
+    throw new HttpError(400, "This password reset link is invalid or has expired.");
+  }
+
+  const updatedUser: User = { ...user, passwordHash: hashPassword(password) };
+  await publishUserEvent({ type: "user.updated", user: userSnapshot(updatedUser) }, user.id);
+  return { message: "Your password has been reset. You can now sign in." };
 }
 
 export async function getAuthenticatedUser(userId: number) {
@@ -182,8 +269,8 @@ export async function updateAuthenticatedUser(userId: number, input: unknown) {
     "displayName",
     "email",
     "confirmEmail",
-    "currentPassword",
     "newPassword",
+    "confirmNewPassword",
   ]);
   if (Object.keys(body).some((key) => !allowedKeys.has(key))) {
     throw new HttpError(400, "Request contains unsupported fields");
@@ -195,6 +282,7 @@ export async function updateAuthenticatedUser(userId: number, input: unknown) {
     passwordHash?: string;
     verificationStatus?: User["verificationStatus"];
     verificationCode?: string | null;
+    verificationPurpose?: User["verificationPurpose"];
   } = {};
   let currentUser: User | undefined;
   if ("displayName" in body) {
@@ -212,17 +300,19 @@ export async function updateAuthenticatedUser(userId: number, input: unknown) {
     throw new HttpError(400, "An email address is required for email confirmation");
   }
 
-  if ("currentPassword" in body || "newPassword" in body) {
+  if ("newPassword" in body || "confirmNewPassword" in body) {
     if (
-      typeof body.currentPassword !== "string" ||
-      !body.currentPassword ||
-      typeof body.newPassword !== "string"
+      typeof body.newPassword !== "string" ||
+      typeof body.confirmNewPassword !== "string"
     ) {
-      throw new HttpError(400, "Current and new passwords are required");
+      throw new HttpError(400, "New password and confirmation are required");
     }
     currentUser = await findUserById(userId);
-    if (!currentUser || !verifyPassword(body.currentPassword, currentUser.passwordHash)) {
-      throw new HttpError(401, "Current password is incorrect");
+    if (!currentUser) {
+      throw new HttpError(401, "Token user no longer exists");
+    }
+    if (body.newPassword !== body.confirmNewPassword) {
+      throw new HttpError(400, "New passwords do not match");
     }
     const newPassword = validateRegistrationPassword(body.newPassword);
     if (verifyPassword(newPassword, currentUser.passwordHash)) {
@@ -254,9 +344,13 @@ export async function updateAuthenticatedUser(userId: number, input: unknown) {
   if (updates.email && updates.email !== currentUser.email) {
     updates.verificationStatus = "pending_verification";
     updates.verificationCode = createVerificationCode();
+    updates.verificationPurpose = "email_update";
   }
 
   const user: User = { ...currentUser, ...updates };
+  if (updates.passwordHash || (updates.email && updates.email !== currentUser.email)) {
+    await invalidatePasswordResetToken(userId);
+  }
   await publishUserEvent({ type: "user.updated", user: userSnapshot(user) }, userId);
   return toPublicUser(user);
 }
@@ -331,6 +425,7 @@ export async function bootstrapAdministrator(
       passwordHash: hashPassword(password),
       verificationStatus: "pending_verification",
       verificationCode: createVerificationCode(),
+      verificationPurpose: "registration",
     };
     await publishUserEvent({ type: "user.created", user: userSnapshot(user) }, user.id);
     await tx.insert(userBootstrapReservationsTable).values({ id: 1, userId: user.id });

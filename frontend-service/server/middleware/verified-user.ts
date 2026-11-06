@@ -5,6 +5,8 @@ const publicApiPaths = new Set([
   "/api/user-service/login",
   "/api/user-service/logout",
   "/api/user-service/me",
+  "/api/user-service/password-reset/complete",
+  "/api/user-service/password-reset/request",
   "/api/user-service/register",
   "/api/user-service/verify",
 ]);
