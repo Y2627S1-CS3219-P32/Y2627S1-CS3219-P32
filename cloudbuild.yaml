@@ -8,9 +8,7 @@
 #
 # Images are tagged with the build ID and `latest`. Deploying is handled by deploy.sh.
 #
-# Claude Code (Opus 5.5), 2026-11-04: backend images take shared/src (the shared logger) as
-# the `shared` build context. That flag needs buildx: this builder's own `docker build` is
-# Docker 20.10 and has no --build-context. Author review: Pending.
+# Named build contexts require a recent BuildKit daemon and Dockerfile frontend.
 substitutions:
   _REGION: asia-southeast1
   _REPOSITORY: foc
@@ -25,24 +23,28 @@ steps:
   - id: frontend-service
     name: gcr.io/cloud-builders/docker
     waitFor: ["-"]
+    entrypoint: sh
     args:
-      - buildx
-      - build
-      - --build-context=shared=shared/src
-      - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/frontend-service:${BUILD_ID}
-      - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/frontend-service:latest
-      - frontend-service
+      - -c
+      - |
+        docker buildx create --driver docker-container --driver-opt image=moby/buildkit:v0.20.2 --use
+        docker buildx build --load --build-context=shared=shared/src \
+          -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/frontend-service:${BUILD_ID} \
+          -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/frontend-service:latest \
+          frontend-service
 
   - id: user-service
     name: gcr.io/cloud-builders/docker
     waitFor: ["-"]
+    entrypoint: sh
     args:
-      - buildx
-      - build
-      - --build-context=shared=shared/src
-      - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/user-service:${BUILD_ID}
-      - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/user-service:latest
-      - user-service
+      - -c
+      - |
+        docker buildx create --driver docker-container --driver-opt image=moby/buildkit:v0.20.2 --use
+        docker buildx build --load --build-context=shared=shared/src \
+          -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/user-service:${BUILD_ID} \
+          -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/user-service:latest \
+          user-service
 
   - id: mail-service
     name: gcr.io/cloud-builders/docker
@@ -56,108 +58,122 @@ steps:
   - id: supplier-service
     name: gcr.io/cloud-builders/docker
     waitFor: ["-"]
+    entrypoint: sh
     args:
-      - buildx
-      - build
-      - --build-context=shared=shared/src
-      - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/supplier-service:${BUILD_ID}
-      - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/supplier-service:latest
-      - supplier-service
+      - -c
+      - |
+        docker buildx create --driver docker-container --driver-opt image=moby/buildkit:v0.20.2 --use
+        docker buildx build --load --build-context=shared=shared/src \
+          -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/supplier-service:${BUILD_ID} \
+          -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/supplier-service:latest \
+          supplier-service
 
   # Drizzle tooling image, used by the supplier migrate and seed jobs.
   - id: supplier-service-tooling
     name: gcr.io/cloud-builders/docker
     waitFor: ["-"]
+    entrypoint: sh
     args:
-      - buildx
-      - build
-      - --build-context=shared=shared/src
-      - --target=tooling
-      - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/supplier-service-tooling:${BUILD_ID}
-      - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/supplier-service-tooling:latest
-      - supplier-service
+      - -c
+      - |
+        docker buildx create --driver docker-container --driver-opt image=moby/buildkit:v0.20.2 --use
+        docker buildx build --load --build-context=shared=shared/src --target=tooling \
+          -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/supplier-service-tooling:${BUILD_ID} \
+          -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/supplier-service-tooling:latest \
+          supplier-service
 
   # Claude Code (Opus 5.5), 2026-10-18: order, notification, credit and saga services, with
   # tooling images for the Drizzle migration jobs. Author review: Pending.
   - id: order-service
     name: gcr.io/cloud-builders/docker
     waitFor: ["-"]
+    entrypoint: sh
     args:
-      - buildx
-      - build
-      - --build-context=shared=shared/src
-      - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/order-service:${BUILD_ID}
-      - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/order-service:latest
-      - order-service
+      - -c
+      - |
+        docker buildx create --driver docker-container --driver-opt image=moby/buildkit:v0.20.2 --use
+        docker buildx build --load --build-context=shared=shared/src \
+          -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/order-service:${BUILD_ID} \
+          -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/order-service:latest \
+          order-service
 
   - id: order-service-tooling
     name: gcr.io/cloud-builders/docker
     waitFor: ["-"]
+    entrypoint: sh
     args:
-      - buildx
-      - build
-      - --build-context=shared=shared/src
-      - --target=tooling
-      - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/order-service-tooling:${BUILD_ID}
-      - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/order-service-tooling:latest
-      - order-service
+      - -c
+      - |
+        docker buildx create --driver docker-container --driver-opt image=moby/buildkit:v0.20.2 --use
+        docker buildx build --load --build-context=shared=shared/src --target=tooling \
+          -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/order-service-tooling:${BUILD_ID} \
+          -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/order-service-tooling:latest \
+          order-service
 
   - id: notification-service
     name: gcr.io/cloud-builders/docker
     waitFor: ["-"]
+    entrypoint: sh
     args:
-      - buildx
-      - build
-      - --build-context=shared=shared/src
-      - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/notification-service:${BUILD_ID}
-      - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/notification-service:latest
-      - notification-service
+      - -c
+      - |
+        docker buildx create --driver docker-container --driver-opt image=moby/buildkit:v0.20.2 --use
+        docker buildx build --load --build-context=shared=shared/src \
+          -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/notification-service:${BUILD_ID} \
+          -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/notification-service:latest \
+          notification-service
 
   - id: notification-service-tooling
     name: gcr.io/cloud-builders/docker
     waitFor: ["-"]
+    entrypoint: sh
     args:
-      - buildx
-      - build
-      - --build-context=shared=shared/src
-      - --target=tooling
-      - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/notification-service-tooling:${BUILD_ID}
-      - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/notification-service-tooling:latest
-      - notification-service
+      - -c
+      - |
+        docker buildx create --driver docker-container --driver-opt image=moby/buildkit:v0.20.2 --use
+        docker buildx build --load --build-context=shared=shared/src --target=tooling \
+          -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/notification-service-tooling:${BUILD_ID} \
+          -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/notification-service-tooling:latest \
+          notification-service
 
   - id: credit-service
     name: gcr.io/cloud-builders/docker
     waitFor: ["-"]
+    entrypoint: sh
     args:
-      - buildx
-      - build
-      - --build-context=shared=shared/src
-      - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/credit-service:${BUILD_ID}
-      - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/credit-service:latest
-      - credit-service
+      - -c
+      - |
+        docker buildx create --driver docker-container --driver-opt image=moby/buildkit:v0.20.2 --use
+        docker buildx build --load --build-context=shared=shared/src \
+          -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/credit-service:${BUILD_ID} \
+          -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/credit-service:latest \
+          credit-service
 
   - id: saga-orchestrator
     name: gcr.io/cloud-builders/docker
     waitFor: ["-"]
+    entrypoint: sh
     args:
-      - buildx
-      - build
-      - --build-context=shared=shared/src
-      - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/saga-orchestrator:${BUILD_ID}
-      - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/saga-orchestrator:latest
-      - saga-orchestrator
+      - -c
+      - |
+        docker buildx create --driver docker-container --driver-opt image=moby/buildkit:v0.20.2 --use
+        docker buildx build --load --build-context=shared=shared/src \
+          -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/saga-orchestrator:${BUILD_ID} \
+          -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/saga-orchestrator:latest \
+          saga-orchestrator
 
   - id: saga-orchestrator-tooling
     name: gcr.io/cloud-builders/docker
     waitFor: ["-"]
+    entrypoint: sh
     args:
-      - buildx
-      - build
-      - --build-context=shared=shared/src
-      - --target=tooling
-      - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/saga-orchestrator-tooling:${BUILD_ID}
-      - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/saga-orchestrator-tooling:latest
-      - saga-orchestrator
+      - -c
+      - |
+        docker buildx create --driver docker-container --driver-opt image=moby/buildkit:v0.20.2 --use
+        docker buildx build --load --build-context=shared=shared/src --target=tooling \
+          -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/saga-orchestrator-tooling:${BUILD_ID} \
+          -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/saga-orchestrator-tooling:latest \
+          saga-orchestrator
 
 images:
   - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/frontend-service:${BUILD_ID}
