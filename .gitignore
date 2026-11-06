@@ -13,3 +13,6 @@ out/
 # OS
 .DS_Store
 Thumbs.db
+
+# Copies of shared/src made by `node shared/sync.mjs`; edit shared/src instead.
+/*/src/shared/

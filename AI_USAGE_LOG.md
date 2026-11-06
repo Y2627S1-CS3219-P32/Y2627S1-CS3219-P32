@@ -34,6 +34,145 @@ Author review: Checked for correctness. -->
   and the student confirmed the supplier directory loads on the deployed frontend.
 - Author review: Pending.
 
+## 2026-11-04: Local observability stack
+
+- Tool: Claude Code (Opus 5.5). Mode: Boilerplate generation (infrastructure config) and
+  verification.
+- Exact prompt: `can you spin up an observability stack in compose? (otel, prometheus, grafana,
+  loki, tempo) - beware of the port conflicts`
+- Key response: Added a Compose overlay with an OpenTelemetry Collector (OTLP in; traces to
+  Tempo, metrics to Prometheus over OTLP, logs to Loki over OTLP; Docker container metrics),
+  Prometheus, Loki, Tempo (service-graph and span metrics written to Prometheus) and Grafana
+  with provisioned, cross-linked data sources. Host ports avoid the app's: Grafana 3030,
+  Prometheus 9090, OTLP 4317/4318, all on 127.0.0.1; Loki and Tempo are not published.
+- Affected files: `compose.observability.yaml`, `observability/otel-collector.yaml`,
+  `observability/prometheus.yaml`, `observability/loki.yaml`, `observability/tempo.yaml`,
+  `observability/grafana/provisioning/datasources/datasources.yaml`, `README.md`, and this log.
+- Verification: `docker compose -f compose.yaml -f compose.observability.yaml config` passed.
+  Started the stack, sent test traces, logs and metrics with `telemetrygen`, and found them in
+  Tempo, Loki and Prometheus through Grafana's data-source proxy; Tempo's service-graph metrics
+  and per-container metrics labelled by Compose service reached Prometheus; all three Grafana
+  data-source health checks passed. The application services are not instrumented yet.
+- Author review: Pending.
+
+## 2026-11-04: Shared pino logger
+
+- Tool: Claude Code (Opus 5.5). Mode: Implementation and verification.
+- Exact prompt: `can you create some kind of shared utility file for a logger that every service
+  can use? perhaps use pino`
+- Student decisions (asked before implementing, as they are architecture and security
+  choices): share the file through Docker build contexts rather than committed copies or a
+  local npm package; also migrate the existing `console.*` calls; redact auth headers,
+  passwords and tokens/secrets; JSON output, with pino-pretty in development.
+- Key response: Added `shared/src/logger.ts` (pino; JSON on stdout with a Cloud Logging
+  `severity` field and `message` key; ISO timestamps; `service` from `OTEL_SERVICE_NAME`,
+  Cloud Run's `K_SERVICE` or `package.json`; `LOG_LEVEL`; `LOG_PRETTY`; redaction). The six
+  backend Dockerfiles copy it from a `shared` build context, which `compose.yaml` and
+  `cloudbuild.yaml` (now `docker buildx build`, since the builder's own `docker build` is
+  Docker 20.10) pass in. `shared/sync.mjs` makes the same git-ignored copy for running outside
+  Docker; `compose.dev.yaml` syncs it into dev containers and turns on pretty output. Replaced
+  the `console.*` calls in the six services, keeping each service's message names and keeping
+  the credit service's message-only error logging; left `send-command.ts`'s output on stdout,
+  as `test/pubsub.mjs` parses it. Set `OTEL_SERVICE_NAME` for the credit publisher and the user
+  and supplier event workers in Compose so they log under their Cloud Run names.
+- Affected files: `shared/src/logger.ts`, `shared/sync.mjs`, `shared/README.md`; the
+  Dockerfile, `package.json`, `package-lock.json` and logging call sites of credit,
+  notification, order, saga, supplier and user services; `compose.yaml`, `compose.dev.yaml`,
+  `cloudbuild.yaml`, `.gitignore`, `README.md`, and this log.
+- Verification: all five TypeScript services typecheck and build; test suites pass against a
+  disposable PostgreSQL (user 9, notification 12, order 18, saga 9, supplier 50, credit 40 of
+  41). The credit architecture test fails identically without these changes, because it
+  matches `/` against Windows paths. All 17 backend images built through Compose; the full
+  stack came up healthy with only JSON log lines; dev mode printed pretty logs and Compose
+  watch synced a `shared/src` edit into the container; the Cloud Build `buildx` command built
+  an image in the `gcr.io/cloud-builders/docker` image against the local daemon. Not yet run
+  on Cloud Build itself.
+- Author review: Pending.
+
+## 2026-11-04: OpenTelemetry in every service
+
+- Tool: Claude Code (Opus 5.5). Mode: Implementation and verification.
+- Exact prompt: `theres a observability stack already included in this setup with pino, but nothing
+  is done by otel, help me do that for each service.`
+- Key response: Added `shared/src/telemetry.mts`, an OpenTelemetry Node SDK bootstrap that every
+  service loads with `node --import` (`tsx --import` for user-service and dev mode) before its own
+  code. It registers the `import-in-the-middle` loader hook so ES modules can be patched, and sends
+  traces (http, fetch, Express, pg), metrics (HTTP durations, Node.js runtime) and pino logs (with
+  trace and span IDs) over OTLP. It does nothing unless `OTEL_EXPORTER_OTLP_ENDPOINT` is set;
+  `compose.observability.yaml` sets it, with a 15 s metric interval, on the ten app services, so
+  telemetry is off in tests, in plain Compose and on Cloud Run. Health-check requests and
+  parentless `pg` queries (pollers) are not traced; `token`, `ticket` and signature query
+  parameters are redacted from recorded URLs, as the Pub/Sub push endpoints carry the internal
+  secret as `?token=`. On SIGTERM it flushes, then exits with code 143 when the service has no
+  handler of its own (Node as PID 1 ignored the signal until Docker killed it). frontend-service
+  runs the same file uncompiled (Node strips its types) from packages installed in an image stage
+  of their own (`frontend-service/telemetry/`), so its server-side calls carry the trace into the
+  backends. Updated start scripts, Dockerfile `CMD`s, `compose.yaml`, `compose.dev.yaml`, the
+  supplier worker in `deploy.sh` (now `npm run worker`), the frontend's build context in
+  `compose.yaml` and `cloudbuild.yaml`, the services' `tsconfig` includes (`src/**/*.mts`), and
+  the READMEs. `compose.observability.yaml` now names the app's services, so it must be used with
+  `compose.yaml`. The `dev` scripts do not load telemetry, since `tsx watch` hangs while loading
+  it on Windows (it works in the Linux dev containers). Pub/Sub messages do not carry trace context.
+- Affected files: `shared/src/telemetry.mts`, `shared/README.md`; `package.json`,
+  `package-lock.json` and `tsconfig*.json` of the credit, notification, order, saga, supplier and
+  user services; the notification, order, saga, supplier and frontend `Dockerfile`s;
+  `frontend-service/telemetry/package.json` and `package-lock.json`; `compose.yaml`,
+  `compose.dev.yaml`, `compose.observability.yaml`, `cloudbuild.yaml`, `deploy.sh`, `README.md`,
+  and this log.
+- Verification: the five TypeScript services typecheck; user-service tests pass (9). Console
+  exporter smoke tests showed Express, http, fetch, pg and pino patched under `node` (ESM), `tsx`
+  (CommonJS) and `tsx watch` in the Linux tooling image, and the redaction working. Rebuilt and
+  ran the full stack with `compose.observability.yaml`: a login through the frontend appeared in
+  Tempo as one trace (frontend-service, then user-service's route and its PostgreSQL query); pino
+  logs from every pino-using service reached Loki, with `trace_id` and `span_id` on logs written
+  during a request; Prometheus had HTTP server metrics and Node.js runtime metrics for all ten
+  services; containers stop in about 2 s. `credit-publisher` stays unhealthy for a reason that
+  predates this change: its health-check script takes 7 to 11 s to exit, over the 5 s timeout.
+  Not run on Cloud Build or Cloud Run.
+- Author review: Pending.
+
+## 2026-11-05: Logs and traces for every Pub/Sub message
+
+- Tool: Claude Code (Opus 5.5). Mode: Implementation and verification.
+- Exact prompt: `log every event, particularly the interactions between the services through pubsub.`
+- Key response: Added `shared/src/messaging.ts`. `publishMessage` replaces `topic.publishMessage`
+  in every publisher (user, order, saga, supplier, credit-publisher). It logs `Published message`
+  with the topic, Pub/Sub `messageId`, `eventType` (the `type` attribute) and ordering key, and with
+  telemetry on adds a `send <topic>` span and the trace's `traceparent` to the message attributes.
+  `receivePush` wraps every push route handler (order, saga, credit, supplier and user workers) and
+  `processMessage` the notification-service pull subscriptions. Each message is handled in a
+  `process <subscription>` span in the publisher's trace and logged once as `Processed message`
+  (or a warning or error when not acknowledged) with the outcome, status, duration and delay since
+  publishing. `receivePush` wraps handlers rather than being a middleware, because the Express
+  instrumentation makes the request's span current again at each `next()`. That was found when
+  the first, middleware version stored the wrong trace. The outbox tables (`order_events`, saga
+  `outbox`, `supplier_events`, `credit_outbox`) gained a nullable `traceparent` column, set on
+  insert by a Drizzle `$defaultFn`, and the relays publish each row in that trace (Drizzle-generated
+  migrations). user-events messages now carry a `type` attribute, as the other topics do. The credit
+  migration test counts migrations from the journal instead of expecting exactly one. Logs are
+  written with or without telemetry; spans and trace attributes only with it.
+- Affected files: `shared/src/messaging.ts`, `shared/README.md`, `README.md`;
+  `user-service/src/events/user-events.ts`, `user-service/src/worker.ts`;
+  `order-service/src/app.ts`, `src/db/schema.ts`, `src/events/outbox.ts`, `src/events/pubsub.ts`,
+  `drizzle/0001_order_events_traceparent.sql`; `saga-orchestrator/src/app.ts`, `src/db/schema.ts`,
+  `src/outbox.ts`, `src/pubsub.ts`, `drizzle/0001_outbox_traceparent.sql`;
+  `supplier-service/src/db/schema.ts`, `src/supplier-events.ts`, `src/worker.ts`,
+  `drizzle/0003_supplier_events_traceparent.sql`; `credit-service/src/db/schema.ts`,
+  `src/event-handler/handlers.ts`, `src/outbox-publisher/publisher.ts`,
+  `migrations/0001_credit_outbox_traceparent.sql`, `test/postgres.test.mjs`;
+  `notification-service/src/subscription.ts`; the Drizzle `meta` journals and snapshots; this log.
+- Verification: the five TypeScript services and user-service's changed files typecheck. Tests pass
+  against a disposable PostgreSQL: order 18, saga 9, notification 12, supplier 50, user 9, and
+  credit 40 of 41. The remaining credit failure, the architecture test, fails on Windows before
+  this change too (it matches `/` in paths); with the separators normalised it passes. Rebuilt the
+  stack with `compose.observability.yaml` (migrations applied) and ran a signup and an order. Every
+  publish and every subscriber's receipt was logged with matching `messageId`s. The signup
+  (user-events to four subscribers, then credit-publisher's `credit.account_allocated`) was one
+  trace. The order was one 93-span trace in Tempo from `POST /orders` through the saga,
+  credit-service, credit-publisher, back to order-service and notification-service. Loki returned
+  both sides of a message for `{service_name=~".+"} | messageId="14"`. Not run on Cloud Run.
+- Author review: Pending.
+
 
 # AI usage log (User Service)
 

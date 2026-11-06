@@ -7,6 +7,7 @@ import {
   transferCredits,
 } from "../services/credits.js";
 import { decodeMessage, parseCommand, parseUserEvent } from "./parsers.js";
+import { receivePush } from "../shared/messaging.js";
 
 export async function receiveUserEvent(req: Request, res: Response) {
   await requirePubSubCaller(req);
@@ -41,5 +42,7 @@ export async function receiveCreditCommand(req: Request, res: Response) {
 }
 
 export const eventRouter = Router();
-eventRouter.post("/internal/pubsub/user-events", receiveUserEvent);
-eventRouter.post("/internal/pubsub/credit-commands", receiveCreditCommand);
+// In the message's trace, and logged with its outcome. (Claude Code (Opus 5.5), 2026-11-05;
+// author review: Pending.)
+eventRouter.post("/internal/pubsub/user-events", receivePush(receiveUserEvent));
+eventRouter.post("/internal/pubsub/credit-commands", receivePush(receiveCreditCommand));

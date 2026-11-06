@@ -2,17 +2,14 @@ import pg from 'pg';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { sql } from 'drizzle-orm';
 import * as schema from './schema.js';
+// Claude Code (Opus 5.5), 2026-11-04: logs through the shared pino logger. Author review: Pending.
+import { logger } from '../shared/logger.js';
 export const pool = new pg.Pool({
   connectionString: process.env.DATABASE_URL,
   connectionTimeoutMillis: 3000,
 });
 pool.on('error', (error) => {
-  console.error(
-    JSON.stringify({
-      event: 'credit_database_connection_error',
-      reason: error.message,
-    }),
-  );
+  logger.error({ reason: error.message }, 'credit_database_connection_error');
 });
 export const db = drizzle({ client: pool, schema });
 export type Database = typeof db;

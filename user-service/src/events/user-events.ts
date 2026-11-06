@@ -13,6 +13,7 @@ import { PubSub } from "@google-cloud/pubsub";
 
 import type { User, VerificationPurpose } from "../db/schema";
 import { reserveUserEventVersion } from "../repositories/users.repository";
+import { publishMessage } from "../shared/messaging";
 
 export const userEventsTopicName = process.env.PUBSUB_TOPIC ?? "user-events";
 export const passwordResetTopicName = process.env.PASSWORD_RESET_TOPIC ?? "password-reset-requests";
@@ -122,9 +123,13 @@ export async function publishUserEvent(
   const key = String(orderingKey);
   const version = await reserveUserEventVersion();
   try {
-    await userEventsTopic.publishMessage({
+    // Claude Code (Opus 5.5), 2026-11-05: logged and traced by the shared helper; the type
+    // attribute, as on the other topics, names the event in subscribers' logs.
+    // Author review: Pending.
+    await publishMessage(userEventsTopic, {
       json: { ...event, eventId: randomUUID(), version },
       orderingKey: key,
+      attributes: { type: event.type },
     });
   } catch (error) {
     userEventsTopic.resumePublishing(key);

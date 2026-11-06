@@ -1,6 +1,7 @@
 import { test, before, after, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { migrateDatabase } from "../dist/db/migrate.js";
 import { pool } from "../dist/db/index.js";
 import { reserveCredits, releaseCredits, transferCredits } from "../dist/services/credits.js";
@@ -71,12 +72,17 @@ test("Repeated and concurrent migrations preserve financial history and run once
     await runOperation(reserve),
     await savedOrder(reserve.requestId).then((row) => row.result),
   );
+  // Each migration once. (Claude Code (Opus 5.5), 2026-11-05: counted from the journal, now
+  // that there is more than one migration; author review: Pending.)
+  const { entries } = JSON.parse(
+    readFileSync(new URL("../migrations/meta/_journal.json", import.meta.url), "utf8"),
+  );
   assert.equal(
     Number(
       (await pool.query("SELECT count(*) FROM drizzle.__drizzle_migrations"))
         .rows[0].count,
     ),
-    1,
+    entries.length,
   );
 });
 test("concurrent initialization and duplicate requests grant exactly once", async () => {

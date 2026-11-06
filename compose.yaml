@@ -1,4 +1,10 @@
 # AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-30.
+# Scope: User PostgreSQL wiring and optional bootstrap secret. Author review: Done.
+# Claude Code (Opus 5.5), 2026-11-04: backend images also get shared/src (the shared logger) as the `shared`
+# build context; see shared/README.md. Author review: Pending.
+x-shared-context: &shared-context
+  shared: ./shared/src
+
 # Scope: User PostgreSQL wiring, optional bootstrap secret, and Mailjet event-driven mail service.
 # Author review: Done.
 # ChatGPT (GPT-6), 2026-11-04: add mail-service and wait for its user-events subscription. Author review: Pending.
@@ -20,7 +26,9 @@ services:
       retries: 5
 
   credit-db-migrate:
-    build: ./credit-service
+    build:
+      context: ./credit-service
+      additional_contexts: *shared-context
     command: ["npm", "run", "db:migrate"]
     environment:
       DATABASE_URL: postgres://credit:credit@credit-db:5432/credits
@@ -29,7 +37,9 @@ services:
         condition: service_healthy
 
   credit-pubsub-provision:
-    build: ./credit-service
+    build:
+      context: ./credit-service
+      additional_contexts: *shared-context
     command: ["npm", "run", "pubsub:provision"]
     environment: &credit-environment
       PORT: "3000"
@@ -50,7 +60,9 @@ services:
         condition: service_healthy
 
   credit-service:
-    build: ./credit-service
+    build:
+      context: ./credit-service
+      additional_contexts: *shared-context
     restart: unless-stopped
     environment: *credit-environment
     ports:
@@ -68,9 +80,14 @@ services:
         condition: service_completed_successfully
 
   credit-publisher:
-    build: ./credit-service
+    build:
+      context: ./credit-service
+      additional_contexts: *shared-context
     command: ["npm", "run", "publisher"]
-    environment: *credit-environment
+    environment:
+      <<: *credit-environment
+      # Claude Code (Opus 5.5), 2026-11-04: the logger's service name. Author review: Pending.
+      OTEL_SERVICE_NAME: credit-publisher
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "node", "dist/outbox-publisher/publisher-health.js"]
@@ -87,6 +104,7 @@ services:
   user-service:
     build:
       context: ./user-service
+      additional_contexts: *shared-context
     environment:
       PORT: "3333"
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
@@ -163,9 +181,12 @@ services:
   user-event-worker:
     build:
       context: ./user-service
+      additional_contexts: *shared-context
     command: ["npm", "run", "worker"]
     environment:
       PORT: "3334"
+      # Claude Code (Opus 5.5), 2026-11-04: the logger's service name. Author review: Pending.
+      OTEL_SERVICE_NAME: user-event-worker
       DATABASE_URL: "postgres://user:user@user-db:5432/users"
       PUBSUB_EMULATOR_HOST: pubsub-emulator:8085
       PUBSUB_PROJECT_ID: foc-local
@@ -210,6 +231,8 @@ services:
   frontend-service:
     build:
       context: ./frontend-service
+      # Claude Code (Opus 5.5), 2026-11-04: for shared/src/telemetry.mts. Author review: Pending.
+      additional_contexts: *shared-context
     environment:
       NITRO_HOST: 0.0.0.0
       NITRO_PORT: "3000"
@@ -237,6 +260,7 @@ services:
   supplier-db-migrate:
     build:
       context: ./supplier-service
+      additional_contexts: *shared-context
       target: tooling
     command: ["npm", "run", "db:migrate"]
     environment:
@@ -248,6 +272,7 @@ services:
   user-db-migrate:
     build:
       context: ./user-service
+      additional_contexts: *shared-context
     command: ["npm", "run", "db:migrate"]
     environment:
       DATABASE_URL: postgres://user:user@user-db:5432/users
@@ -256,7 +281,9 @@ services:
         condition: service_healthy
 
   supplier-service:
-    build: ./supplier-service
+    build:
+      context: ./supplier-service
+      additional_contexts: *shared-context
     ports:
       - "3000:3000"
     environment:
@@ -281,10 +308,15 @@ services:
   # Scope: supplier-service Pub/Sub worker: copies user-events into the supplier database
   # and sweeps the supplier-events outbox. Author review: Pending.
   supplier-event-worker:
-    build: ./supplier-service
-    command: ["node", "dist/worker.js"]
+    build:
+      context: ./supplier-service
+      additional_contexts: *shared-context
+    # Claude Code (Opus 5.5), 2026-11-04: OpenTelemetry loads first. Author review: Pending.
+    command: ["node", "--import", "./dist/shared/telemetry.mjs", "dist/worker.js"]
     environment:
       PORT: "3004"
+      # Claude Code (Opus 5.5), 2026-11-04: the logger's service name. Author review: Pending.
+      OTEL_SERVICE_NAME: supplier-event-worker
       DATABASE_URL: postgres://supplier:supplier@supplier-db:5432/suppliers
       PUBSUB_EMULATOR_HOST: pubsub-emulator:8085
       PUBSUB_PROJECT_ID: foc-local
@@ -329,11 +361,14 @@ services:
     profiles: ["tools"]
     build:
       context: ./supplier-service
+      additional_contexts: *shared-context
       target: tooling
     environment:
       DATABASE_URL: postgres://supplier:supplier@supplier-db:5432/suppliers
     volumes:
       - ./supplier-service/src:/app/src
+      # Claude Code (Opus 5.5), 2026-11-04: the shared logger, hidden by the src mount. Author review: Pending.
+      - ./shared/src:/app/src/shared:ro
       - ./supplier-service/drizzle:/app/drizzle
       - ./supplier-service/drizzle.config.ts:/app/drizzle.config.ts:ro
     depends_on:
@@ -394,6 +429,7 @@ services:
   order-db-migrate:
     build:
       context: ./order-service
+      additional_contexts: *shared-context
       target: tooling
     command: ["npm", "run", "db:migrate"]
     environment:
@@ -403,7 +439,9 @@ services:
         condition: service_healthy
 
   order-service:
-    build: ./order-service
+    build:
+      context: ./order-service
+      additional_contexts: *shared-context
     environment:
       PORT: "3000"
       DATABASE_URL: postgres://order:order@order-db:5432/orders
@@ -453,6 +491,7 @@ services:
   notification-db-migrate:
     build:
       context: ./notification-service
+      additional_contexts: *shared-context
       target: tooling
     command: ["npm", "run", "db:migrate"]
     environment:
@@ -462,7 +501,9 @@ services:
         condition: service_healthy
 
   notification-service:
-    build: ./notification-service
+    build:
+      context: ./notification-service
+      additional_contexts: *shared-context
     environment:
       PORT: "3000"
       DATABASE_URL: postgres://notification:notification@notification-db:5432/notifications
@@ -587,6 +628,7 @@ services:
   saga-db-migrate:
     build:
       context: ./saga-orchestrator
+      additional_contexts: *shared-context
       target: tooling
     command: ["npm", "run", "db:migrate"]
     environment:
@@ -596,7 +638,9 @@ services:
         condition: service_healthy
 
   saga-orchestrator:
-    build: ./saga-orchestrator
+    build:
+      context: ./saga-orchestrator
+      additional_contexts: *shared-context
     environment:
       PORT: "3000"
       DATABASE_URL: postgres://saga:saga@saga-db:5432/sagas

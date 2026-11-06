@@ -13,6 +13,8 @@ import { issueTicket, redeemTicket, verifyAccessToken } from "./auth.js";
 import { config } from "./config.js";
 import { addSocket, allSockets } from "./connections.js";
 import { isHttpError, notificationsRouter } from "./notifications-api.js";
+// Claude Code (Opus 5.5), 2026-11-04: logs through the shared pino logger. Author review: Pending.
+import { logger } from "./shared/logger.js";
 
 export const app = express();
 app.use(express.json({ limit: "10kb" }));
@@ -43,7 +45,7 @@ const errorHandler: ErrorRequestHandler = (error, _req, res, _next) => {
     res.status(400).json({ error: "Request body contains invalid JSON" });
     return;
   }
-  console.error("[notification-service] Request failed", error);
+  logger.error({ err: error }, "Request failed");
   res.status(500).json({ error: "Internal server error" });
 };
 app.use(errorHandler);

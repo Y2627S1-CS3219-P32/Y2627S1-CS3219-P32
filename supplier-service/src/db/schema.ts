@@ -8,6 +8,8 @@
  * AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-10-18.
  * Scope: supplier_event_sequence and the supplier_events transactional outbox (delivery
  * approach chosen by the student). Author review: Pending.
+ * Claude Code (Opus 5.5), 2026-11-05: supplier_events.traceparent, the trace each event was
+ * recorded in, for publishing it in that trace. Author review: Pending.
  */
 
 import { sql } from "drizzle-orm";
@@ -28,6 +30,7 @@ import {
   uuid,
   varchar,
 } from "drizzle-orm/pg-core";
+import { currentTraceparent } from "../shared/messaging.js";
 
 const timestamps = () => ({
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
@@ -126,6 +129,8 @@ export const supplierEvents = pgTable(
     payload: jsonb("payload"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     publishedAt: timestamp("published_at", { withTimezone: true }),
+    // The trace the event was recorded in (null without telemetry); the relay publishes in it.
+    traceparent: text("traceparent").$defaultFn(() => currentTraceparent() ?? sql`null`),
   },
   (table) => [
     check("supplier_events_type_check", sql`${table.type} in ('supplier.created', 'supplier.updated', 'supplier.deleted')`),

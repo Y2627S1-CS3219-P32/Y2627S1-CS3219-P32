@@ -18,6 +18,7 @@ import {
   type Outcome,
   type OutcomeEvent,
 } from '../common/types.js';
+import { currentTraceparent } from '../shared/messaging.js';
 
 export const creditAccounts = pgTable(
   'credit_accounts',
@@ -160,6 +161,9 @@ export const creditOutbox = pgTable(
       .default(sql`clock_timestamp()`)
       .notNull(),
     published_at: timestamp({ withTimezone: true }),
+    // The trace the event was written in (null without telemetry); the publisher publishes
+    // in it. (Claude Code (Opus 5.5), 2026-11-05; author review: Pending.)
+    traceparent: text().$defaultFn(() => currentTraceparent() ?? sql`null`),
   },
   (t) => [
     foreignKey({

@@ -14,6 +14,8 @@ import { config } from "./config.js";
 import { db, type Transaction } from "./db/index.js";
 import { outbox, processedMessages, sagas, type SagaState } from "./db/schema.js";
 import { requestPublish } from "./outbox.js";
+// Claude Code (Opus 5.5), 2026-11-04: logs through the shared pino logger. Author review: Pending.
+import { logger } from "./shared/logger.js";
 
 type Saga = typeof sagas.$inferSelect;
 
@@ -159,7 +161,7 @@ export function handleCreditResult(result: CreditResult): Promise<Outcome> {
     if (result.requestId === saga.releaseRequestId) {
       if (saga.state !== "RELEASING" && saga.state !== "ABORTED") return "ignored";
       await setState(tx, saga, succeeded ? "RELEASED" : "FAILED", succeeded ? {} : { failureCode: result.code });
-      if (!succeeded) console.error(`[saga-orchestrator] Release for ${saga.orderId} was rejected: ${result.code}`);
+      if (!succeeded) logger.error({ orderId: saga.orderId, code: result.code }, "Release was rejected");
       return "applied";
     }
 
@@ -170,7 +172,7 @@ export function handleCreditResult(result: CreditResult): Promise<Outcome> {
         await orderCommand(tx, saga.orderId, "SettleOrder");
       } else {
         await setState(tx, saga, "FAILED", { failureCode: result.code });
-        console.error(`[saga-orchestrator] Transfer for ${saga.orderId} was rejected: ${result.code}`);
+        logger.error({ orderId: saga.orderId, code: result.code }, "Transfer was rejected");
       }
       return "applied";
     }
