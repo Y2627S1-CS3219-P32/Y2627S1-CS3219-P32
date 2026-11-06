@@ -1,5 +1,6 @@
 # AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-29.
 # Scope: Runtime image for the PostgreSQL-backed user service. Author review: Done.
+# syntax=docker/dockerfile:1.7
 FROM node:22-bookworm-slim
 
 WORKDIR /app

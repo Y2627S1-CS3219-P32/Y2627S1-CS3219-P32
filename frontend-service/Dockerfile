@@ -3,6 +3,7 @@
 # Claude Code (Opus 5.5), 2026-11-04: OpenTelemetry for the Nitro server: its packages in a
 # stage of their own and shared/src/telemetry.mts from the `shared` build context, loaded
 # before the server. It stays off unless OTEL_EXPORTER_OTLP_ENDPOINT is set. Author review: Pending.
+# syntax=docker/dockerfile:1.7
 FROM node:22-bookworm-slim AS build
 WORKDIR /app
 COPY package.json package-lock.json ./

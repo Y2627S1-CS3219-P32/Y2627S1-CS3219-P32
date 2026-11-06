@@ -1,5 +1,6 @@
 # AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-28.
 # Scope: Add a development target for Drizzle tooling and Compose migrations. Author review: Check for correctness.
+# syntax=docker/dockerfile:1.7
 FROM node:22-bookworm-slim AS tooling
 
 WORKDIR /app
