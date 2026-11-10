@@ -3,7 +3,11 @@
     Tool: ChatGPT (GPT-6), date: 2026-11-04
     Scope: Validating verification and verified-user events and dispatching email
     Author review: Pending
+    Tool: Claude Code (Opus 5.5), date: 2026-11-10
+    Scope: logging through the shared pino logger
+    Author review: Pending
 **/
+import { logger } from "./shared/logger";
 import type {
   EmailUpdatedRecipient,
   PasswordResetEmailRecipient,
@@ -149,7 +153,7 @@ export async function processUserEvent(
   const passwordResetRecipient = parsePasswordResetEmailRecipient(value);
   if (passwordResetRecipient) {
     if (!senders.sendPasswordResetEmail) {
-      console.warn("[mail-service] Mailjet is not configured; password reset email was not sent.");
+      logger.warn("Mailjet is not configured; password reset email was not sent");
       return;
     }
     await senders.sendPasswordResetEmail(passwordResetRecipient);
@@ -159,7 +163,7 @@ export async function processUserEvent(
   const emailUpdatedRecipient = parseEmailUpdatedRecipient(value);
   if (emailUpdatedRecipient) {
     if (!senders.sendEmailUpdatedEmail) {
-      console.warn("[mail-service] Mailjet is not configured; email-updated email was not sent.");
+      logger.warn("Mailjet is not configured; email-updated email was not sent");
       return;
     }
     await senders.sendEmailUpdatedEmail(emailUpdatedRecipient);
@@ -169,7 +173,7 @@ export async function processUserEvent(
   const welcomeRecipient = parseWelcomeEmailRecipient(value);
   if (welcomeRecipient) {
     if (!senders.sendWelcomeEmail) {
-      console.warn("[mail-service] Mailjet is not configured; welcome email was not sent.");
+      logger.warn("Mailjet is not configured; welcome email was not sent");
       return;
     }
     await senders.sendWelcomeEmail(welcomeRecipient);
@@ -179,7 +183,7 @@ export async function processUserEvent(
   const verificationRecipient = parseVerificationEmailRecipient(value);
   if (!verificationRecipient) return;
   if (!senders.sendVerificationEmail) {
-    console.warn("[mail-service] Mailjet is not configured; verification email was not sent.");
+    logger.warn("Mailjet is not configured; verification email was not sent");
     return;
   }
   await senders.sendVerificationEmail(verificationRecipient);

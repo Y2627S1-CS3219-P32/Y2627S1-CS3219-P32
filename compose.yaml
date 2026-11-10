@@ -2,6 +2,8 @@
 # Scope: User PostgreSQL wiring and optional bootstrap secret. Author review: Done.
 # Claude Code (Opus 5.5), 2026-11-04: backend images also get shared/src (the shared logger) as the `shared`
 # build context; see shared/README.md. Author review: Pending.
+# Claude Code (Opus 5.5), 2026-11-10: so do the chat, mail, order-ranking and sync services and
+# their migration jobs. Author review: Pending.
 x-shared-context: &shared-context
   shared: ./shared/src
 
@@ -147,6 +149,7 @@ services:
   mail-service:
     build:
       context: ./mail-service
+      additional_contexts: *shared-context
     restart: unless-stopped
     environment:
       PORT: "3335"
@@ -505,6 +508,7 @@ services:
   chat-db-migrate:
     build:
       context: ./chat-service
+      additional_contexts: *shared-context
       target: tooling
     command: ["npm", "run", "db:migrate"]
     environment:
@@ -514,7 +518,9 @@ services:
         condition: service_healthy
 
   chat-service:
-    build: ./chat-service
+    build:
+      context: ./chat-service
+      additional_contexts: *shared-context
     environment:
       PORT: "3000"
       DATABASE_URL: postgres://chat:chat@chat-db:5432/chats
@@ -622,6 +628,7 @@ services:
   sync-db-migrate:
     build:
       context: ./sync-service
+      additional_contexts: *shared-context
       target: tooling
     command: ["npm", "run", "db:migrate"]
     environment:
@@ -631,7 +638,9 @@ services:
         condition: service_healthy
 
   sync-service:
-    build: ./sync-service
+    build:
+      context: ./sync-service
+      additional_contexts: *shared-context
     environment:
       PORT: "3000"
       DATABASE_URL: postgres://sync:sync@sync-db:5432/sync
@@ -779,6 +788,7 @@ services:
   order-ranking-db-migrate:
     build:
       context: ./order-ranking-service
+      additional_contexts: *shared-context
       target: tooling
     command: ["npm", "run", "db:migrate"]
     environment:
@@ -788,7 +798,9 @@ services:
         condition: service_healthy
 
   order-ranking-service:
-    build: ./order-ranking-service
+    build:
+      context: ./order-ranking-service
+      additional_contexts: *shared-context
     environment:
       PORT: "3000"
       DATABASE_URL: postgres://ranking:ranking@order-ranking-db:5432/rankings

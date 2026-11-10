@@ -3,11 +3,15 @@
     Tool: ChatGPT (GPT-6), date: 2026-11-04
     Scope: Mail service startup, email senders, and local Pub/Sub subscription
     Author review: Pending
+    Tool: Claude Code (Opus 5.5), date: 2026-11-10
+    Scope: logging through the shared pino logger
+    Author review: Pending
 **/
 import { PubSub } from "@google-cloud/pubsub";
 
 import { createApp } from "./app";
 import { config } from "./config";
+import { logger } from "./shared/logger";
 import {
   createEmailUpdatedEmailSender,
   createPasswordResetEmailSender,
@@ -65,10 +69,10 @@ ensureLocalSubscription()
   .then(() => {
     app.listen(config.port, "0.0.0.0", (error) => {
       if (error) throw error;
-      console.log(`[mail-service] Listening on port ${config.port}`);
+      logger.info({ port: config.port }, "Mail service listening");
     });
   })
   .catch((error: unknown) => {
-    console.error("[mail-service] Startup failed", error);
+    logger.error({ err: error }, "Startup failed");
     process.exitCode = 1;
   });

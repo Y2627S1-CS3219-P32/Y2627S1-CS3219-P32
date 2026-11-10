@@ -4,11 +4,14 @@
 #
 # Usage, with the app:  docker compose -f compose.yaml -f compose.observability.yaml up -d --build
 #        stack only (services run on the host), naming its services:
-#          docker compose -f compose.yaml -f compose.observability.yaml up -d #            otel-collector prometheus loki tempo grafana
+#          docker compose -f compose.yaml -f compose.observability.yaml up -d \
+#            otel-collector prometheus loki tempo grafana
 #
 # Claude Code (Opus 5.5), 2026-11-04: the app services below get an OTLP endpoint, which turns
 # on shared/src/telemetry.mts in each. The file now needs compose.yaml alongside it, as it
 # names the app's services. Author review: Pending.
+# Claude Code (Opus 5.5), 2026-11-10: the chat, mail, order-ranking and sync services too.
+# Author review: Pending.
 #
 # Host ports avoid the app's 3000-3004, 3333 and 543x. All bind to 127.0.0.1:
 #   Grafana        http://127.0.0.1:3030   (admin / admin unless GRAFANA_ADMIN_* is set)
@@ -55,6 +58,18 @@ services:
     environment: *otel-environment
     depends_on: *otel-depends-on
   saga-orchestrator:
+    environment: *otel-environment
+    depends_on: *otel-depends-on
+  chat-service:
+    environment: *otel-environment
+    depends_on: *otel-depends-on
+  mail-service:
+    environment: *otel-environment
+    depends_on: *otel-depends-on
+  order-ranking-service:
+    environment: *otel-environment
+    depends_on: *otel-depends-on
+  sync-service:
     environment: *otel-environment
     depends_on: *otel-depends-on
   frontend-service:

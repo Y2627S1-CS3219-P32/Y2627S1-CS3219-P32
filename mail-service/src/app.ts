@@ -3,9 +3,15 @@
     Tool: ChatGPT (GPT-6), date: 2026-11-04
     Scope: Pub/Sub push endpoint for verification and welcome emails
     Author review: Pending
+    Tool: Claude Code (Opus 5.5), date: 2026-11-10
+    Scope: logging through the shared pino logger; each pushed message is logged and traced
+    by the shared helper
+    Author review: Pending
 **/
 import express, { type ErrorRequestHandler } from "express";
 
+import { logger } from "./shared/logger";
+import { receivePush } from "./shared/messaging";
 import { InvalidUserEventError, processUserEvent } from "./user-events";
 import type {
   EmailUpdatedRecipient,
@@ -29,7 +35,7 @@ export function createApp(
     res.json({ status: "ok" });
   });
 
-  const handlePush = async (req: express.Request, res: express.Response) => {
+  const handlePush = receivePush(async (req: express.Request, res: express.Response) => {
     const message = typeof req.body === "object" && req.body !== null
       ? (req.body as Record<string, unknown>).message
       : undefined;
@@ -37,7 +43,7 @@ export function createApp(
       ? (message as Record<string, unknown>).data
       : undefined;
     if (typeof encodedData !== "string") {
-      console.error("[mail-service] Dropped Pub/Sub request without message data");
+      logger.error("Dropped Pub/Sub request without message data");
       res.status(204).end();
       return;
     }
@@ -46,7 +52,7 @@ export function createApp(
     try {
       event = JSON.parse(Buffer.from(encodedData, "base64").toString("utf8"));
     } catch (error) {
-      console.error("[mail-service] Dropped malformed Pub/Sub event JSON", error);
+      logger.error({ err: error }, "Dropped malformed Pub/Sub event JSON");
       res.status(204).end();
       return;
     }
@@ -56,19 +62,19 @@ export function createApp(
       res.status(204).end();
     } catch (error) {
       if (error instanceof InvalidUserEventError) {
-        console.error("[mail-service] Dropped invalid user event", error.message);
+        logger.error({ reason: error.message }, `Dropped invalid user event: ${error.message}`);
         res.status(204).end();
         return;
       }
-      console.error("[mail-service] Failed to send user email", error);
+      logger.error({ err: error }, "Failed to send user email");
       res.status(500).json({ error: "Could not process user event" });
     }
-  };
+  });
   app.post("/pubsub/user-events", handlePush);
   app.post("/pubsub/password-reset", handlePush);
 
   app.use(((error, _req, res, _next) => {
-    console.error("[mail-service] Request failed", error);
+    logger.error({ err: error }, "Request failed");
     res.status(500).json({ error: "Internal server error" });
   }) satisfies ErrorRequestHandler);
 

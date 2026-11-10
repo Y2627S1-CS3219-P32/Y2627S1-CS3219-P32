@@ -3,6 +3,7 @@
  * Scope: HTTP routes (health, tickets, placing a group order) and the
  * /documents/:orderId WebSocket endpoint, which only the requester and members of an open
  * group order may join. Author review: Pending.
+ * Claude Code (Opus 5.5), 2026-11-10: logging through the shared pino logger. Author review: Pending.
  */
 import { createServer, type IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
@@ -15,6 +16,7 @@ import { db } from "./db/index.js";
 import { documentMembers, documents } from "./db/schema.js";
 import { attachConnection } from "./documents.js";
 import { PlaceError, placeDocument } from "./place.js";
+import { logger } from "./shared/logger.js";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -64,7 +66,7 @@ const errorHandler: ErrorRequestHandler = (error, _req, res, _next) => {
     res.status(400).json({ error: "Request body contains invalid JSON" });
     return;
   }
-  console.error("[sync-service] Request failed", error);
+  logger.error({ err: error }, "Request failed");
   res.status(500).json({ error: "Internal server error" });
 };
 app.use(errorHandler);
@@ -109,7 +111,7 @@ export function createSyncServer() {
     try {
       refused = await accessStatus(orderId, session.userId);
     } catch (error) {
-      console.error("[sync-service] Access check failed", error);
+      logger.error({ err: error }, "Access check failed");
       refused = [503, "Service Unavailable"];
     }
     if (refused) return reject(socket, ...refused);

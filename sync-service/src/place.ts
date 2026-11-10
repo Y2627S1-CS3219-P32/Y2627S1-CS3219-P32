@@ -2,6 +2,7 @@
  * AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-10-17.
  * Scope: Placing a group order: the requester locks the document, and its final text is
  * published as group.placed for the order service. Author review: Pending.
+ * Claude Code (Opus 5.5), 2026-11-10: logging through the shared pino logger. Author review: Pending.
  */
 import { randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
@@ -10,6 +11,7 @@ import { db } from "./db/index.js";
 import { documents } from "./db/schema.js";
 import { applyStatus, flushWrites, loadDocument, TEXT_NAME } from "./documents.js";
 import { publish } from "./pubsub.js";
+import { logger } from "./shared/logger.js";
 
 export class PlaceError extends Error {
   constructor(public readonly statusCode: number, message: string) {
@@ -49,12 +51,12 @@ export async function placeDocument(orderId: string, userId: number): Promise<st
     }, orderId);
   } catch (error) {
     await db.update(documents).set({ status: "open" }).where(eq(documents.orderId, orderId));
-    console.error(`[sync-service] Could not publish group.placed for ${orderId}`, error);
+    logger.error({ err: error, orderId }, `Could not publish group.placed for ${orderId}`);
     throw new PlaceError(502, "The order could not be placed. Please try again.");
   }
 
   applyStatus(orderId, "placed");
   await publish.relay(orderId, { kind: "status", status: "placed" }, new Uint8Array())
-    .catch((error: unknown) => console.error(`[sync-service] Could not relay status for ${orderId}`, error));
+    .catch((error: unknown) => logger.error({ err: error, orderId }, `Could not relay status for ${orderId}`));
   return description;
 }

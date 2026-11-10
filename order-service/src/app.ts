@@ -126,7 +126,10 @@ internal.post("/pubsub/sync-events", pushHandler("sync-events", async (message) 
   const placed = parseGroupPlaced(message);
   if (!placed) return;
   const result = await placeGroupOrder(placed);
-  if (result !== "applied") console.log(`[order-service] group.placed ${placed.eventId} for ${placed.orderId}: ${result}`);
+  // Claude Code (Opus 5.5), 2026-11-10: through the shared logger. Author review: Pending.
+  if (result !== "applied") {
+    logger.info({ eventId: placed.eventId, orderId: placed.orderId, result }, `group.placed for ${placed.orderId} not applied: ${result}`);
+  }
 }));
 
 // Called every minute by Cloud Scheduler (locally by the order-ticker container).

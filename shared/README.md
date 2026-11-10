@@ -1,7 +1,10 @@
 <!-- AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-11-04.
 Scope: Shared code instructions. Author review: Pending.
 Claude Code (Opus 5.5), 2026-11-04: the OpenTelemetry bootstrap. Author review: Pending.
-Claude Code (Opus 5.5), 2026-11-05: Pub/Sub message logs and traces. Author review: Pending. -->
+Claude Code (Opus 5.5), 2026-11-05: Pub/Sub message logs and traces. Author review: Pending.
+Claude Code (Opus 5.5), 2026-11-10: log messages that describe each message. Author review: Pending.
+Claude Code (Opus 5.5), 2026-11-10: the chat, mail, order-ranking and sync services; the `level`
+option. Author review: Pending. -->
 # Shared code
 
 Code used by more than one backend service: the logger,
@@ -33,7 +36,7 @@ Edit files here only. The services get copies:
 ## Logger
 
 ```ts
-import { logger } from "./shared/logger.js"; // user-service: "./shared/logger"
+import { logger } from "./shared/logger.js"; // user-service, mail-service: "./shared/logger"
 
 logger.info({ orderId }, "Order created");
 logger.error({ err: error }, "Outbox relay failed"); // `err` keeps the stack trace
@@ -61,7 +64,7 @@ it with `--import`:
 
 ```sh
 node --import ./dist/shared/telemetry.mjs dist/index.js   # compiled services
-tsx --import ./src/shared/telemetry.mts src/index.ts      # user-service, compose.dev.yaml
+tsx --import ./src/shared/telemetry.mts src/index.ts      # user-service, mail-service, compose.dev.yaml
 node --import ./otel/telemetry.mts .output/server/index.mjs   # frontend-service image
 ```
 
@@ -86,8 +89,9 @@ Any standard `OTEL_*` variable works, for example `OTEL_SERVICE_NAME` (otherwise
 
 Notes:
 
-- It is an `.mts` file so it is an ES module, with top-level await, in user-service
-  (CommonJS) too. The service `tsconfig.json` files include `src/**/*.mts`.
+- It is an `.mts` file so it is an ES module, with top-level await, in user-service and
+  mail-service (CommonJS) too. The service `tsconfig.json` files include `src/**/*.mts`.
+  chat-service compiles `src/` to `dist/src/`, so it loads `./dist/src/shared/telemetry.mjs`.
 - It imports nothing else from `shared/src`, so frontend-service can run it uncompiled:
   its image installs the packages from
   [`frontend-service/telemetry/package.json`](../frontend-service/telemetry/package.json)
@@ -107,24 +111,63 @@ import { publishMessage, receivePush, processMessage, withTraceparent } from "./
 await publishMessage(topic, { json, orderingKey, attributes });  // instead of topic.publishMessage
 router.post("/pubsub/order-events", receivePush(async (req: Request, res: Response) => { ... }));
 subscription.on("message", (m) => processMessage(name, m, async () => "ack"));  // pull
+await publishMessage(topic, message, { level: "debug" });                    // frequent messages
 ```
+
+`{ level: "debug" }` (on `publishMessage` and `processMessage`) logs the success line at debug,
+for messages too frequent to read at info; failures stay warn or error. sync-service uses it
+for the live edits and presence it relays between its instances (`sync.update`,
+`sync.awareness`); its `sync.status` changes and `group.placed` stay at info. Set
+`LOG_LEVEL=debug` on sync-service to see them.
 
 `receivePush` wraps the push route's handler rather than being a middleware: the Express
 instrumentation makes the HTTP request's span current again at every `next()`, so only the
 handler itself can run in the message's trace.
 
-| Log message | Level | Fields |
-| --- | --- | --- |
-| `Published message` | info | `topic`, `messageId`, `eventType`, `orderingKey`, other `attributes` |
-| `Processed message` | info | `subscription`, `messageId`, `eventType`, `orderingKey`, `attributes`, `outcome` (`ack`), `durationMs`, `deliveryDelayMs` (from publish to receipt), `deliveryAttempt`; for push, `statusCode` |
-| `Message not acknowledged; Pub/Sub will redeliver it` | warn, or error for a push 5xx | as above, with `outcome` `nack` |
-| `Failed to process message` | error | as above, with `err` (pull handler threw) |
+Each log message says what the message was, so the log list reads without opening entries:
 
-`messageId` is the same on both sides, so one message can be followed from its publisher
-to every subscriber. In Grafana (**Explore → Loki**), the fields are structured metadata:
-`{service_name=~".+"} | messageId="<id>"`, or every message of one kind with
-`{service_name=~".+"} |= "message" | eventType="order.created"`. A failed publish is logged by the caller,
-which decides whether it is retried.
+```text
+Published order.created to order-events: orderId=271b… supplierId=4cb3… requesterId=4 actorId=4 state=PENDING creditReward=7 sequence=1 (message 9)
+Processed order.created from saga-orchestrator-order-events in 104 ms: orderId=271b… … (message 9)
+Published credit.reserve to credit-commands: orderId=271b… requesterId=4 amount=7 (message 10)
+Did not acknowledge user.verified from credit-service-user-events (HTTP 400) after 4 ms, so Pub/Sub will redeliver it: userId=4 … (message 8)
+```
+
+| Message starts with | Level | When |
+| --- | --- | --- |
+| `Published <type> to <topic>` | info | Pub/Sub accepted the message |
+| `Processed <type> from <subscription> in <n> ms` | info | acknowledged |
+| `Did not acknowledge <type> from <subscription>` | warn, or error for a push 5xx | not acknowledged (push: the HTTP status), so Pub/Sub redelivers it |
+| `Failed to process <type> from <subscription>` | error | a pull handler threw; with `err` |
+| `Push of <type> from <subscription> closed …` | warn | the push connection closed before a response |
+
+After the colon come the message's key fields, from `SUMMARY_FIELDS` in
+[`src/messaging.ts`](src/messaging.ts): ids (`orderId`, `userId`, `supplierId`,
+`requesterId`, `courierId`, `actorId`, `senderId`, `placedBy`), `state`, `status`, `code`, `reservationState`,
+`amount`, `creditReward`, `reason`, `role`, `displayName`, the verification status and
+purpose, `isActive`, `applied`, `sequence` and `version`. They are read from the top level of
+the message's JSON or one object down (`user.id` is shown as `userId`), and from the message's
+attributes for what the JSON lacks (all of it, for sync-service's binary relay messages). Only
+fields on that list are logged, so password hashes, verification codes, reset tokens, emails,
+names, chat messages and other free text never are; add a field to the list to show it. `(message <id>)` is Pub/Sub's message id,
+the same on both sides, with `attempt <n>` on a redelivery when the subscription counts
+attempts (dead-letter policy).
+
+The same values are also fields of the log entry, beside `topic` or `subscription`,
+`messageId`, `eventType`, `orderingKey`, `attributes` and, when received, `outcome` (`ack` or
+`nack`), `durationMs`, `deliveryDelayMs` (from publish to receipt), `deliveryAttempt` and, for
+push, `statusCode`. In Grafana (**Explore → Loki**) they are structured metadata, so they
+filter without a parser:
+
+| To see | Query |
+| --- | --- |
+| Every message | `{service_name=~".+"} \| messageId != ""` |
+| One order's messages, across services | `{service_name=~".+"} \| orderId="<id>"` |
+| One message, publisher and every subscriber | `{service_name=~".+"} \| messageId="<id>"` |
+| One kind | `{service_name=~".+"} \| eventType="order.created"` |
+| Not acknowledged | `{service_name=~".+"} \| outcome="nack"` |
+
+A failed publish is logged by the caller, which decides whether it is retried.
 
 With telemetry on, publishing adds the trace to the message's attributes (`traceparent`),
 and each subscriber processes the message in that trace, so one trace in Tempo follows a

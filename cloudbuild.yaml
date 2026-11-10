@@ -2,6 +2,8 @@
 # Scope: Cloud Build config that builds and pushes service images to Artifact Registry.
 # Author review: Done.
 # ChatGPT (GPT-6), 2026-11-04: build and publish mail-service image. Author review: Pending.
+# Claude Code (Opus 5.5), 2026-11-10: mail-service and chat-service images get the `shared` build
+# context too. Author review: Pending.
 #
 # Usage (from the repository root):
 #   gcloud builds submit --config cloudbuild.yaml
@@ -49,11 +51,15 @@ steps:
   - id: mail-service
     name: gcr.io/cloud-builders/docker
     waitFor: ["-"]
+    entrypoint: sh
     args:
-      - build
-      - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/mail-service:${BUILD_ID}
-      - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/mail-service:latest
-      - mail-service
+      - -c
+      - |
+        docker buildx create --driver docker-container --driver-opt image=moby/buildkit:v0.20.2 --use
+        docker buildx build --load --build-context=shared=shared/src \
+          -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/mail-service:${BUILD_ID} \
+          -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/mail-service:latest \
+          mail-service
 
   - id: supplier-service
     name: gcr.io/cloud-builders/docker
@@ -139,21 +145,28 @@ steps:
   - id: chat-service
     name: gcr.io/cloud-builders/docker
     waitFor: ["-"]
+    entrypoint: sh
     args:
-      - build
-      - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/chat-service:${BUILD_ID}
-      - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/chat-service:latest
-      - chat-service
+      - -c
+      - |
+        docker buildx create --driver docker-container --driver-opt image=moby/buildkit:v0.20.2 --use
+        docker buildx build --load --build-context=shared=shared/src \
+          -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/chat-service:${BUILD_ID} \
+          -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/chat-service:latest \
+          chat-service
 
   - id: chat-service-tooling
     name: gcr.io/cloud-builders/docker
     waitFor: ["-"]
+    entrypoint: sh
     args:
-      - build
-      - --target=tooling
-      - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/chat-service-tooling:${BUILD_ID}
-      - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/chat-service-tooling:latest
-      - chat-service
+      - -c
+      - |
+        docker buildx create --driver docker-container --driver-opt image=moby/buildkit:v0.20.2 --use
+        docker buildx build --load --build-context=shared=shared/src --target=tooling \
+          -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/chat-service-tooling:${BUILD_ID} \
+          -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/chat-service-tooling:latest \
+          chat-service
 
   - id: credit-service
     name: gcr.io/cloud-builders/docker

@@ -173,6 +173,69 @@ Author review: Checked for correctness. -->
   both sides of a message for `{service_name=~".+"} | messageId="14"`. Not run on Cloud Run.
 - Author review: Pending.
 
+## 2026-11-10: Pub/Sub log messages that describe the message
+
+- Tool: Claude Code (Opus 5.5). Mode: Implementation and verification.
+- Exact prompt: `you're on a new branch now. the previous changes were already merged to main. your
+  goal now is to make the logs more informative instead of just 'processed message' (so that the
+  user doesn't need to click into each description to view what the message actually was)`
+- Key response: In `shared/src/messaging.ts`, the log message for each Pub/Sub message now names
+  its type, topic or subscription and outcome, and lists its key fields, for example
+  `Processed credit.reserve from credit-service-commands in 68 ms: orderId=… requesterId=4
+  amount=7 (message 10)`. The fields come from an allowlist (`SUMMARY_FIELDS`: ids, state,
+  status, code, amount, reason, role and similar) read from the message's JSON at the top level or
+  one object down, so password hashes, verification codes, reset tokens, emails, names and free
+  text are never logged. They are also logged as fields of their own, so Loki can filter by them
+  (for example `| orderId="…"`). Failures read `Did not acknowledge … (HTTP 400) after 4 ms, so
+  Pub/Sub will redeliver it` and `Failed to process …`. Updated `shared/README.md`.
+- Affected files: `shared/src/messaging.ts`, `shared/README.md`, this log.
+- Verification: the five TypeScript services typecheck; user-service tests pass (14). Rebuilt the
+  stack with `compose.observability.yaml`. The local order database had applied the traceparent
+  migration before the merge renumbered it behind `0001_group_orders`, so `order-db-migrate`
+  failed (the column existed) and would have skipped `0001_group_orders`. Repaired that local
+  database by applying `0001_group_orders` and recording both migrations; a fresh database is
+  unaffected. A signup, verification and order then produced the new messages in Loki for every
+  publish and receipt, with no excluded field in them, and `| orderId="<id>"` returned all 15 lines
+  for the order.
+- Author review: Pending.
+
+## 2026-11-10: Observability for the chat, mail, order-ranking and sync services
+
+- Tool: Claude Code (Opus 5.5). Mode: Implementation and verification.
+- Exact prompt: `lets set observability up for chat-service, mail-service, order-ranking-service
+  and sync-service. maintain the same format used for the existing logs`
+- Key response: The four services now use the shared code like the others: the pino logger in
+  place of every `console.*` call, OpenTelemetry loaded first by each start command (Dockerfile
+  `CMD`, `npm start`, `compose.dev.yaml`), and every Pub/Sub publish and receipt through
+  `shared/src/messaging.ts` (chat-service's room messages and order-event subscriptions,
+  mail-service's push routes, order-ranking-service's push routes, sync-service's relay and
+  order-event subscriptions and its `group.placed` and relay publishes). Added each to
+  `shared/sync.mjs`, the `shared` build context in `compose.yaml` (services and migration jobs)
+  and `cloudbuild.yaml` (mail and chat, now built with buildx), and `compose.observability.yaml`.
+  In `messaging.ts`: a `level` option, used for sync-service's relayed live edits and presence
+  (logged at debug), summary fields from the attributes when the JSON lacks them (sync's relay
+  messages are binary), and `senderId` and `placedBy` in `SUMMARY_FIELDS`. sync-service's relay
+  messages carry a type (`sync.update`, `sync.awareness`, `sync.status`). user-service's
+  password-reset publish goes through the helper with a `type` attribute, and order-service's
+  remaining `console.log` uses the logger. Fixed a run-together usage line in
+  `compose.observability.yaml`.
+- Affected files: `shared/src/messaging.ts`, `shared/sync.mjs`, `shared/README.md`;
+  `package.json`, `package-lock.json`, `Dockerfile` and source files of chat-service,
+  mail-service, order-ranking-service and sync-service, and the `tsconfig*.json` of the three
+  compiled ones; `user-service/src/events/user-events.ts`; `order-service/src/app.ts`;
+  `compose.yaml`, `compose.dev.yaml`, `compose.observability.yaml`, `cloudbuild.yaml`; this log.
+- Verification: chat, order-ranking, sync and order services typecheck, and their tests pass
+  against a disposable PostgreSQL (5, 23, 8, 21); user-service tests pass (14). mail-service:
+  23 of 26 pass; the other 3 are subtests that their parent tests do not await (`test()` inside
+  `test()` in `app.test.ts` and `welcome-email.test.ts`), so they are cancelled regardless of
+  this change. Rebuilt the stack with `compose.observability.yaml` and ran a signup,
+  verification, password reset, order, chat message and placed group order: every publish and
+  receipt in the four services was logged in the existing format, without chat text, emails or
+  tokens, and the placed group order was one 123-span trace from sync-service through
+  order-service, the saga, credit-service, notification-service, order-ranking-service and
+  chat-service. Not run on Cloud Build or Cloud Run.
+- Author review: Pending.
+
 
 # AI usage log (User Service)
 
