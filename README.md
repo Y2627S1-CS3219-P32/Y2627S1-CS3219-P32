@@ -284,6 +284,10 @@ Link this README from the submission slide deck.
 
 ### Rebase assistance — 2026-11-10
 
+Local redeployment assistance: Codex (GPT-6.1) reconciled already-matching agent migration
+baselines, applied additive user schema updates, and excluded a legacy token table
+from schema management to preserve local data. Author review: Pending; see [AI_USAGE_LOG.md](AI_USAGE_LOG.md).
+
 Codex (GPT-6.1) executed the approved rebase plan: preserved the original commits,
 merged onto remote main, resolved configuration conflicts, moved agent/mandate host
 ports to 3008/3009, aligned stale test fixtures, and ran verification. Author review:

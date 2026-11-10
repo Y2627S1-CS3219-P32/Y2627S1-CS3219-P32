@@ -23,6 +23,7 @@
 #   ./deploy.sh seed    # run the supplier seed job (safe to repeat)
 #   ./deploy.sh github  # one-time: let .github/workflows/deploy.yml deploy from main
 #   ./deploy.sh mailjet # securely add/update Mailjet secrets for mail-service
+#   ./deploy.sh soclass # securely configure SoC LLaaS credentials for agent-service
 #
 # Override any setting below with an environment variable, e.g. TAG=<build id> ./deploy.sh
 set -euo pipefail
@@ -37,6 +38,10 @@ NETWORK="${NETWORK:-default}"
 SUBNET="${SUBNET:-default}"
 PUBSUB_TOPIC="${PUBSUB_TOPIC:-user-events}"
 PASSWORD_RESET_TOPIC="${PASSWORD_RESET_TOPIC:-password-reset-requests}"
+AGENT_TURN_TOPIC="${AGENT_TURN_TOPIC:-agent-turns}"
+AGENT_TURN_SUBSCRIPTION="${AGENT_TURN_SUBSCRIPTION:-agent-orchestrator-turns}"
+AGENT_APPROVAL_TOPIC="${AGENT_APPROVAL_TOPIC:-mandate-events}"
+AGENT_APPROVAL_SUBSCRIPTION="${AGENT_APPROVAL_SUBSCRIPTION:-agent-chat-approvals}"
 PUBSUB_SUBSCRIPTION="${PUBSUB_SUBSCRIPTION:-user-events-worker}"
 SUPPLIER_USER_EVENTS_SUBSCRIPTION="${SUPPLIER_USER_EVENTS_SUBSCRIPTION:-supplier-service-user-events}"
 MAIL_SERVICE_SUBSCRIPTION="${MAIL_SERVICE_SUBSCRIPTION:-mail-service-user-events}"
@@ -57,6 +62,17 @@ SQL_CONNECTION="${PROJECT_ID}:${REGION}:${SQL_INSTANCE}"
 run() { gcloud --project "$PROJECT_ID" "$@"; }
 
 secret_exists() { run secrets describe "$1" >/dev/null 2>&1; }
+
+require_agent_secrets() {
+  for secret in agent-chat-database-url agent-execution-database-url mandate-database-url \
+    agent-chat-runtime-database-url agent-execution-runtime-database-url mandate-runtime-database-url \
+    agent-redis-url soclaas-api-key soclaas-model; do
+    if ! secret_exists "$secret"; then
+      echo "Missing Secret Manager secret: $secret (required for Agent/Mandate deployment)." >&2
+      return 1
+    fi
+  done
+}
 
 ensure_pubsub() {
   run services enable pubsub.googleapis.com
@@ -255,7 +271,7 @@ ensure_service_resources() {
 
 deploy_event_services() {
   ensure_service_resources
-  local invokers="${PUBSUB_PUSH_SERVICE_ACCOUNT},${SCHEDULER_SERVICE_ACCOUNT}"
+  local invokers="${PUBSUB_PUSH_SERVICE_ACCOUNT},${SCHEDULER_SERVICE_ACCOUNT},${PROJECT_ID}-compute@developer.gserviceaccount.com"
 
   run_job order-migrate "${REGISTRY}/order-service-tooling:${TAG}" order-database-url \
     "${SOCKET_DB_FLAGS[@]}" --command npm --args run,db:migrate
@@ -291,11 +307,14 @@ deploy_event_services() {
   ensure_push_subscription order-service-order-commands order-commands "${order_url}/internal/pubsub/order-commands" "$order_url" --enable-message-ordering
 
   # credit-service creates its own push subscriptions (credit-provision).
-  local credit_url credit_env
+  local credit_url credit_env credit_invokers
   credit_url="$(run_url credit-service)"
+  credit_invokers="${CREDIT_INTERNAL_INVOKER_EMAILS:-}"
+  [ -n "$credit_invokers" ] && credit_invokers="${credit_invokers},"
+  credit_invokers="${credit_invokers}${PROJECT_ID}-compute@developer.gserviceaccount.com"
   credit_env="^|^PUBSUB_PROJECT_ID=${PROJECT_ID}|INTERNAL_AUDIENCE=${credit_url}"
   credit_env="${credit_env}|PUBSUB_PUSH_SERVICE_ACCOUNT=${PUBSUB_PUSH_SERVICE_ACCOUNT}|PUBSUB_PUSH_BASE_URL=${credit_url}|INITIAL_CREDITS=${INITIAL_CREDITS}"
-  credit_env="${credit_env}|INTERNAL_INVOKER_EMAILS=${CREDIT_INTERNAL_INVOKER_EMAILS:-}"
+  credit_env="${credit_env}|INTERNAL_INVOKER_EMAILS=${credit_invokers}"
   run run deploy credit-service --region "$REGION" --image "${REGISTRY}/credit-service:${TAG}" \
     --port 3000 --ingress internal --allow-unauthenticated \
     --add-cloudsql-instances "$SQL_CONNECTION" \
@@ -345,7 +364,88 @@ deploy_event_services() {
   ensure_scheduler_job saga-outbox-publish "${saga_url}/internal/outbox/publish" "$saga_url"
 }
 
+deploy_agent_services() {
+  local invoker="${PROJECT_ID}-compute@developer.gserviceaccount.com"
+  local chat_url mandate_url order_url supplier_url credit_url
+  chat_url="$(run_url agent-chat-service)"
+  mandate_url="$(run_url mandate-service)"
+  order_url="$(run_url order-service)"
+  supplier_url="$(run_url supplier-service)"
+  credit_url="$(run_url credit-service)"
+
+  ensure_topic "$AGENT_TURN_TOPIC"
+  ensure_topic "${AGENT_TURN_TOPIC}-dead-letter"
+  ensure_topic "$AGENT_APPROVAL_TOPIC"
+  local number pubsub_agent
+  number="$(project_number)"
+  pubsub_agent="service-${number}@gcp-sa-pubsub.iam.gserviceaccount.com"
+  run pubsub topics add-iam-policy-binding "${AGENT_TURN_TOPIC}-dead-letter" \
+    --member "serviceAccount:${pubsub_agent}" --role roles/pubsub.publisher >/dev/null
+  if ! run pubsub subscriptions describe "$AGENT_TURN_SUBSCRIPTION" >/dev/null 2>&1; then
+    run pubsub subscriptions create "$AGENT_TURN_SUBSCRIPTION" --topic "$AGENT_TURN_TOPIC" \
+      --enable-message-ordering
+  fi
+  if ! run pubsub subscriptions describe "$AGENT_APPROVAL_SUBSCRIPTION" >/dev/null 2>&1; then
+    run pubsub subscriptions create "$AGENT_APPROVAL_SUBSCRIPTION" --topic "$AGENT_APPROVAL_TOPIC"
+  fi
+  for subscription in "$AGENT_TURN_SUBSCRIPTION" "$AGENT_APPROVAL_SUBSCRIPTION"; do
+    run pubsub subscriptions add-iam-policy-binding "$subscription" \
+      --member "serviceAccount:${invoker}" --role roles/pubsub.subscriber >/dev/null
+  done
+  run pubsub subscriptions add-iam-policy-binding "$AGENT_TURN_SUBSCRIPTION" \
+    --member "serviceAccount:${pubsub_agent}" --role roles/pubsub.subscriber >/dev/null
+  run pubsub subscriptions update "$AGENT_TURN_SUBSCRIPTION" \
+    --dead-letter-topic "${AGENT_TURN_TOPIC}-dead-letter" --max-delivery-attempts 5
+  for topic in "$AGENT_TURN_TOPIC" "$AGENT_APPROVAL_TOPIC"; do
+    run pubsub topics add-iam-policy-binding "$topic" \
+      --member "serviceAccount:${invoker}" --role roles/pubsub.publisher >/dev/null
+  done
+
+  run_job agent-chat-migrate "${REGISTRY}/agent-chat-tooling:${TAG}" agent-chat-database-url \
+    --command npm --args run,db:migrate,--workspace,@campus/agent-contracts
+  run_job agent-execution-migrate "${REGISTRY}/agent-chat-tooling:${TAG}" agent-execution-database-url \
+    --command npm --args run,db:migrate,--workspace,@campus/agent-contracts
+  run_job mandate-migrate "${REGISTRY}/mandate-service-tooling:${TAG}" mandate-database-url \
+    --command npm --args run,db:migrate,--workspace,mandate-service
+
+  local agent_invokers="${PUBSUB_PUSH_SERVICE_ACCOUNT},${SCHEDULER_SERVICE_ACCOUNT},${invoker}"
+  run run deploy mandate-service --region "$REGION" --image "${REGISTRY}/mandate-service:${TAG}" \
+    --port 3000 --ingress internal --allow-unauthenticated \
+    --min-instances 1 --no-cpu-throttling --timeout 3600 \
+    --add-cloudsql-instances "$SQL_CONNECTION" \
+    --set-env-vars "^|^SERVICE_AUTH_MODE=google|PUBSUB_PROJECT_ID=${PROJECT_ID}|MANDATE_TOPIC=${AGENT_APPROVAL_TOPIC}|MANDATE_SERVICE_AUDIENCE=${mandate_url}|INTERNAL_INVOKER_EMAILS=${agent_invokers}|ORDER_SERVICE_URL=${order_url}|SUPPLIER_SERVICE_URL=${supplier_url}" \
+    --set-secrets "DATABASE_URL=mandate-runtime-database-url:latest,JWT_SECRET=jwt-secret:latest"
+  run run services add-iam-policy-binding mandate-service --region "$REGION" \
+    --member "serviceAccount:${invoker}" --role roles/run.invoker >/dev/null
+
+  run run deploy agent-chat-service --region "$REGION" --image "${REGISTRY}/agent-chat-service:${TAG}" \
+    --port 3000 --ingress internal --allow-unauthenticated \
+    --min-instances 1 --no-cpu-throttling --timeout 3600 \
+    --add-cloudsql-instances "$SQL_CONNECTION" \
+    --network "$NETWORK" --subnet "$SUBNET" --vpc-egress private-ranges-only \
+    --set-env-vars "PUBSUB_PROJECT_ID=${PROJECT_ID},TURN_TOPIC=${AGENT_TURN_TOPIC},APPROVAL_SUBSCRIPTION=${AGENT_APPROVAL_SUBSCRIPTION}" \
+    --set-secrets "DATABASE_URL=agent-chat-runtime-database-url:latest,JWT_SECRET=jwt-secret:latest,REDIS_URL=agent-redis-url:latest"
+
+  local agent_env="^|^SERVICE_AUTH_MODE=google|PUBSUB_PROJECT_ID=${PROJECT_ID}|TURN_SUBSCRIPTION=${AGENT_TURN_SUBSCRIPTION}|MANDATE_SERVICE_URL=${mandate_url}|MANDATE_SERVICE_AUDIENCE=${mandate_url}|ORDER_SERVICE_URL=${order_url}|ORDER_SERVICE_AUDIENCE=${order_url}|SUPPLIER_SERVICE_URL=${supplier_url}|SUPPLIER_SERVICE_AUDIENCE=${supplier_url}|CREDIT_SERVICE_URL=${credit_url}|CREDIT_SERVICE_AUDIENCE=${credit_url}"
+  local agent_secrets="DATABASE_URL=agent-execution-runtime-database-url:latest,REDIS_URL=agent-redis-url:latest,SOCLAAS_API_KEY=soclaas-api-key:latest,SOCLAAS_MODEL=soclaas-model:latest"
+  if secret_exists soclaas-base-url; then
+    agent_secrets="${agent_secrets},SOCLAAS_BASE_URL=soclaas-base-url:latest"
+  fi
+  run run deploy agent-orchestrator-service --region "$REGION" --image "${REGISTRY}/agent-orchestrator-service:${TAG}" \
+    --port 3000 --ingress internal --allow-unauthenticated \
+    --min-instances 1 --no-cpu-throttling \
+    --add-cloudsql-instances "$SQL_CONNECTION" \
+    --network "$NETWORK" --subnet "$SUBNET" --vpc-egress private-ranges-only \
+    --set-env-vars "$agent_env" \
+    --set-secrets "$agent_secrets"
+  for service in agent-chat-service agent-orchestrator-service; do
+    run run services add-iam-policy-binding "$service" --region "$REGION" \
+      --member "serviceAccount:${PUBSUB_PUSH_SERVICE_ACCOUNT}" --role roles/run.invoker >/dev/null
+  done
+}
+
 deploy() {
+  require_agent_secrets
   ensure_pubsub
 
   if secret_exists mailjet-api-key && secret_exists mailjet-secret-key && secret_exists mailjet-from; then
@@ -440,7 +540,7 @@ deploy() {
     --port 3000 --ingress internal --allow-unauthenticated \
     --clear-cloudsql-instances \
     --network "$NETWORK" --subnet "$SUBNET" --vpc-egress all-traffic \
-    --set-env-vars "PUBSUB_PROJECT_ID=${PROJECT_ID},SUPPLIER_EVENTS_TOPIC=${SUPPLIER_EVENTS_TOPIC}" \
+    --set-env-vars "^|^PUBSUB_PROJECT_ID=${PROJECT_ID}|SUPPLIER_EVENTS_TOPIC=${SUPPLIER_EVENTS_TOPIC}|SERVICE_AUTH_MODE=google|SERVICE_READ_AUDIENCE=$(run_url supplier-service)|SERVICE_READ_INVOKERS=${PROJECT_ID}-compute@developer.gserviceaccount.com" \
     --set-secrets "DATABASE_URL=supplier-database-url:latest,JWT_SECRET=jwt-secret:latest"
   local supplier_url
   supplier_url="$(service_url supplier-service)"
@@ -457,13 +557,14 @@ deploy() {
   fi
 
   deploy_event_services
+  deploy_agent_services
   local notification_url
   notification_url="$(service_url notification-service)"
 
   run run deploy frontend-service --region "$REGION" --image "${REGISTRY}/frontend-service:${TAG}" \
     --port 3000 --ingress all --allow-unauthenticated \
     --network "$NETWORK" --subnet "$SUBNET" --vpc-egress all-traffic \
-    --set-env-vars "NUXT_USER_SERVICE_BASE_URL=${user_url},NUXT_SUPPLIER_SERVICE_BASE_URL=${supplier_url},NUXT_ORDER_SERVICE_BASE_URL=$(service_url order-service),NUXT_CHAT_SERVICE_BASE_URL=$(service_url chat-service),NUXT_CREDIT_SERVICE_BASE_URL=$(service_url credit-service),NUXT_NOTIFICATION_SERVICE_BASE_URL=${notification_url},NUXT_PUBLIC_NOTIFICATION_SERVICE_URL=${notification_url/https:/wss:}"
+    --set-env-vars "NUXT_USER_SERVICE_BASE_URL=${user_url},NUXT_SUPPLIER_SERVICE_BASE_URL=${supplier_url},NUXT_ORDER_SERVICE_BASE_URL=$(service_url order-service),NUXT_CHAT_SERVICE_BASE_URL=$(service_url chat-service),NUXT_CREDIT_SERVICE_BASE_URL=$(service_url credit-service),NUXT_NOTIFICATION_SERVICE_BASE_URL=${notification_url},NUXT_AGENT_SERVICE_BASE_URL=$(service_url agent-chat-service),NUXT_MANDATE_SERVICE_BASE_URL=$(service_url mandate-service),NUXT_PUBLIC_NOTIFICATION_SERVICE_URL=${notification_url/https:/wss:}"
 
   echo "Frontend: $(service_url frontend-service)"
 }
@@ -549,6 +650,47 @@ configure_mailjet() {
   echo "Mailjet secrets saved to Secret Manager. Run './deploy.sh' to deploy mail-service."
 }
 
+store_secret() {
+  local name="$1" value="$2"
+  if secret_exists "$name"; then
+    printf '%s' "$value" | run secrets versions add "$name" --data-file -
+  else
+    printf '%s' "$value" | run secrets create "$name" --replication-policy automatic --data-file -
+  fi
+}
+
+configure_soclass() {
+  if [ ! -t 0 ]; then
+    echo "Run './deploy.sh soclass' in an interactive terminal to enter SoC LLaaS settings securely." >&2
+    return 1
+  fi
+
+  local api_key model base_url
+  read -r -s -p "SoC LLaaS API key: " api_key
+  printf '\n' >&2
+  read -r -p "Model [default]: " model
+  model="${model:-default}"
+  read -r -p "Base URL [leave blank to keep current/default]: " base_url
+
+  if [ -z "$api_key" ]; then
+    unset api_key model base_url
+    echo "API key is required; no secrets were changed." >&2
+    return 1
+  fi
+  if [ -n "$base_url" ] && [[ "$base_url" != https://* ]]; then
+    unset api_key model base_url
+    echo "Base URL must start with https://; no secrets were changed." >&2
+    return 1
+  fi
+
+  store_secret soclaas-api-key "$api_key"
+  store_secret soclaas-model "$model"
+  if [ -n "$base_url" ]; then store_secret soclaas-base-url "$base_url"; fi
+
+  unset api_key model base_url
+  echo "SoC LLaaS settings saved to Secret Manager. Run './deploy.sh' to deploy agent-orchestrator-service."
+}
+
 seed() {
   run_job supplier-seed "${REGISTRY}/supplier-service-tooling:${TAG}" supplier-database-url \
     "${PRIVATE_DB_FLAGS[@]}" --command npm --args run,db:seed
@@ -560,5 +702,6 @@ case "${1:-deploy}" in
   seed) seed ;;
   github) github_ci ;;
   mailjet) configure_mailjet ;;
-  *) echo "Usage: $0 [setup|deploy|seed|github|mailjet]" >&2; exit 1 ;;
+  soclass) configure_soclass ;;
+  *) echo "Usage: $0 [setup|deploy|seed|github|mailjet|soclass]" >&2; exit 1 ;;
 esac
