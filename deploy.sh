@@ -429,12 +429,6 @@ provision_runtime_login() {
 deploy_agent_services() {
   ensure_agent_resources
   local invoker="$(project_number)-compute@developer.gserviceaccount.com"
-  local chat_url mandate_url order_url supplier_url credit_url
-  chat_url="$(run_url agent-chat-service)"
-  mandate_url="$(run_url mandate-service)"
-  order_url="$(run_url order-service)"
-  supplier_url="$(run_url supplier-service)"
-  credit_url="$(run_url credit-service)"
 
   ensure_topic "$AGENT_TURN_TOPIC"
   ensure_topic "${AGENT_TURN_TOPIC}-dead-letter"
@@ -473,6 +467,18 @@ deploy_agent_services() {
   provision_runtime_login agent-execution agent-chat-database-url agent-execution-runtime-database-url agent_execution
   provision_runtime_login mandate mandate-database-url mandate-runtime-database-url mandate_runtime
 
+  deploy_agent_service_images true
+}
+
+deploy_agent_service_images() {
+  local configure_iam="${1:-false}"
+  local invoker="$(project_number)-compute@developer.gserviceaccount.com"
+  local mandate_url order_url supplier_url credit_url
+  mandate_url="$(run_url mandate-service)"
+  order_url="$(run_url order-service)"
+  supplier_url="$(run_url supplier-service)"
+  credit_url="$(run_url credit-service)"
+
   local agent_invokers="${PUBSUB_PUSH_SERVICE_ACCOUNT},${SCHEDULER_SERVICE_ACCOUNT},${invoker}"
   run run deploy mandate-service --region "$REGION" --image "${REGISTRY}/mandate-service:${TAG}" \
     --port 3000 --ingress internal --allow-unauthenticated \
@@ -480,8 +486,10 @@ deploy_agent_services() {
     --add-cloudsql-instances "$SQL_CONNECTION" \
     --set-env-vars "^|^SERVICE_AUTH_MODE=google|PUBSUB_PROJECT_ID=${PROJECT_ID}|MANDATE_TOPIC=${AGENT_APPROVAL_TOPIC}|MANDATE_SERVICE_AUDIENCE=${mandate_url}|INTERNAL_INVOKER_EMAILS=${agent_invokers}|ORDER_SERVICE_URL=${order_url}|SUPPLIER_SERVICE_URL=${supplier_url}" \
     --set-secrets "DATABASE_URL=mandate-runtime-database-url:latest,JWT_SECRET=jwt-secret:latest"
-  run run services add-iam-policy-binding mandate-service --region "$REGION" \
-    --member "serviceAccount:${invoker}" --role roles/run.invoker >/dev/null
+  if [ "$configure_iam" = true ]; then
+    run run services add-iam-policy-binding mandate-service --region "$REGION" \
+      --member "serviceAccount:${invoker}" --role roles/run.invoker >/dev/null
+  fi
 
   run run deploy agent-chat-service --region "$REGION" --image "${REGISTRY}/agent-chat-service:${TAG}" \
     --port 3000 --ingress internal --allow-unauthenticated \
@@ -503,10 +511,17 @@ deploy_agent_services() {
     --network "$NETWORK" --subnet "$SUBNET" --vpc-egress all-traffic \
     --set-env-vars "$agent_env" \
     --set-secrets "$agent_secrets"
-  for service in agent-chat-service agent-orchestrator-service; do
-    run run services add-iam-policy-binding "$service" --region "$REGION" \
-      --member "serviceAccount:${PUBSUB_PUSH_SERVICE_ACCOUNT}" --role roles/run.invoker >/dev/null
-  done
+  if [ "$configure_iam" = true ]; then
+    for service in agent-chat-service agent-orchestrator-service; do
+      run run services add-iam-policy-binding "$service" --region "$REGION" \
+        --member "serviceAccount:${PUBSUB_PUSH_SERVICE_ACCOUNT}" --role roles/run.invoker >/dev/null
+    done
+  fi
+}
+
+deploy_agent_services_only() {
+  require_agent_secrets
+  deploy_agent_service_images
 }
 
 deploy() {
@@ -764,9 +779,10 @@ seed() {
 case "${1:-deploy}" in
   setup) setup ;;
   deploy) deploy ;;
+  agent-services) deploy_agent_services_only ;;
   seed) seed ;;
   github) github_ci ;;
   mailjet) configure_mailjet ;;
   soclass) configure_soclass ;;
-  *) echo "Usage: $0 [setup|deploy|seed|github|mailjet|soclass]" >&2; exit 1 ;;
+  *) echo "Usage: $0 [setup|deploy|agent-services|seed|github|mailjet|soclass]" >&2; exit 1 ;;
 esac

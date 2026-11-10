@@ -224,6 +224,11 @@ To redeploy images that have already been built, run
 Actions tab and enter the image tag (defaults to `latest`). This workflow only runs `./deploy.sh`;
 it does not build or seed images.
 
+To deploy only Agent Chat, Orchestrator, and Mandate from existing images, run
+[`.github/workflows/deploy-agent-services.yml`](.github/workflows/deploy-agent-services.yml)
+manually and enter the image tag. This path does not provision Redis, databases, Pub/Sub resources,
+or IAM bindings; those must already be configured.
+
 The user service publishes state-change events to the `user-events` topic. The
 authenticated `user-event-worker` Cloud Run service consumes its push
 subscription and updates the PostgreSQL read model. Events contain password
