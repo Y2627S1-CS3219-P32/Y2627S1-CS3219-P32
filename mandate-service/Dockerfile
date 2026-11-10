@@ -3,7 +3,7 @@ FROM node:24-alpine AS tooling
 WORKDIR /app
 COPY package.json package-lock.json ./
 COPY mandate-service/package.json ./mandate-service/package.json
-RUN npm ci --ignore-scripts --workspace mandate-service --include-workspace-root
+RUN npm ci --ignore-scripts --workspace mandate-service --include-workspace-root --include=optional
 COPY mandate-service/src ./mandate-service/src
 COPY mandate-service/tsconfig.json ./mandate-service/tsconfig.json
 COPY mandate-service/drizzle.config.ts ./mandate-service/drizzle.config.ts
