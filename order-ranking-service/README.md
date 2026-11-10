@@ -80,9 +80,9 @@ The frontend joins each `orderId` with the order from order-service.
 
 | Variable | Purpose |
 | --- | --- |
-| `DATABASE_URL` | Ranking database with pgvector (Compose: `postgres://ranking:ranking@localhost:5440/rankings`) |
+| `DATABASE_URL` | Ranking database with pgvector (Compose: `postgres://ranking:ranking@localhost:5441/rankings`) |
 | `JWT_SECRET` | Same secret as user-service; tokens are verified locally |
-| `PORT` | Defaults to `3000` (Compose publishes it on host port `3006`) |
+| `PORT` | Defaults to `3000` (Compose publishes it on host port `3007`) |
 | `OPENAI_API_KEY` | Enables OpenAI embeddings. Without it, a keyless hashing embedder is used, which only matches shared words |
 | `EMBEDDING_PROVIDER` | `openai` or `hashing`; defaults to `openai` when a key is set |
 | `EMBEDDING_MODEL`, `OPENAI_BASE_URL` | Default `text-embedding-3-small` and `https://api.openai.com/v1` |

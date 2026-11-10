@@ -236,6 +236,7 @@ services:
       NUXT_CREDIT_SERVICE_BASE_URL: http://credit-service:3000
       # Claude Code (Opus 5.5), 2026-10-17. Author review: Pending.
       NUXT_ORDER_SERVICE_BASE_URL: http://order-service:3000
+      NUXT_CHAT_SERVICE_BASE_URL: http://chat-service:3000
       # Claude Code (Opus 5.5), 2026-10-17. Author review: Pending.
       NUXT_NOTIFICATION_SERVICE_BASE_URL: http://notification-service:3000
       NUXT_PUBLIC_NOTIFICATION_SERVICE_URL: ws://127.0.0.1:3003
@@ -252,6 +253,8 @@ services:
       # Claude Code (Opus 5.5), 2026-10-31: order-events published before its subscription
       # exists would never reach order-ranking-service. Author review: Pending.
       order-ranking-service:
+        condition: service_healthy
+      chat-service:
         condition: service_healthy
         
   # AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-28.
@@ -472,6 +475,61 @@ services:
       start_period: 10s
     depends_on:
       order-db-migrate:
+        condition: service_completed_successfully
+      pubsub-emulator:
+        condition: service_healthy
+      chat-service:
+        condition: service_healthy
+
+  chat-db:
+    image: postgres:17
+    ports:
+      - "127.0.0.1:5440:5432"
+    environment:
+      POSTGRES_USER: chat
+      POSTGRES_PASSWORD: chat
+      POSTGRES_DB: chats
+    volumes:
+      - chat-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U chat -d chats"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  chat-db-migrate:
+    build:
+      context: ./chat-service
+      target: tooling
+    command: ["npm", "run", "db:migrate"]
+    environment:
+      DATABASE_URL: postgres://chat:chat@chat-db:5432/chats
+    depends_on:
+      chat-db:
+        condition: service_healthy
+
+  chat-service:
+    build: ./chat-service
+    environment:
+      PORT: "3000"
+      DATABASE_URL: postgres://chat:chat@chat-db:5432/chats
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      PUBSUB_EMULATOR_HOST: pubsub-emulator:8085
+      PUBSUB_PROJECT_ID: foc-local
+    ports:
+      - "3006:3000"
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/health').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    depends_on:
+      chat-db-migrate:
         condition: service_completed_successfully
       pubsub-emulator:
         condition: service_healthy
@@ -700,7 +758,7 @@ services:
   order-ranking-db:
     image: pgvector/pgvector:pg17
     ports:
-      - "127.0.0.1:5440:5432"
+      - "127.0.0.1:5441:5432"
     environment:
       POSTGRES_USER: ranking
       POSTGRES_PASSWORD: ranking
@@ -737,7 +795,7 @@ services:
       PUBSUB_PROJECT_ID: foc-local
       PUBSUB_PUSH_BASE_URL: http://order-ranking-service:3000
     ports:
-      - "3006:3000"
+      - "3007:3000"
     healthcheck:
       test:
         - CMD
@@ -778,3 +836,4 @@ volumes:
   credit-db-data:
   saga-db-data:
   order-ranking-db-data:
+  chat-db-data:
