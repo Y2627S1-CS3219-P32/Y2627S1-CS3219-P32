@@ -6,6 +6,9 @@
     Tool: ChatGPT (GPT-6), 2026-11-04
     Scope: Include account verification fields in user event snapshots
     Author review: Pending
+    Tool: Claude Code (Opus 5.5), 2026-11-10
+    Scope: Password-reset requests published through the shared helper, with a type attribute
+    Author review: Pending
 **/
 import { randomUUID } from "node:crypto";
 
@@ -110,8 +113,9 @@ export async function publishPasswordResetRequest(input: {
   }
   await passwordResetTopicInitialization;
 
-  await passwordResetTopic.publishMessage({
+  await publishMessage(passwordResetTopic, {
     json: { type: "password_reset.requested", eventId: randomUUID(), ...input },
+    attributes: { type: "password_reset.requested" },
   });
 }
 

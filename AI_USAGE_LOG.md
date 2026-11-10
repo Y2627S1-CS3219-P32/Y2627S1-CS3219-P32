@@ -199,6 +199,43 @@ Author review: Checked for correctness. -->
   for the order.
 - Author review: Pending.
 
+## 2026-11-10: Observability for the chat, mail, order-ranking and sync services
+
+- Tool: Claude Code (Opus 5.5). Mode: Implementation and verification.
+- Exact prompt: `lets set observability up for chat-service, mail-service, order-ranking-service
+  and sync-service. maintain the same format used for the existing logs`
+- Key response: The four services now use the shared code like the others: the pino logger in
+  place of every `console.*` call, OpenTelemetry loaded first by each start command (Dockerfile
+  `CMD`, `npm start`, `compose.dev.yaml`), and every Pub/Sub publish and receipt through
+  `shared/src/messaging.ts` (chat-service's room messages and order-event subscriptions,
+  mail-service's push routes, order-ranking-service's push routes, sync-service's relay and
+  order-event subscriptions and its `group.placed` and relay publishes). Added each to
+  `shared/sync.mjs`, the `shared` build context in `compose.yaml` (services and migration jobs)
+  and `cloudbuild.yaml` (mail and chat, now built with buildx), and `compose.observability.yaml`.
+  In `messaging.ts`: a `level` option, used for sync-service's relayed live edits and presence
+  (logged at debug), summary fields from the attributes when the JSON lacks them (sync's relay
+  messages are binary), and `senderId` and `placedBy` in `SUMMARY_FIELDS`. sync-service's relay
+  messages carry a type (`sync.update`, `sync.awareness`, `sync.status`). user-service's
+  password-reset publish goes through the helper with a `type` attribute, and order-service's
+  remaining `console.log` uses the logger. Fixed a run-together usage line in
+  `compose.observability.yaml`.
+- Affected files: `shared/src/messaging.ts`, `shared/sync.mjs`, `shared/README.md`;
+  `package.json`, `package-lock.json`, `Dockerfile` and source files of chat-service,
+  mail-service, order-ranking-service and sync-service, and the `tsconfig*.json` of the three
+  compiled ones; `user-service/src/events/user-events.ts`; `order-service/src/app.ts`;
+  `compose.yaml`, `compose.dev.yaml`, `compose.observability.yaml`, `cloudbuild.yaml`; this log.
+- Verification: chat, order-ranking, sync and order services typecheck, and their tests pass
+  against a disposable PostgreSQL (5, 23, 8, 21); user-service tests pass (14). mail-service:
+  23 of 26 pass; the other 3 are subtests that their parent tests do not await (`test()` inside
+  `test()` in `app.test.ts` and `welcome-email.test.ts`), so they are cancelled regardless of
+  this change. Rebuilt the stack with `compose.observability.yaml` and ran a signup,
+  verification, password reset, order, chat message and placed group order: every publish and
+  receipt in the four services was logged in the existing format, without chat text, emails or
+  tokens, and the placed group order was one 123-span trace from sync-service through
+  order-service, the saga, credit-service, notification-service, order-ranking-service and
+  chat-service. Not run on Cloud Build or Cloud Run.
+- Author review: Pending.
+
 
 # AI usage log (User Service)
 

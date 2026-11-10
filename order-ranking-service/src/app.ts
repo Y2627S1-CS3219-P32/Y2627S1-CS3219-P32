@@ -4,6 +4,8 @@
  * Pub/Sub push routes for order-events and supplier-events, and the embedding job
  * route; error handling as in order-service. Author review: Pending.
  * Claude Code (Opus 5.5), 2026-11-01. Scope: Supplier changes start embedding. Author review: Pending.
+ * Claude Code (Opus 5.5), 2026-11-10: logging through the shared pino logger; each pushed
+ * message is logged and traced by the shared helper. Author review: Pending.
  */
 import express, { type ErrorRequestHandler, type Request, type Response } from "express";
 import { getUserId, requireInternal, requireUser } from "./auth.js";
@@ -13,6 +15,8 @@ import { decodePushMessage } from "./events/pubsub.js";
 import { HttpError } from "./errors.js";
 import { processPendingEmbeddings, requestEmbedding } from "./ranking/embedding-job.js";
 import { getPreferences, parseLimit, parseLocation, parsePreferences, rankOpenOrders, savePreferences } from "./ranking/queries.js";
+import { logger } from "./shared/logger.js";
+import { receivePush } from "./shared/messaging.js";
 
 export const app = express();
 app.use(express.json({ limit: "10kb" }));
@@ -50,17 +54,17 @@ internal.use(requireInternal);
 // Pub/Sub push: 204 acknowledges; 5xx makes Pub/Sub redeliver. Malformed messages are
 // acknowledged (and logged) so they do not block their ordering key forever.
 function pushHandler(name: string, handle: (message: unknown) => Promise<void>) {
-  return async (req: Request, res: Response) => {
+  return receivePush(async (req: Request, res: Response) => {
     const message = decodePushMessage(req.body);
     try {
       if (message === undefined) throw new InvalidMessageError("Push request has no JSON message data");
       await handle(message);
     } catch (error) {
       if (!(error instanceof InvalidMessageError)) throw error;
-      console.error(`[order-ranking-service] Dropped invalid ${name} message: ${error.message}`);
+      logger.error({ source: name, reason: error.message }, `Dropped invalid ${name} message: ${error.message}`);
     }
     res.status(204).end();
-  };
+  });
 }
 
 internal.post("/pubsub/order-events", pushHandler("order-events", async (message) => {
@@ -87,7 +91,7 @@ const errorHandler: ErrorRequestHandler = (error, _req, res, _next) => {
     res.status(400).json({ error: "Request body contains invalid JSON" });
     return;
   }
-  console.error("[order-ranking-service] Request failed", error);
+  logger.error({ err: error }, "Request failed");
   res.status(500).json({ error: "Internal server error" });
 };
 

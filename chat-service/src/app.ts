@@ -1,3 +1,5 @@
+// AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-11-10.
+// Scope: logging through the shared pino logger. Author review: Pending.
 import express, { type ErrorRequestHandler, type Request, type Response } from "express";
 import { desc, eq } from "drizzle-orm";
 import { canAccessChat } from "./access.js";
@@ -6,6 +8,7 @@ import { db } from "./db/index.js";
 import { chatMessages, chatRoomMembers, chatRooms } from "./db/schema.js";
 import { HttpError } from "./errors.js";
 import { isValidOrderId, publishChatMessage } from "./events.js";
+import { logger } from "./shared/logger.js";
 
 export const app = express();
 app.use(express.json({ limit: "10kb" }));
@@ -78,7 +81,7 @@ const errorHandler: ErrorRequestHandler = (error, _req, res, _next) => {
     res.status(400).json({ error: "Request body contains invalid JSON" });
     return;
   }
-  console.error("[chat-service] Request failed", error);
+  logger.error({ err: error }, "Request failed");
   res.status(500).json({ error: "Chat request failed. Please try again." });
 };
 

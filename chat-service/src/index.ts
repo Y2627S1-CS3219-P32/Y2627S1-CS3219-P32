@@ -1,13 +1,16 @@
+// AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-11-10.
+// Scope: logging through the shared pino logger. Author review: Pending.
 import { app, markInitialized } from "./app.js";
 import { config } from "./config.js";
 import { pool } from "./db/index.js";
 import { startEventSubscriptions } from "./events.js";
+import { logger } from "./shared/logger.js";
 
 let stopSubscriptions: (() => Promise<void>) | undefined;
 let shuttingDown = false;
 
 const server = app.listen(config.port, "0.0.0.0", () => {
-  console.log(`Chat service listening on http://0.0.0.0:${config.port}`);
+  logger.info({ port: config.port }, "Chat service listening");
 });
 
 async function shutdown(): Promise<void> {
@@ -26,13 +29,13 @@ async function initialize(): Promise<void> {
     const subscriptions = await startEventSubscriptions();
     stopSubscriptions = subscriptions.stop;
     markInitialized();
-    console.log("[chat-service] Database and Pub/Sub subscriptions initialized");
+    logger.info("Database and Pub/Sub subscriptions initialized");
   } catch (error) {
-    console.error("[chat-service] Startup initialization failed", error);
+    logger.error({ err: error }, "Startup initialization failed");
     try {
       await shutdown();
     } catch (shutdownError) {
-      console.error("[chat-service] Shutdown after startup failure failed", shutdownError);
+      logger.error({ err: shutdownError }, "Shutdown after startup failure failed");
     }
     process.exit(1);
   }
@@ -42,7 +45,7 @@ process.once("SIGTERM", () => {
   void shutdown().then(
     () => process.exit(0),
     (error: unknown) => {
-      console.error("[chat-service] Shutdown failed", error);
+      logger.error({ err: error }, "Shutdown failed");
       process.exit(1);
     },
   );
@@ -51,7 +54,7 @@ process.once("SIGINT", () => {
   void shutdown().then(
     () => process.exit(0),
     (error: unknown) => {
-      console.error("[chat-service] Shutdown failed", error);
+      logger.error({ err: error }, "Shutdown failed");
       process.exit(1);
     },
   );

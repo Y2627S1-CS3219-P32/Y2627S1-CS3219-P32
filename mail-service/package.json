@@ -1,23 +1,34 @@
 {
-  "//": "AI Assistance Disclosure: ChatGPT (GPT-6), 2026-11-04. Scope: Event-driven Mailjet email service. Author review: Pending.",
+  "//": "AI Assistance Disclosure: ChatGPT (GPT-6), 2026-11-04. Scope: Event-driven Mailjet email service. Author review: Pending. Claude Code (Opus 5.5), 2026-11-10: pino (and pino-pretty for development) for the shared logger, and the OpenTelemetry SDK and instrumentations loaded by the start script through shared/telemetry.mts. Author review: Pending.",
   "name": "mail-service",
   "version": "1.0.0",
   "description": "User event email delivery service",
   "private": true,
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "start": "tsx src/index.ts",
+    "start": "tsx --import ./src/shared/telemetry.mts src/index.ts",
     "test": "tsx --test src/app.test.ts src/user-events.test.ts src/welcome-email.test.ts"
   },
   "dependencies": {
     "@google-cloud/pubsub": "^6.3.0",
+    "@opentelemetry/api": "^1.10.0",
+    "@opentelemetry/instrumentation-express": "^0.72.0",
+    "@opentelemetry/instrumentation-http": "^0.300.0",
+    "@opentelemetry/instrumentation-pg": "^0.77.0",
+    "@opentelemetry/instrumentation-pino": "^0.70.0",
+    "@opentelemetry/instrumentation-runtime-node": "^0.37.0",
+    "@opentelemetry/instrumentation-undici": "^0.34.0",
+    "@opentelemetry/sdk-node": "^0.300.0",
     "dotenv": "^18.0.4",
     "express": "^5.2.1",
-    "nodemailer": "^10.1.7"
+    "import-in-the-middle": "^3.6.0",
+    "nodemailer": "^10.1.7",
+    "pino": "^10.4.0"
   },
   "devDependencies": {
     "@types/express": "^5.0.6",
     "@types/nodemailer": "^8.0.2",
+    "pino-pretty": "^13.2.0",
     "tsx": "^4.23.15"
   },
   "type": "commonjs"

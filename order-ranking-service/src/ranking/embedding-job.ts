@@ -7,12 +7,14 @@
  * Author review: Pending.
  * Claude Code (Opus 5.5), 2026-11-01. Scope: An order embedding is stored only if the
  * order's text and supplier have not changed since it was read. Author review: Pending.
+ * Claude Code (Opus 5.5), 2026-11-10: logging through the shared pino logger. Author review: Pending.
  */
 import { and, asc, eq, isNotNull, isNull, lt, or, sql, type AnyColumn } from "drizzle-orm";
 import { config } from "../config.js";
 import { db } from "../db/index.js";
 import { orders, preferences, suppliers } from "../db/schema.js";
 import { embed, orderText } from "./embeddings.js";
+import { logger } from "../shared/logger.js";
 
 // Due now: never failed, or its back-off has passed.
 const due = (retryAt: AnyColumn) => or(isNull(retryAt), sql`${retryAt} <= now()`);
@@ -45,7 +47,7 @@ async function embedOrders(): Promise<number> {
   try {
     vectors = await embed(texts);
   } catch (error) {
-    console.error(`[order-ranking-service] Embedding ${pending.length} orders failed: ${message(error)}`);
+    logger.error({ count: pending.length, reason: message(error) }, `Embedding ${pending.length} orders failed: ${message(error)}`);
     for (const order of pending) {
       await db.update(orders)
         .set({ embeddingAttempts: sql`${orders.embeddingAttempts} + 1`, embeddingError: message(error), embeddingRetryAt: backOff(orders.embeddingAttempts) })
@@ -84,7 +86,7 @@ async function embedNotes(): Promise<number> {
   try {
     vectors = await embed(pending.map((row) => row.note!));
   } catch (error) {
-    console.error(`[order-ranking-service] Embedding ${pending.length} preference notes failed: ${message(error)}`);
+    logger.error({ count: pending.length, reason: message(error) }, `Embedding ${pending.length} preference notes failed: ${message(error)}`);
     for (const row of pending) {
       await db.update(preferences)
         .set({ noteEmbeddingAttempts: sql`${preferences.noteEmbeddingAttempts} + 1`, noteEmbeddingRetryAt: backOff(preferences.noteEmbeddingAttempts) })
@@ -126,7 +128,7 @@ export function requestEmbedding(): Promise<void> {
         if (done.orders >= config.embedding.batchSize || done.notes >= config.embedding.batchSize) again = true;
       } while (again);
     } catch (error) {
-      console.error("[order-ranking-service] Embedding run failed", error);
+      logger.error({ err: error }, "Embedding run failed");
     } finally {
       running = undefined;
     }

@@ -7,7 +7,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "dev": "tsx watch src/index.ts",
-    "start": "node dist/src/index.js",
+    "start": "node --import ./dist/src/shared/telemetry.mjs dist/src/index.js",
     "typecheck": "tsc --noEmit",
     "test": "npm run build && node --test test/*.test.mjs",
     "db:generate": "drizzle-kit generate",
@@ -16,18 +16,30 @@
   "license": "ISC",
   "dependencies": {
     "@google-cloud/pubsub": "^6.3.0",
+    "@opentelemetry/api": "^1.10.0",
+    "@opentelemetry/instrumentation-express": "^0.72.0",
+    "@opentelemetry/instrumentation-http": "^0.300.0",
+    "@opentelemetry/instrumentation-pg": "^0.77.0",
+    "@opentelemetry/instrumentation-pino": "^0.70.0",
+    "@opentelemetry/instrumentation-runtime-node": "^0.37.0",
+    "@opentelemetry/instrumentation-undici": "^0.34.0",
+    "@opentelemetry/sdk-node": "^0.300.0",
     "dotenv": "^18.0.8",
     "drizzle-orm": "^0.45.4",
     "express": "^5.3.0",
     "google-auth-library": "^11.3.1",
-    "pg": "^8.23.1"
+    "import-in-the-middle": "^3.6.0",
+    "pg": "^8.23.1",
+    "pino": "^10.4.0"
   },
   "devDependencies": {
     "@types/express": "^5.0.6",
     "@types/node": "^26.6.5",
     "@types/pg": "^8.23.1",
     "drizzle-kit": "^0.31.11",
+    "pino-pretty": "^13.2.0",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2"
-  }
+  },
+  "//": "Claude Code (Opus 5.5), 2026-11-10: pino (and pino-pretty for development) for the shared logger, and the OpenTelemetry SDK and instrumentations loaded by the start script through shared/telemetry.mts. Author review: Pending."
 }

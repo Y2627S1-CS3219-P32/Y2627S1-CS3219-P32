@@ -5,6 +5,7 @@
  * stores every client update, and relays it to the other instances. Author review: Pending.
  * Claude Code (Opus 5.5), 2026-10-17: presence (cursors, names) relayed between instances
  * too, without being stored. Author review: Pending.
+ * Claude Code (Opus 5.5), 2026-11-10: logging through the shared pino logger. Author review: Pending.
  */
 import { and, asc, eq, lte } from "drizzle-orm";
 import * as decoding from "lib0/decoding";
@@ -16,6 +17,7 @@ import * as Y from "yjs";
 import { db } from "./db/index.js";
 import { documents, documentUpdates, type DocumentStatus } from "./db/schema.js";
 import { publish } from "./pubsub.js";
+import { logger } from "./shared/logger.js";
 
 const MESSAGE_SYNC = 0;
 const MESSAGE_AWARENESS = 1;
@@ -99,7 +101,7 @@ function createRoom(orderId: string): Room {
       room.writes = room.writes
         .then(() => db.insert(documentUpdates).values({ orderId, update }))
         .then(() => publish.relay(orderId, { kind: "update" }, update))
-        .catch((error: unknown) => console.error(`[sync-service] Could not store or relay an update for ${orderId}`, error));
+        .catch((error: unknown) => logger.error({ err: error, orderId }, `Could not store or relay an update for ${orderId}`));
     }
   });
 
@@ -118,7 +120,7 @@ function createRoom(orderId: string): Room {
     // Presence from this instance's clients goes to the other instances (not stored).
     if (origin instanceof WebSocket || origin === DISCONNECTED) {
       publish.relay(orderId, { kind: "awareness" }, update)
-        .catch((error: unknown) => console.error(`[sync-service] Could not relay presence for ${orderId}`, error));
+        .catch((error: unknown) => logger.error({ err: error, orderId }, `Could not relay presence for ${orderId}`));
     }
   });
 
@@ -164,7 +166,7 @@ export function attachConnection(conn: WebSocket, orderId: string): void {
     const others = [...room.awareness.getStates().keys()];
     if (others.length > 0) send(conn, awarenessMessage(room.awareness, others));
   }).catch((error: unknown) => {
-    console.error(`[sync-service] Could not open document ${orderId}`, error);
+    logger.error({ err: error, orderId }, `Could not open document ${orderId}`);
     conn.close(1011, "Document unavailable");
   });
 
@@ -184,7 +186,7 @@ export function attachConnection(conn: WebSocket, orderId: string): void {
         awarenessProtocol.applyAwarenessUpdate(room.awareness, decoding.readVarUint8Array(decoder), conn);
       }
     }).catch((error: unknown) => {
-      console.error(`[sync-service] Bad message for ${orderId}`, error);
+      logger.error({ err: error, orderId }, `Bad WebSocket message for ${orderId}`);
       conn.close(1003, "Unsupported message");
     });
   });

@@ -1,3 +1,6 @@
+// AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-11-10.
+// Scope: logging through the shared pino logger, and publishing and receiving Pub/Sub messages through the
+// shared helper, which logs and traces each one. Author review: Pending.
 import { randomUUID } from "node:crypto";
 import { and, eq, isNull, lte } from "drizzle-orm";
 import { PubSub, type Message, type Subscription } from "@google-cloud/pubsub";
@@ -7,6 +10,8 @@ import { config } from "./config.js";
 import { canAccessChat } from "./access.js";
 import { chatExpiresAt } from "./retention.js";
 import { ORDER_EVENTS_FILTERS, ORDER_EVENT_TYPES } from "./order-event-filters.js";
+import { logger } from "./shared/logger.js";
+import { processMessage, publishMessage } from "./shared/messaging.js";
 
 const MESSAGE_BODY_LIMIT = 2000;
 const CLEANUP_INTERVAL_MS = 60 * 60 * 1000;
@@ -98,24 +103,24 @@ async function ensureRoomSubscription(
 
     const subscription = pubsub.subscription(roomSubscription(orderId));
     roomSubscriptions.set(orderId, subscription);
-    subscription.on("message", (message) => {
-      let payload: unknown;
-      try {
-        payload = JSON.parse(message.data.toString("utf8"));
-      } catch (error) {
-        console.error(`[chat-service] Dropped unreadable message for order ${orderId}`, error);
-        message.ack();
-        return;
-      }
-
-      void receiveChatMessage(payload, orderId, receive)
-        .then(() => message.ack())
-        .catch((error: unknown) => {
-          console.error(`[chat-service] Could not store message for order ${orderId}`, error);
-          message.nack();
-        });
-    });
-    subscription.on("error", (error) => console.error(`[chat-service] Subscription error for order ${orderId}`, error));
+    subscription.on("message", (message) =>
+      processMessage(roomSubscription(orderId), message, async () => {
+        let payload: unknown;
+        try {
+          payload = JSON.parse(message.data.toString("utf8"));
+        } catch (error) {
+          logger.error({ err: error, orderId }, `Dropped unreadable chat message for order ${orderId}`);
+          return "ack";
+        }
+        try {
+          await receiveChatMessage(payload, orderId, receive);
+          return "ack";
+        } catch (error) {
+          logger.error({ err: error, orderId }, `Could not store chat message for order ${orderId}`);
+          return "nack";
+        }
+      }));
+    subscription.on("error", (error) => logger.error({ err: error, orderId }, `Chat subscription error for order ${orderId}`));
   })();
   startingRooms.set(orderId, task);
   try {
@@ -144,19 +149,19 @@ async function receiveChatMessage(
     typeof payload.sentAt !== "string" ||
     !Number.isFinite(Date.parse(payload.sentAt))
   ) {
-    console.error(`[chat-service] Dropped invalid chat message for order ${expectedOrderId}`);
+    logger.error({ orderId: expectedOrderId }, `Dropped invalid chat message for order ${expectedOrderId}`);
     return;
   }
 
   const [room] = await db.select().from(chatRooms).where(eq(chatRooms.orderId, expectedOrderId));
   if (!room || room.expiresAt) {
-    console.error(`[chat-service] Dropped message from a nonparticipant for order ${expectedOrderId}`);
+    logger.error({ orderId: expectedOrderId, senderId: payload.senderId }, `Dropped chat message for order ${expectedOrderId}: no open chatroom`);
     return;
   }
   const members = await db.select({ userId: chatRoomMembers.userId }).from(chatRoomMembers)
     .where(eq(chatRoomMembers.orderId, expectedOrderId));
   if (!canAccessChat({ ...room, memberIds: members.map(({ userId }) => userId) }, payload.senderId)) {
-    console.error(`[chat-service] Dropped message from a nonparticipant for order ${expectedOrderId}`);
+    logger.error({ orderId: expectedOrderId, senderId: payload.senderId }, `Dropped chat message from user ${payload.senderId}, not a participant of order ${expectedOrderId}`);
     return;
   }
   await receive({
@@ -220,31 +225,31 @@ async function handleOrderEvent(pubsub: PubSub, event: unknown, receive: (messag
 function eventHandler(
   pubsub: PubSub,
   receive: (message: StoredMessage) => Promise<void>,
-  name: string,
   subscription: Subscription,
 ): void {
-  subscription.on("message", (message: Message) => {
-    let event: unknown;
-    try {
-      event = JSON.parse(message.data.toString("utf8"));
-    } catch (error) {
-      console.error(`[chat-service] Dropped unreadable ${name} event`, error);
-      message.ack();
-      return;
-    }
-    void handleOrderEvent(pubsub, event, receive)
-      .then(() => message.ack())
-      .catch((error: unknown) => {
+  const name = subscription.name.slice(subscription.name.lastIndexOf("/") + 1);
+  subscription.on("message", (message: Message) =>
+    processMessage(name, message, async () => {
+      let event: unknown;
+      try {
+        event = JSON.parse(message.data.toString("utf8"));
+      } catch (error) {
+        logger.error({ err: error, subscription: name }, `Dropped unreadable order event from ${name}`);
+        return "ack";
+      }
+      try {
+        await handleOrderEvent(pubsub, event, receive);
+        return "ack";
+      } catch (error) {
         if (error instanceof InvalidOrderEventError) {
-          console.error(`[chat-service] Dropped invalid ${name} event: ${error.message}`);
-          message.ack();
-          return;
+          logger.error({ subscription: name, reason: error.message }, `Dropped invalid order event from ${name}: ${error.message}`);
+          return "ack";
         }
-        console.error(`[chat-service] Could not process ${name} event`, error);
-        message.nack();
-      });
-  });
-  subscription.on("error", (error) => console.error(`[chat-service] ${name} subscription error`, error));
+        logger.error({ err: error, subscription: name }, `Could not process order event from ${name}`);
+        return "nack";
+      }
+    }));
+  subscription.on("error", (error) => logger.error({ err: error, subscription: name }, `${name} subscription error`));
 }
 
 async function ensureGlobalSubscriptions(pubsub: PubSub): Promise<Subscription[]> {
@@ -289,12 +294,11 @@ export async function publishChatMessage(
 ): Promise<StoredMessage> {
   await ensureRoomSubscription(getPubSub(), orderId, storeChatMessage);
   const message: StoredMessage = { id: randomUUID(), orderId, senderId, body, sentAt: new Date() };
-  await getPubSub().topic(roomTopic(orderId), { messageOrdering: true })
-    .publishMessage({
-      json: { ...message, type: "chat.message", sentAt: message.sentAt.toISOString() },
-      orderingKey: orderId,
-      attributes: { type: "chat.message", orderId },
-    });
+  await publishMessage(getPubSub().topic(roomTopic(orderId), { messageOrdering: true }), {
+    json: { ...message, type: "chat.message", sentAt: message.sentAt.toISOString() },
+    orderingKey: orderId,
+    attributes: { type: "chat.message", orderId },
+  });
   return message;
 }
 
@@ -304,8 +308,8 @@ export async function startEventSubscriptions() {
   try {
     await deleteExpiredRooms(pubsub);
     globalSubscriptions = await ensureGlobalSubscriptions(pubsub);
-    globalSubscriptions.forEach((subscription, index) => {
-      eventHandler(pubsub, storeChatMessage, `order-events-${index + 1}`, subscription);
+    globalSubscriptions.forEach((subscription) => {
+      eventHandler(pubsub, storeChatMessage, subscription);
     });
     const rooms = await db.select({ orderId: chatRooms.orderId }).from(chatRooms);
     await Promise.all(rooms.map(({ orderId }) => ensureRoomSubscription(pubsub, orderId, storeChatMessage)));
@@ -321,7 +325,7 @@ export async function startEventSubscriptions() {
     if (cleanupRunning) return;
     cleanupRunning = true;
     void deleteExpiredRooms(pubsub)
-      .catch((error: unknown) => console.error("[chat-service] Expired chatroom cleanup failed", error))
+      .catch((error: unknown) => logger.error({ err: error }, "Expired chatroom cleanup failed"))
       .finally(() => { cleanupRunning = false; });
   }, CLEANUP_INTERVAL_MS);
   cleanupTimer.unref();

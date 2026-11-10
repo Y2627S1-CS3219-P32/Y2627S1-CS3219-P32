@@ -6,6 +6,9 @@
  * Claude Code (Opus 5.5), 2026-11-10: log messages that say what each message was (its
  * type, key fields and outcome), so they read without opening each entry.
  * Author review: Pending.
+ * Claude Code (Opus 5.5), 2026-11-10: a `level` option for frequent messages (sync-service's
+ * live edits), and attributes as a source of the summary for messages that are not JSON.
+ * Author review: Pending.
  *
  * Publishing, with a topic from @google-cloud/pubsub:
  *
@@ -74,9 +77,10 @@ function loggedAttributes(attributes: Record<string, string> | undefined) {
 
 // The fields of a message's JSON that describe it in the log, in this order. They are taken
 // from the top level or one object down; an object's `id` counts as <object>Id (user.id is
-// userId, supplier.id is supplierId), and a top-level field wins over a nested one. Only
-// these are logged, so password hashes, verification codes, reset tokens, emails, names and
-// free text never are. Add a field here to show it.
+// userId, supplier.id is supplierId), and a top-level field wins over a nested one. The
+// message's attributes fill in what the JSON lacks (or all of it, for a binary message). Only
+// these are logged, so password hashes, verification codes, reset tokens, emails, names, chat
+// messages and other free text never are. Add a field here to show it.
 const SUMMARY_FIELDS = [
   "orderId",
   "userId",
@@ -84,6 +88,8 @@ const SUMMARY_FIELDS = [
   "requesterId",
   "courierId",
   "actorId",
+  "senderId",
+  "placedBy",
   "state",
   "status",
   "code",
@@ -114,17 +120,22 @@ function formatValue(value: Scalar): string {
   return typeof value === "string" && !/^[\w.:@+-]+$/.test(value) ? JSON.stringify(value) : String(value);
 }
 
-function summarize(payload: unknown): Summary {
-  if (!isPlainObject(payload)) return { fields: {}, text: "" };
+function summarize(payload: unknown, attributes?: Record<string, string>): Summary {
+  // In order of precedence: the JSON's top level, one object down, then the attributes.
   const found = new Map<string, unknown>();
-  for (const [key, value] of Object.entries(payload)) {
-    if (!isPlainObject(value)) continue;
-    for (const [nestedKey, nestedValue] of Object.entries(value)) {
-      const name = nestedKey === "id" ? `${key}Id` : nestedKey;
-      if (!found.has(name)) found.set(name, nestedValue);
+  const add = (name: string, value: unknown) => {
+    if (!found.has(name)) found.set(name, value);
+  };
+  if (isPlainObject(payload)) {
+    for (const [key, value] of Object.entries(payload)) add(key, value);
+    for (const [key, value] of Object.entries(payload)) {
+      if (!isPlainObject(value)) continue;
+      for (const [nestedKey, nestedValue] of Object.entries(value)) {
+        add(nestedKey === "id" ? `${key}Id` : nestedKey, nestedValue);
+      }
     }
   }
-  for (const [key, value] of Object.entries(payload)) found.set(key, value);
+  for (const [key, value] of Object.entries(attributes ?? {})) add(key, value);
 
   const fields: Record<string, Scalar> = {};
   const parts: string[] = [];
@@ -190,8 +201,17 @@ type Topic = {
   publishMessage(message: OutgoingMessage): Promise<string>;
 };
 
+type LogOptions = {
+  /** The level of the success line: "debug" for frequent messages. Failures stay warn or error. */
+  level?: "info" | "debug";
+};
+
 /** Publishes in a span of the current trace, adds the trace to the attributes, and logs it. */
-export async function publishMessage(topic: Topic, message: OutgoingMessage): Promise<string> {
+export async function publishMessage(
+  topic: Topic,
+  message: OutgoingMessage,
+  options: LogOptions = {},
+): Promise<string> {
   const topicName = shortName(topic.name);
   const eventType = message.attributes?.type;
   const span = tracer.startSpan(`send ${topicName}`, {
@@ -213,8 +233,8 @@ export async function publishMessage(topic: Topic, message: OutgoingMessage): Pr
     try {
       const messageId = await topic.publishMessage({ ...message, attributes });
       span.setAttribute("messaging.message.id", messageId);
-      const summary = summarize(message.json !== undefined ? message.json : decode(message.data));
-      logger.info(
+      const summary = summarize(message.json !== undefined ? message.json : decode(message.data), message.attributes);
+      logger[options.level ?? "info"](
         {
           ...summary.fields,
           topic: topicName,
@@ -247,7 +267,7 @@ type Delivery = {
   data?: unknown;
 };
 
-type Level = "info" | "warn" | "error";
+type Level = "debug" | "info" | "warn" | "error";
 
 // A span for handling one message, in the trace that published it, and the log line that
 // ends it.
@@ -278,7 +298,7 @@ function startProcessing(delivery: Delivery) {
   const processing = trace.setSpan(parent, span);
 
   const started = performance.now();
-  const summary = summarize(decode(delivery.data));
+  const summary = summarize(decode(delivery.data), delivery.attributes);
   const subject = `${eventType ?? "a message"} from ${delivery.subscription}`;
   const fields = {
     ...summary.fields,
@@ -420,6 +440,7 @@ export async function processMessage(
   subscription: string,
   message: PulledMessage,
   handle: () => Outcome | Promise<Outcome>,
+  options: LogOptions = {},
 ): Promise<void> {
   const processing = startProcessing({
     subscription,
@@ -445,7 +466,7 @@ export async function processMessage(
   }
   if (outcome === "ack") {
     message.ack();
-    processing.finish("info", { outcome }, (subject, took) => `Processed ${subject} in ${took}`);
+    processing.finish(options.level ?? "info", { outcome }, (subject, took) => `Processed ${subject} in ${took}`);
   } else {
     message.nack();
     processing.finish(
