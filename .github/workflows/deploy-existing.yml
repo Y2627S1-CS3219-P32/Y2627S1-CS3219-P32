@@ -1,0 +1,46 @@
+# AI Assistance Disclosure: Copilot, 2026-11-11.
+# Scope: Manually deploy already-built images by running deploy.sh without Cloud Build.
+name: Deploy Existing Images
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Image tag to deploy
+        type: string
+        default: latest
+        required: true
+
+# Serialize with the build-and-deploy workflow to avoid overlapping deployments.
+concurrency:
+  group: deploy-gcp
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+  REGION: asia-southeast1
+  TAG: ${{ inputs.tag }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          install_components: beta
+
+      - name: Deploy existing images
+        run: ./deploy.sh

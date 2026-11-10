@@ -2255,6 +2255,22 @@ in agent common connections, do they need to be so many separate files?”
 - Changes: combined environment/ignore entries, Compose services and volumes, Nuxt URLs, supplier authentication and observability dependencies, and credit balance documentation with verified-user provisioning. Agent/mandate host ports are 3008/3009. Regenerated supplier lockfile. Updated stale balance-tool assertion and credit verification fixtures without changing service behavior.
 - Verification: workspace build/typecheck; frontend typecheck and production build; Agent and Mandate unit tests; isolated Docker connection/flow, boundary and contract suite plus Order/Supplier tests; all 43 credit tests on isolated PostgreSQL; both Compose configurations; deployment shell syntax; generated frontend contract consistency. Test Docker resources removed afterward. Nuxt dependencies warn that local Node 22.17 is below their declared supported version, although typecheck/build pass. Existing generated frontend types retain their generator's trailing blank line.
 
+### 2026-11-10 — Local redeployment after rebase
+
+- Tool/mode: Codex (GPT-6.1), local deployment and migration debugging. Author review: Pending.
+- Exact user prompt: “ok try to redeploy in localhost so i can verify if everything is ok”.
+- Key response: rebuild the existing Compose project with the agent-skeleton profile, preserve volumes, reconcile existing agent migration histories after comparing their schemas with fresh baseline databases, and check readiness and frontend routes.
+- Local database operations: appended current baseline hashes to Conversation/Mandate migration ledgers after comparing columns, defaults, constraints and indexes; applied additive user verification fields and password-reset table; retained the legacy agent_token_issuances table. Temporary schema comparison databases were removed; application data and volumes were retained.
+- Code change: user-service/drizzle.config.ts excludes the obsolete agent_token_issuances table from schema management so subsequent deployments preserve it.
+- Verification: Compose up --wait succeeded; Agent Chat, Orchestrator and Mandate readiness returned HTTP 200; homepage/login returned HTTP 200; agent/mandates routes redirected unauthenticated requests to login. Signed-in product testing remains for the user.
+
+
+### 2026-11-11 — Automatic Agent and Mandate provisioning
+
+- Tool/mode: Codex (GPT-6.1), deployment configuration and PostgreSQL verification. Author review: Pending.
+- Exact user prompt: “can u extend the automatic setup and follow the convention for the others”.
+- Changes: reuse database creation helpers, generate restricted runtime connection secrets, provision logins after migrations, remove the duplicate Conversation migration, provision TLS/AUTH Memorystore and its CA secret, and configure Cloud NAT for Orchestrator egress. Correct default service account emails to use the project number; extend GitHub deployer permissions and deployment documentation.
+- Verification: shell and JavaScript syntax checks; git diff whitespace check; isolated PostgreSQL 17 verification of all three runtime logins, restricted permissions, password escaping, and repeated provisioning. Temporary container removed. No GCP deployment performed.
 ### 2026-11-10 — Merge main's agent services into observability-v2 and instrument them
 
 - Tool/mode: Claude Code (Opus 5.5), merge conflict resolution, implementation and verification. Author review: Pending.

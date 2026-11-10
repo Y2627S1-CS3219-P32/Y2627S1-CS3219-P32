@@ -6,7 +6,7 @@ FROM node:24-alpine AS tooling
 WORKDIR /app
 COPY package.json package-lock.json ./
 COPY mandate-service/package.json ./mandate-service/package.json
-RUN npm ci --ignore-scripts --workspace mandate-service --include-workspace-root
+RUN npm ci --ignore-scripts --workspace mandate-service --include-workspace-root --include=optional
 COPY mandate-service/src ./mandate-service/src
 COPY shared/src ./mandate-service/src/shared
 COPY mandate-service/tsconfig.json ./mandate-service/tsconfig.json
