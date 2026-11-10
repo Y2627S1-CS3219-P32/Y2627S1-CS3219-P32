@@ -6,7 +6,7 @@ FROM node:22-bookworm-slim AS tooling
 WORKDIR /app
 
 COPY package.json package-lock.json ./
-RUN npm ci --include=optional
+RUN npm ci --include=optional --jobs=1
 
 COPY tsconfig.json tsconfig.build.json ./
 COPY drizzle.config.ts ./
