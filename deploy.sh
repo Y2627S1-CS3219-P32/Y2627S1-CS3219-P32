@@ -684,11 +684,14 @@ github_ci() {
   # deploy.sh creates databases, secrets, topics, service accounts and IAM bindings as it goes.
   for role in roles/viewer roles/cloudbuild.builds.editor roles/storage.admin roles/run.admin \
     roles/iam.serviceAccountUser roles/iam.serviceAccountAdmin roles/resourcemanager.projectIamAdmin \
-    roles/secretmanager.admin roles/cloudsql.admin roles/pubsub.admin roles/cloudscheduler.admin roles/redis.admin \
+    roles/secretmanager.admin roles/cloudsql.admin roles/pubsub.admin roles/cloudscheduler.admin \
     roles/serviceusage.serviceUsageAdmin roles/compute.networkAdmin; do
     run projects add-iam-policy-binding "$PROJECT_ID" \
       --member "serviceAccount:${deployer}" --role "$role" --condition None >/dev/null
   done
+  # Required to provision Memorystore and retrieve its AUTH string for the Redis secret.
+  run projects add-iam-policy-binding "$PROJECT_ID" \
+    --member "serviceAccount:${deployer}" --role roles/redis.admin --condition None >/dev/null
 
   if ! run iam workload-identity-pools describe "$pool" --location global >/dev/null 2>&1; then
     run iam workload-identity-pools create "$pool" --location global --display-name "GitHub Actions"
