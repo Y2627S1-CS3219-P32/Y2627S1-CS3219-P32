@@ -269,6 +269,7 @@ deploy_event_services() {
   run run deploy chat-service --region "$REGION" --image "${REGISTRY}/chat-service:${TAG}" \
     --port 3000 --ingress internal --allow-unauthenticated \
     --min-instances 1 --no-cpu-throttling \
+    --startup-probe=httpGet.path=/health,httpGet.port=3000,periodSeconds=2,timeoutSeconds=1,failureThreshold=30 \
     --add-cloudsql-instances "$SQL_CONNECTION" \
     --set-env-vars "PUBSUB_PROJECT_ID=${PROJECT_ID}" \
     --set-secrets "DATABASE_URL=chat-database-url:latest,JWT_SECRET=jwt-secret:latest"

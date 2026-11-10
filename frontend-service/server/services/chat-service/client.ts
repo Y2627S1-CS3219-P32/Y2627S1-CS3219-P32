@@ -1,7 +1,7 @@
 import type { H3Event } from "h3";
 import type { ChatMessage, ChatMessageCreate } from "#shared/services/chat-service/types";
 
-const FORWARDED_STATUSES = new Set([400, 401, 403, 404, 409]);
+const FORWARDED_STATUSES = new Set([400, 401, 403, 404, 409, 503]);
 
 function options(event: H3Event) {
   const token = getCookie(event, "user_access_token");
@@ -30,6 +30,15 @@ async function call<T>(event: H3Event, path: string, init: Record<string, unknow
   try {
     return (await $fetch(path, { ...base, ...init })) as T;
   } catch (error) {
+    if (
+      typeof error !== "object" || error === null ||
+      !("statusCode" in error) || typeof error.statusCode !== "number" ||
+      !FORWARDED_STATUSES.has(error.statusCode)
+    ) {
+      console.error("[frontend] Chat service request failed", {
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
     throw toChatServiceError(error);
   }
 }
