@@ -214,7 +214,8 @@ gcloud builds submit --config cloudbuild.yaml --region asia-southeast1  # build 
 ### Observability on Cloud Run
 
 <!-- AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-11-10.
-Scope: Deploying the observability stack to Cloud Run. Author review: Pending. -->
+Scope: Deploying the observability stack to Cloud Run. Author review: Pending.
+Claude Code (Opus 5.5), 2026-11-11: the readiness check. Author review: Pending. -->
 
 `OBSERVABILITY=on ./deploy.sh` also deploys the observability stack, and turns on every
 service's telemetry. It is one Cloud Run service, `observability`, whose containers are the same
@@ -235,6 +236,11 @@ US$0.50 an hour, or US$12 a day, while deployed. With `OBSERVABILITY=off`, the d
 observability-down` deletes it straight away. The GitHub workflow takes the setting from the
 `OBSERVABILITY` repository variable.
 
+The stack is deployed before any app service, and `deploy.sh` then checks it: OTLP with the
+token must be accepted, OTLP without it refused, and Grafana must answer. If not, the deploy
+stops there, with the app services still on their current revisions, rather than pointing them
+at a stack that would drop their telemetry.
+
 The services only send telemetry while they have CPU: those that Cloud Run throttles between
 requests send theirs during their next request, so it can show up late. Data the stores held
 in memory when the service is deleted or redeployed may be lost.
@@ -242,12 +248,16 @@ in memory when the service is deleted or redeployed may be lost.
 ### Automatic deployment (GitHub Actions)
 
 <!-- AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-10-18.
-Scope: GitHub Actions deployment instructions. Author review: Pending. -->
+Scope: GitHub Actions deployment instructions. Author review: Pending.
+Claude Code (Opus 5.5), 2026-11-11: the checks job. Author review: Pending. -->
 
 [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) builds the images and runs
 `./deploy.sh` on every push to `main` (it can also be run manually from the Actions tab, with an
 option to seed). It signs in through Workload Identity Federation, so no service account key is
-stored in GitHub. One-time setup, after `./deploy.sh setup`:
+stored in GitHub. A `checks` job runs first, in about 3 minutes: `deploy.sh`'s syntax, the
+agent and mandate builds, and the tests that need no database, including the shared Pub/Sub
+messaging test (`npm run test:messaging`). The image build only starts once it passes, and is
+stopped after 30 minutes (`timeout` in `cloudbuild.yaml`). One-time setup, after `./deploy.sh setup`:
 
 ```sh
 ./deploy.sh github  # deployer service account, identity pool restricted to this repo's main branch

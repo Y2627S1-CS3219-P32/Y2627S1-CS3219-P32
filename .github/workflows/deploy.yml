@@ -8,6 +8,8 @@
 # Variables). `./deploy.sh setup` must also have been run once.
 # Claude Code (Opus 5.5), 2026-11-10: the OBSERVABILITY repository variable (on/off, default
 # off) deploys or removes the observability stack; see README.md. Author review: Pending.
+# Claude Code (Opus 5.5), 2026-11-11: a `checks` job (about 3 minutes) that must pass before
+# the image build starts. Author review: Pending.
 name: Deploy to Google Cloud
 
 on:
@@ -34,7 +36,41 @@ env:
   REGION: asia-southeast1
 
 jobs:
+  # Fails in minutes, before the ~12-minute image build and the deploy: deploy.sh's syntax, and
+  # the tests that need no database, among them the shared Pub/Sub messaging that every service
+  # runs (test/shared-messaging.test.mjs), which a deploy itself would not exercise.
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: deploy.sh syntax
+        run: bash -n deploy.sh
+
+      - name: Build the agent and mandate services
+        run: |
+          node shared/sync.mjs
+          npm ci
+          npm run build
+
+      - name: Tests
+        run: |
+          npm run test:messaging
+          npm test --workspace @campus/agent-contracts
+          npm test --workspace mandate-service
+          npm run test:boundaries
+          npm run test:contracts
+
   deploy:
+    needs: checks
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:

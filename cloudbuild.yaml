@@ -20,6 +20,12 @@
 # Images are tagged with the build ID and `latest`. Deploying is handled by deploy.sh.
 #
 # Named build contexts require a recent BuildKit daemon and Dockerfile frontend.
+#
+# Claude Code (Opus 5.5), 2026-11-11: a build stuck under load (about 30 images build at once)
+# fails at 30 minutes, not at the deploy workflow's 60; a normal build takes about 12.
+# Author review: Pending.
+timeout: 1800s
+
 substitutions:
   _REGION: asia-southeast1
   _REPOSITORY: foc

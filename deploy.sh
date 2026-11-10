@@ -19,6 +19,8 @@
 # Claude Code (Opus 5.5), 2026-11-10: the observability stack (OBSERVABILITY=on) as one
 # multi-container service, `observability`, and the app services' telemetry pointed at it.
 # Author review: Pending.
+# Claude Code (Opus 5.5), 2026-11-11: check_observability, which stops the deploy before the
+# app services if the observability service does not take OTLP. Author review: Pending.
 #
 # Usage (from the repository root, after `gcloud builds submit --config cloudbuild.yaml`):
 #   ./deploy.sh setup   # one-time: Cloud SQL, databases, secrets, IAM, networking
@@ -323,6 +325,34 @@ deploy_observability() {
     --set-env-vars "MIMIR_HOST=localhost,TEMPO_STORAGE_BACKEND=gcs,TEMPO_GCS_BUCKET=${OBSERVABILITY_BUCKET_PREFIX}-tempo"
 }
 
+# Stops the deploy, before any app service is pointed at it, unless the observability service
+# takes OTLP with the token (proxy, then collector), refuses it without, and Grafana answers.
+# Otherwise every service would send its telemetry nowhere, silently. Retries for about a
+# minute. (Claude Code (Opus 5.5), 2026-11-11; author review: Pending.)
+check_observability() {
+  local endpoint="$1" token otlp unauthenticated grafana attempt
+  token="$(run secrets versions access latest --secret otlp-token)"
+  for attempt in $(seq 1 12); do
+    # The token goes to curl on standard input, not on its command line.
+    otlp="$(printf 'x-otlp-token: %s\n' "$token" | curl -sS -o /dev/null -w '%{http_code}' --max-time 10 \
+      -H @- -H 'Content-Type: application/json' --data '{"resourceSpans":[]}' "${endpoint}/v1/traces" || true)"
+    unauthenticated="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 \
+      -H 'Content-Type: application/json' --data '{"resourceSpans":[]}' "${endpoint}/v1/traces" || true)"
+    grafana="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 "${endpoint}/api/health" || true)"
+    if [ "$otlp" = 200 ] && [ "$unauthenticated" = 401 ] && [ "$grafana" = 200 ]; then
+      unset token
+      echo "Observability service is ready: OTLP accepted with the token, refused without; Grafana answers."
+      return 0
+    fi
+    [ "$attempt" -lt 12 ] && sleep 5
+  done
+  unset token
+  echo "The observability service at ${endpoint} is not ready (OTLP with the token: HTTP ${otlp}," \
+    "without: HTTP ${unauthenticated}, expected 401; Grafana: HTTP ${grafana}). Stopping before" \
+    "the app services are deployed; they keep their current revisions." >&2
+  return 1
+}
+
 # Deletes the observability service; its buckets and secrets are kept.
 remove_observability() {
   if run run services describe observability --region "$REGION" >/dev/null 2>&1; then
@@ -456,10 +486,12 @@ deploy_event_services() {
 deploy() {
   ensure_pubsub
 
-  # First, so its URL answers by the time the services start sending to it.
+  # First, so its URL answers by the time the services start sending to it, and so a broken
+  # stack stops the deploy before any app service changes.
   if [ "$OBSERVABILITY" = on ]; then
     deploy_observability
     OTEL_ENDPOINT="$(run_url observability)"
+    check_observability "$OTEL_ENDPOINT"
   fi
 
   if secret_exists mailjet-api-key && secret_exists mailjet-secret-key && secret_exists mailjet-from; then
