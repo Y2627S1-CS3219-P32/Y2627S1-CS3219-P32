@@ -173,6 +173,32 @@ Author review: Checked for correctness. -->
   both sides of a message for `{service_name=~".+"} | messageId="14"`. Not run on Cloud Run.
 - Author review: Pending.
 
+## 2026-11-10: Pub/Sub log messages that describe the message
+
+- Tool: Claude Code (Opus 5.5). Mode: Implementation and verification.
+- Exact prompt: `you're on a new branch now. the previous changes were already merged to main. your
+  goal now is to make the logs more informative instead of just 'processed message' (so that the
+  user doesn't need to click into each description to view what the message actually was)`
+- Key response: In `shared/src/messaging.ts`, the log message for each Pub/Sub message now names
+  its type, topic or subscription and outcome, and lists its key fields, for example
+  `Processed credit.reserve from credit-service-commands in 68 ms: orderId=… requesterId=4
+  amount=7 (message 10)`. The fields come from an allowlist (`SUMMARY_FIELDS`: ids, state,
+  status, code, amount, reason, role and similar) read from the message's JSON at the top level or
+  one object down, so password hashes, verification codes, reset tokens, emails, names and free
+  text are never logged. They are also logged as fields of their own, so Loki can filter by them
+  (for example `| orderId="…"`). Failures read `Did not acknowledge … (HTTP 400) after 4 ms, so
+  Pub/Sub will redeliver it` and `Failed to process …`. Updated `shared/README.md`.
+- Affected files: `shared/src/messaging.ts`, `shared/README.md`, this log.
+- Verification: the five TypeScript services typecheck; user-service tests pass (14). Rebuilt the
+  stack with `compose.observability.yaml`. The local order database had applied the traceparent
+  migration before the merge renumbered it behind `0001_group_orders`, so `order-db-migrate`
+  failed (the column existed) and would have skipped `0001_group_orders`. Repaired that local
+  database by applying `0001_group_orders` and recording both migrations; a fresh database is
+  unaffected. A signup, verification and order then produced the new messages in Loki for every
+  publish and receipt, with no excluded field in them, and `| orderId="<id>"` returned all 15 lines
+  for the order.
+- Author review: Pending.
+
 
 # AI usage log (User Service)
 

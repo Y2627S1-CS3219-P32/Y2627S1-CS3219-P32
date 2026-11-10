@@ -1,7 +1,8 @@
 <!-- AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-11-04.
 Scope: Shared code instructions. Author review: Pending.
 Claude Code (Opus 5.5), 2026-11-04: the OpenTelemetry bootstrap. Author review: Pending.
-Claude Code (Opus 5.5), 2026-11-05: Pub/Sub message logs and traces. Author review: Pending. -->
+Claude Code (Opus 5.5), 2026-11-05: Pub/Sub message logs and traces. Author review: Pending.
+Claude Code (Opus 5.5), 2026-11-10: log messages that describe each message. Author review: Pending. -->
 # Shared code
 
 Code used by more than one backend service: the logger,
@@ -113,18 +114,49 @@ subscription.on("message", (m) => processMessage(name, m, async () => "ack"));  
 instrumentation makes the HTTP request's span current again at every `next()`, so only the
 handler itself can run in the message's trace.
 
-| Log message | Level | Fields |
-| --- | --- | --- |
-| `Published message` | info | `topic`, `messageId`, `eventType`, `orderingKey`, other `attributes` |
-| `Processed message` | info | `subscription`, `messageId`, `eventType`, `orderingKey`, `attributes`, `outcome` (`ack`), `durationMs`, `deliveryDelayMs` (from publish to receipt), `deliveryAttempt`; for push, `statusCode` |
-| `Message not acknowledged; Pub/Sub will redeliver it` | warn, or error for a push 5xx | as above, with `outcome` `nack` |
-| `Failed to process message` | error | as above, with `err` (pull handler threw) |
+Each log message says what the message was, so the log list reads without opening entries:
 
-`messageId` is the same on both sides, so one message can be followed from its publisher
-to every subscriber. In Grafana (**Explore → Loki**), the fields are structured metadata:
-`{service_name=~".+"} | messageId="<id>"`, or every message of one kind with
-`{service_name=~".+"} |= "message" | eventType="order.created"`. A failed publish is logged by the caller,
-which decides whether it is retried.
+```text
+Published order.created to order-events: orderId=271b… supplierId=4cb3… requesterId=4 actorId=4 state=PENDING creditReward=7 sequence=1 (message 9)
+Processed order.created from saga-orchestrator-order-events in 104 ms: orderId=271b… … (message 9)
+Published credit.reserve to credit-commands: orderId=271b… requesterId=4 amount=7 (message 10)
+Did not acknowledge user.verified from credit-service-user-events (HTTP 400) after 4 ms, so Pub/Sub will redeliver it: userId=4 … (message 8)
+```
+
+| Message starts with | Level | When |
+| --- | --- | --- |
+| `Published <type> to <topic>` | info | Pub/Sub accepted the message |
+| `Processed <type> from <subscription> in <n> ms` | info | acknowledged |
+| `Did not acknowledge <type> from <subscription>` | warn, or error for a push 5xx | not acknowledged (push: the HTTP status), so Pub/Sub redelivers it |
+| `Failed to process <type> from <subscription>` | error | a pull handler threw; with `err` |
+| `Push of <type> from <subscription> closed …` | warn | the push connection closed before a response |
+
+After the colon come the message's key fields, from `SUMMARY_FIELDS` in
+[`src/messaging.ts`](src/messaging.ts): ids (`orderId`, `userId`, `supplierId`,
+`requesterId`, `courierId`, `actorId`), `state`, `status`, `code`, `reservationState`,
+`amount`, `creditReward`, `reason`, `role`, `displayName`, the verification status and
+purpose, `isActive`, `applied`, `sequence` and `version`. They are read from the top level of
+the message's JSON or one object down (`user.id` is shown as `userId`). Only fields on that
+list are logged, so password hashes, verification codes, reset tokens, emails, names and free
+text never are; add a field to the list to show it. `(message <id>)` is Pub/Sub's message id,
+the same on both sides, with `attempt <n>` on a redelivery when the subscription counts
+attempts (dead-letter policy).
+
+The same values are also fields of the log entry, beside `topic` or `subscription`,
+`messageId`, `eventType`, `orderingKey`, `attributes` and, when received, `outcome` (`ack` or
+`nack`), `durationMs`, `deliveryDelayMs` (from publish to receipt), `deliveryAttempt` and, for
+push, `statusCode`. In Grafana (**Explore → Loki**) they are structured metadata, so they
+filter without a parser:
+
+| To see | Query |
+| --- | --- |
+| Every message | `{service_name=~".+"} \| messageId != ""` |
+| One order's messages, across services | `{service_name=~".+"} \| orderId="<id>"` |
+| One message, publisher and every subscriber | `{service_name=~".+"} \| messageId="<id>"` |
+| One kind | `{service_name=~".+"} \| eventType="order.created"` |
+| Not acknowledged | `{service_name=~".+"} \| outcome="nack"` |
+
+A failed publish is logged by the caller, which decides whether it is retried.
 
 With telemetry on, publishing adds the trace to the message's attributes (`traceparent`),
 and each subscriber processes the message in that trace, so one trace in Tempo follows a

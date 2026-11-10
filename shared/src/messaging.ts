@@ -3,6 +3,9 @@
  * Scope: A log line and a trace span for every Pub/Sub message a service publishes or
  * receives. The trace travels between services in the message attributes, and is kept
  * with each outbox row until the row is published. Author review: Pending.
+ * Claude Code (Opus 5.5), 2026-11-10: log messages that say what each message was (its
+ * type, key fields and outcome), so they read without opening each entry.
+ * Author review: Pending.
  *
  * Publishing, with a topic from @google-cloud/pubsub:
  *
@@ -24,12 +27,19 @@
  * instrumentation puts the HTTP request's span back as the current one at each next(), so
  * only the handler itself can run in the message's trace.
  *
- * Every message gets one log line on each side, which share its messageId and trace_id:
- *   "Published message"   topic, messageId, eventType, orderingKey, attributes
- *   "Processed message"   subscription, messageId, eventType, outcome (ack or nack),
- *                         durationMs, deliveryDelayMs (since it was published), and for
- *                         push, the statusCode returned to Pub/Sub. A message that is not
- *                         acknowledged is logged as a warning or error instead.
+ * Every message gets one log line on each side, which share its messageId and trace_id.
+ * The text says what the message was, with the fields in SUMMARY_FIELDS:
+ *
+ *   Published order.created to order-events: orderId=… state=PENDING creditReward=5 (message 11)
+ *   Processed order.created from saga-orchestrator-order-events in 44 ms: orderId=… (message 11)
+ *   Did not acknowledge credit.reserve from credit-service-commands (HTTP 500) after 30 ms,
+ *     so Pub/Sub will redeliver it: orderId=… amount=5 (message 8, attempt 2)
+ *
+ * The summary fields are also logged as fields of their own, beside topic or subscription,
+ * messageId, eventType, orderingKey, attributes, and on the receiving side outcome (ack or
+ * nack), durationMs, deliveryDelayMs (since it was published), deliveryAttempt and, for push,
+ * the statusCode returned to Pub/Sub. A message that is not acknowledged is logged as a
+ * warning or error.
  *
  * Without OpenTelemetry (telemetry.mts not loaded, or off) there are no spans and no trace
  * attributes, and only the log lines remain.
@@ -60,6 +70,99 @@ function shortName(name: string): string {
 function loggedAttributes(attributes: Record<string, string> | undefined) {
   const entries = Object.entries(attributes ?? {}).filter(([key]) => !unloggedAttributes.has(key));
   return entries.length > 0 ? Object.fromEntries(entries) : undefined;
+}
+
+// The fields of a message's JSON that describe it in the log, in this order. They are taken
+// from the top level or one object down; an object's `id` counts as <object>Id (user.id is
+// userId, supplier.id is supplierId), and a top-level field wins over a nested one. Only
+// these are logged, so password hashes, verification codes, reset tokens, emails, names and
+// free text never are. Add a field here to show it.
+const SUMMARY_FIELDS = [
+  "orderId",
+  "userId",
+  "supplierId",
+  "requesterId",
+  "courierId",
+  "actorId",
+  "state",
+  "status",
+  "code",
+  "reservationState",
+  "amount",
+  "creditReward",
+  "reason",
+  "role",
+  "displayName",
+  "verificationStatus",
+  "verificationPurpose",
+  "isActive",
+  "applied",
+  "sequence",
+  "version",
+] as const;
+
+type Scalar = string | number | boolean;
+type Summary = { fields: Record<string, Scalar>; text: string };
+
+const MAX_VALUE_LENGTH = 60;
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function formatValue(value: Scalar): string {
+  return typeof value === "string" && !/^[\w.:@+-]+$/.test(value) ? JSON.stringify(value) : String(value);
+}
+
+function summarize(payload: unknown): Summary {
+  if (!isPlainObject(payload)) return { fields: {}, text: "" };
+  const found = new Map<string, unknown>();
+  for (const [key, value] of Object.entries(payload)) {
+    if (!isPlainObject(value)) continue;
+    for (const [nestedKey, nestedValue] of Object.entries(value)) {
+      const name = nestedKey === "id" ? `${key}Id` : nestedKey;
+      if (!found.has(name)) found.set(name, nestedValue);
+    }
+  }
+  for (const [key, value] of Object.entries(payload)) found.set(key, value);
+
+  const fields: Record<string, Scalar> = {};
+  const parts: string[] = [];
+  for (const name of SUMMARY_FIELDS) {
+    const value = found.get(name);
+    let scalar: Scalar;
+    if (typeof value === "string") {
+      if (!value) continue;
+      scalar = value.length > MAX_VALUE_LENGTH ? `${value.slice(0, MAX_VALUE_LENGTH - 1)}…` : value;
+    } else if (typeof value === "number" || typeof value === "boolean") {
+      scalar = value;
+    } else {
+      continue;
+    }
+    fields[name] = scalar;
+    parts.push(`${name}=${formatValue(scalar)}`);
+  }
+  return { fields, text: parts.join(" ") };
+}
+
+// The JSON a message carries: base64 in a push request, a Buffer when pulled or published.
+function decode(data: unknown): unknown {
+  try {
+    if (typeof data === "string") return JSON.parse(Buffer.from(data, "base64").toString("utf8"));
+    if (Buffer.isBuffer(data)) return JSON.parse(data.toString("utf8"));
+  } catch {
+    // Not JSON: logged without a summary.
+  }
+  return undefined;
+}
+
+// ": <summary> (message <id>, attempt <n>)", leaving out what is unknown.
+function details(summary: Summary, messageId: string | undefined, deliveryAttempt?: number) {
+  const ids = [
+    ...(messageId ? [`message ${messageId}`] : []),
+    ...(deliveryAttempt && deliveryAttempt > 1 ? [`attempt ${deliveryAttempt}`] : []),
+  ];
+  return `${summary.text ? `: ${summary.text}` : ""}${ids.length > 0 ? ` (${ids.join(", ")})` : ""}`;
 }
 
 /** The traceparent of the current span: null outside a trace, or with telemetry off. */
@@ -110,15 +213,17 @@ export async function publishMessage(topic: Topic, message: OutgoingMessage): Pr
     try {
       const messageId = await topic.publishMessage({ ...message, attributes });
       span.setAttribute("messaging.message.id", messageId);
+      const summary = summarize(message.json !== undefined ? message.json : decode(message.data));
       logger.info(
         {
+          ...summary.fields,
           topic: topicName,
           messageId,
           eventType,
           orderingKey: message.orderingKey,
           attributes: loggedAttributes(message.attributes),
         },
-        "Published message",
+        `Published ${eventType ?? "a message"} to ${topicName}${details(summary, messageId)}`,
       );
       return messageId;
     } catch (error) {
@@ -139,6 +244,7 @@ type Delivery = {
   orderingKey?: string | undefined;
   deliveryAttempt?: number | undefined;
   publishTime?: Date | undefined;
+  data?: unknown;
 };
 
 type Level = "info" | "warn" | "error";
@@ -172,7 +278,10 @@ function startProcessing(delivery: Delivery) {
   const processing = trace.setSpan(parent, span);
 
   const started = performance.now();
+  const summary = summarize(decode(delivery.data));
+  const subject = `${eventType ?? "a message"} from ${delivery.subscription}`;
   const fields = {
+    ...summary.fields,
     subscription: delivery.subscription,
     messageId: delivery.messageId,
     eventType,
@@ -183,14 +292,24 @@ function startProcessing(delivery: Delivery) {
   };
 
   let finished = false;
-  function finish(level: Level, outcome: Record<string, unknown>, text: string, error?: unknown) {
+  // text(subject, took) starts the message, as in `Processed ${subject} in ${took}`; the
+  // summary and the message id follow it.
+  function finish(
+    level: Level,
+    outcome: Record<string, unknown>,
+    text: (subject: string, took: string) => string,
+    error?: unknown,
+  ) {
     if (finished) return;
     finished = true;
     if (error !== undefined) span.recordException(error instanceof Error ? error : String(error));
     if (level === "error") span.setStatus({ code: SpanStatusCode.ERROR });
     context.with(processing, () => {
       const durationMs = Math.round(performance.now() - started);
-      logger[level]({ ...fields, ...outcome, durationMs, ...(error === undefined ? {} : { err: error }) }, text);
+      logger[level](
+        { ...fields, ...outcome, durationMs, ...(error === undefined ? {} : { err: error }) },
+        `${text(subject, `${durationMs} ms`)}${details(summary, delivery.messageId, delivery.deliveryAttempt)}`,
+      );
     });
     span.end();
   }
@@ -251,23 +370,29 @@ function startPush(req: PushRequest, res: PushResponse, body: Record<string, unk
     orderingKey: string(message.orderingKey) ?? string(message.ordering_key),
     deliveryAttempt: typeof body.deliveryAttempt === "number" ? body.deliveryAttempt : undefined,
     publishTime: date(string(message.publishTime) ?? string(message.publish_time)),
+    data: message.data,
   });
 
   res.once("finish", () => {
     const statusCode = res.statusCode;
     if (ACKNOWLEDGING_STATUSES.has(statusCode)) {
-      processing.finish("info", { outcome: "ack", statusCode }, "Processed message");
+      processing.finish("info", { outcome: "ack", statusCode }, (subject, took) => `Processed ${subject} in ${took}`);
     } else {
       processing.finish(
         statusCode >= 500 ? "error" : "warn",
         { outcome: "nack", statusCode },
-        "Message not acknowledged; Pub/Sub will redeliver it",
+        (subject, took) =>
+          `Did not acknowledge ${subject} (HTTP ${statusCode}) after ${took}, so Pub/Sub will redeliver it`,
       );
     }
   });
   // Only when the connection closes before a response (after one, finish has already run).
   res.once("close", () =>
-    processing.finish("warn", { outcome: "nack" }, "Push request closed before a response"),
+    processing.finish(
+      "warn",
+      { outcome: "nack" },
+      (subject, took) => `Push of ${subject} closed after ${took} without a response, so Pub/Sub will redeliver it`,
+    ),
   );
 
   return processing;
@@ -279,6 +404,7 @@ type PulledMessage = {
   orderingKey?: string | undefined;
   deliveryAttempt?: number | undefined;
   publishTime?: Date | undefined;
+  data?: Buffer | undefined;
   ack(): void;
   nack(): void;
 };
@@ -302,20 +428,30 @@ export async function processMessage(
     orderingKey: message.orderingKey,
     deliveryAttempt: message.deliveryAttempt,
     publishTime: message.publishTime,
+    data: message.data,
   });
   let outcome: Outcome;
   try {
     outcome = await context.with(processing.context, handle);
   } catch (error) {
     message.nack();
-    processing.finish("error", { outcome: "nack" }, "Failed to process message", error);
+    processing.finish(
+      "error",
+      { outcome: "nack" },
+      (subject, took) => `Failed to process ${subject} after ${took}, so Pub/Sub will redeliver it`,
+      error,
+    );
     return;
   }
   if (outcome === "ack") {
     message.ack();
-    processing.finish("info", { outcome }, "Processed message");
+    processing.finish("info", { outcome }, (subject, took) => `Processed ${subject} in ${took}`);
   } else {
     message.nack();
-    processing.finish("warn", { outcome }, "Message not acknowledged; Pub/Sub will redeliver it");
+    processing.finish(
+      "warn",
+      { outcome },
+      (subject, took) => `Did not acknowledge ${subject} after ${took}, so Pub/Sub will redeliver it`,
+    );
   }
 }
