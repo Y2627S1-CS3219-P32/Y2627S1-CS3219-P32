@@ -12,6 +12,8 @@ import { recordSupplierChanges, type Transaction } from "../supplier-events.js";
 import { db, pool } from "./index.js";
 import { buildings, operatingHours, suppliers, types } from "./schema.js";
 import { supplierSeedData } from "./seed-data.js";
+// Claude Code (Opus 5.5), 2026-11-04: logs through the shared pino logger. Author review: Pending.
+import { logger } from "../shared/logger.js";
 
 type SeedSummary = {
   suppliersInserted: number;
@@ -109,8 +111,7 @@ async function main() {
     if (error !== rollback) throw error;
   }
 
-  console.log(dryRun ? "Seed dry run succeeded; all changes rolled back." : "Seed committed.");
-  console.log(summary);
+  logger.info({ summary }, dryRun ? "Seed dry run succeeded; all changes rolled back." : "Seed committed.");
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

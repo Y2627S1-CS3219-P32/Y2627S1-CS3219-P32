@@ -5,10 +5,13 @@
  * Author review: Pending.
  * Claude Code (Opus 5.5), 2026-10-17: message attributes, so subscribers can filter by
  * event type. Author review: Pending.
+ * Claude Code (Opus 5.5), 2026-11-05: publishes through the shared helper, which logs and
+ * traces each message. Author review: Pending.
  * Claude Code (Opus 5.5), 2026-10-17: sync-events topic and subscription. Author review: Pending.
  */
 import { PubSub } from "@google-cloud/pubsub";
 import { config } from "../config.js";
+import { publishMessage } from "../shared/messaging.js";
 
 export type Publisher = (topic: string, data: unknown, orderingKey: string, attributes?: Record<string, string>) => Promise<void>;
 
@@ -21,7 +24,7 @@ function pubsub(): PubSub {
 const publishToPubSub: Publisher = async (topicName, data, orderingKey, attributes = {}) => {
   const topic = pubsub().topic(topicName, { messageOrdering: true });
   try {
-    await topic.publishMessage({ json: data, orderingKey, attributes });
+    await publishMessage(topic, { json: data, orderingKey, attributes });
   } catch (error) {
     // An ordering key pauses after a failure until resumed.
     topic.resumePublishing(orderingKey);

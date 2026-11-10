@@ -28,7 +28,7 @@ withdrawn, or exchanged for money, and only circulate within the platform.
 
 This repository follows a **one-service-per-folder** structure: each
 microservice (`user-service/`, `supplier-service/`, `order-service/`,
-`credit-service/`) lives in its own top-level folder.
+`credit-service/`, `mail-service/`) lives in its own top-level folder.
 
 ```text
 .
@@ -36,6 +36,7 @@ microservice (`user-service/`, `supplier-service/`, `order-service/`,
 ├── supplier-service/
 ├── order-service/
 ├── credit-service/
+├── mail-service/
 ├── chat-service/
 ├── <n2h-service>/
 └── README.md
@@ -100,8 +101,8 @@ which Nuxt fetches over the Compose network. The supplier API remains on host po
 docker compose -f compose.yaml -f compose.dev.yaml up --watch
 ```
 
-[`compose.dev.yaml`](compose.dev.yaml) runs the supplier and user services with
-`tsx watch`, the user event worker with `tsx watch`, and the frontend with `nuxt dev`.
+[`compose.dev.yaml`](compose.dev.yaml) runs the supplier and user services and workers,
+plus mail-service, with `tsx watch`, and the frontend with `nuxt dev`.
 Compose also starts a local Pub/Sub emulator and PostgreSQL projection worker.
 User-service mutations are acknowledged when Pub/Sub accepts them; PostgreSQL
 updates asynchronously, so immediate reads or logins can briefly lag. Compose
@@ -109,6 +110,72 @@ syncs source edits into the containers, which restart (backends) or hot-swap
 modules (frontend) on change.
 Editing a `package.json` rebuilds that service's image. Outside Docker, run
 `npm run dev` in any of these service folders.
+
+## Observability (local)
+
+<!-- AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-11-04.
+Scope: Local observability stack instructions. Author review: Pending.
+Claude Code (Opus 5.5), 2026-11-04: the services' own OpenTelemetry data. Author review: Pending.
+Claude Code (Opus 5.5), 2026-11-05: Pub/Sub messages in logs and traces. Author review: Pending. -->
+
+[`compose.observability.yaml`](compose.observability.yaml) adds an OpenTelemetry
+Collector, Prometheus, Loki, Tempo and Grafana, configured in
+[`observability/`](observability/), and turns on OpenTelemetry in every app service.
+Add it after `compose.yaml` in any Compose command (after `compose.dev.yaml` too, for
+hot reloading):
+
+```sh
+docker compose -f compose.yaml -f compose.observability.yaml up -d --build
+```
+
+To run only the stack, for services started on the host, name its services:
+`docker compose -f compose.yaml -f compose.observability.yaml up -d otel-collector prometheus loki tempo grafana`.
+
+| What | Where |
+| --- | --- |
+| Grafana (log in as `admin` / `admin`) | http://127.0.0.1:3030 |
+| Prometheus | http://127.0.0.1:9090 |
+| OTLP from containers | `http://otel-collector:4318` (HTTP), `otel-collector:4317` (gRPC) |
+| OTLP from the host | `http://127.0.0.1:4318`, `127.0.0.1:4317` |
+
+The collector sends traces to Tempo, metrics to Prometheus and logs to Loki, and
+reports CPU, memory and network use for every container, labelled `compose_service`.
+Grafana links traces, logs and metrics to one another by trace ID.
+
+Each service, frontend-service included, sends traces (HTTP, Express, PostgreSQL), HTTP and
+Node.js runtime metrics, and its pino logs, through
+[`shared/src/telemetry.mts`](shared/src/telemetry.mts). A request's trace follows it from
+frontend-service into the backends it calls, and on through Pub/Sub into every service its
+events and commands reach. Every Pub/Sub message is logged when published and when processed
+(with or without this file), with the same `messageId` on both sides; see
+[`shared/README.md`](shared/README.md#pubsub-messages). In Grafana, open **Explore → Tempo → Search**
+or **Service Graph**, or **Explore → Loki** with `{service_name="order-service"}`. Without
+`compose.observability.yaml`, and on Cloud Run, telemetry is off. See
+[`shared/README.md`](shared/README.md#telemetry) for what is recorded and the settings.
+
+## Logging
+
+<!-- AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-11-04.
+Scope: Shared logger instructions. Author review: Pending. -->
+
+The backend services log through one shared [pino](https://getpino.io) logger in
+[`shared/src/logger.ts`](shared/src/logger.ts): JSON lines on stdout, with auth headers,
+passwords and tokens redacted. Docker builds pass `shared/src` in as a build context. To
+run or test a service outside Docker, copy it in first (again after each change to
+`shared/src`):
+
+```sh
+node shared/sync.mjs
+```
+
+See [`shared/README.md`](shared/README.md) for usage and the `LOG_LEVEL`, `LOG_PRETTY`
+and `OTEL_SERVICE_NAME` settings.
+The `mail-service` sends verification codes for pending accounts and a welcome email
+after `user.verified`, through Mailjet. Set `MAILJET_API_KEY`, `MAILJET_SECRET_KEY`,
+and `MAILJET_FROM` in `.env`; the sender address must be verified with Mailjet. Accounts
+must be verified before users can sign in or access authenticated app functionality. If
+these settings are omitted, codes remain available in the admin user list, but emails
+are skipped.
 
 ## Deploy to Google Cloud (Cloud Run)
 
@@ -126,10 +193,44 @@ gcloud builds submit --config cloudbuild.yaml --region asia-southeast1  # build 
 ./deploy.sh seed    # load supplier seed data (safe to repeat)
 ```
 
+### Automatic deployment (GitHub Actions)
+
+<!-- AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-10-18.
+Scope: GitHub Actions deployment instructions. Author review: Pending. -->
+
+[`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) builds the images and runs
+`./deploy.sh` on every push to `main` (it can also be run manually from the Actions tab, with an
+option to seed). It signs in through Workload Identity Federation, so no service account key is
+stored in GitHub. One-time setup, after `./deploy.sh setup`:
+
+```sh
+./deploy.sh github  # deployer service account, identity pool restricted to this repo's main branch
+```
+
+Then add the three printed values (`GCP_PROJECT_ID`, `GCP_WORKLOAD_IDENTITY_PROVIDER`,
+`GCP_SERVICE_ACCOUNT`) as repository variables under Settings > Secrets and variables > Actions.
+
 The user service publishes state-change events to the `user-events` topic. The
 authenticated `user-event-worker` Cloud Run service consumes its push
 subscription and updates the PostgreSQL read model. Events contain password
 hashes only; GCP IAM restricts publishing and push invocation.
+
+The `mail-service` also consumes `user-events` through an authenticated Pub/Sub push
+subscription and sends verification and welcome emails. After `./deploy.sh setup`, run
+`./deploy.sh mailjet` from an interactive terminal to securely enter your Mailjet
+credentials and verified sender address. The API key and secret key are hidden while
+typing, and the values are saved as Secret Manager versions (updated when the secrets
+already exist). Then run `./deploy.sh` to deploy/redeploy the mail service:
+
+```sh
+./deploy.sh mailjet
+./deploy.sh
+```
+
+The sender address must be verified with Mailjet. The command requires an authenticated
+`gcloud` session with permission to create Secret Manager secrets and versions; it does not
+put credential values in shell history. If the secrets are not configured, deployment
+skips the mail service.
 
 To create the first administrator, add a `bootstrap-secret` in Secret Manager (at least 32
 bytes), re-run `./deploy.sh`, complete `/setup/admin`, then delete the secret and re-run.

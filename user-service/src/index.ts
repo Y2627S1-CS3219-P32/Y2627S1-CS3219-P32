@@ -11,6 +11,8 @@ import { initializeDatabase, pool } from "./db";
 import { HttpError } from "./errors";
 import authRoutes from "./routes/auth.routes";
 import usersRoutes from "./routes/users.routes";
+// Claude Code (Opus 5.5), 2026-11-04: logs through the shared pino logger. Author review: Pending.
+import { logger } from "./shared/logger";
 
 const app = express();
 
@@ -34,7 +36,7 @@ const errorHandler: ErrorRequestHandler = (error, _req, res, _next) => {
     return;
   }
 
-  console.error("[user-service] Request failed", error);
+  logger.error({ err: error }, "Request failed");
   res.status(500).json({ error: "Internal server error" });
 };
 
@@ -43,11 +45,11 @@ app.use(errorHandler);
 initializeDatabase()
   .then(() => {
     app.listen(config.port, () => {
-      console.log(`User service listening on port ${config.port}`);
+      logger.info({ port: config.port }, "User service listening");
     });
   })
   .catch(async (error: unknown) => {
-    console.error("[user-service] Database initialization failed", error);
+    logger.error({ err: error }, "Database initialization failed");
     await pool.end();
     process.exitCode = 1;
   });

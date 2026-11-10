@@ -3,23 +3,27 @@
     Tool: ChatGPT (model: GPT-6), date: 2026-09-29
     Scope: Async PostgreSQL-backed administrator user CRUD
     Author review: Done
+    Tool: ChatGPT (GPT-6), date: 2026-11-04
+    Scope: Create pending accounts and expose verification details to administrators
+    Author review: Pending
 **/
 import { hashPassword } from "../auth";
 import { assertAdministratorCanBeDemoted } from "../administrator-constraints";
-import type { PublicUser, User } from "../db/schema";
+import type { AdminUser, User } from "../db/schema";
 import { HttpError } from "../errors";
 import { publishUserEvent, userSnapshot } from "../events/user-events";
 import {
   countAdministrators,
   findAllUsers,
   findProjectedUserEventVersion,
-  findPublicUserById,
+  findAdminUserById,
   findUserById,
   findUserByDisplayName,
   findUserByEmail,
   reserveUserId,
 } from "../repositories/users.repository";
 import { validateDisplayName } from "../registration-validation";
+import { createVerificationCode } from "../verification";
 
 type UserFields = Pick<User, "name" | "email" | "role"> & Partial<Pick<User, "displayName">>;
 
@@ -108,12 +112,12 @@ async function ensureUniqueDisplayName(displayName: string, excludedId?: number)
   }
 }
 
-function toPublicUser(user: User): PublicUser {
-  const { id, name, displayName, email, role } = user;
-  return { id, name, displayName, email, role };
+function toAdminUser(user: User): AdminUser {
+  const { id, name, displayName, email, role, verificationStatus, verificationCode } = user;
+  return { id, name, displayName, email, role, verificationStatus, verificationCode };
 }
 
-export async function listUsers(): Promise<PublicUser[]> {
+export async function listUsers(): Promise<AdminUser[]> {
   return findAllUsers();
 }
 
@@ -121,13 +125,13 @@ export async function getProjectedEventVersion(): Promise<number> {
   return findProjectedUserEventVersion();
 }
 
-export async function getUser(idParam: string): Promise<PublicUser> {
-  const user = await findPublicUserById(parseUserId(idParam));
+export async function getUser(idParam: string): Promise<AdminUser> {
+  const user = await findAdminUserById(parseUserId(idParam));
   if (!user) throw new HttpError(404, "User not found");
   return user;
 }
 
-export async function createUser(input: unknown): Promise<PublicUser> {
+export async function createUser(input: unknown): Promise<AdminUser> {
   const fields = normalizeFields(input, true);
   const password = getPassword(input, true);
   if (!fields.name || !fields.email || !fields.role || !password) {
@@ -142,16 +146,18 @@ export async function createUser(input: unknown): Promise<PublicUser> {
     email: fields.email,
     role: fields.role,
     passwordHash: hashPassword(password),
+    verificationStatus: "pending_verification",
+    verificationCode: createVerificationCode(),
   };
   await publishUserEvent({ type: "user.created", user: userSnapshot(user) }, user.id);
-  return toPublicUser(user);
+  return toAdminUser(user);
 }
 
 export async function updateUser(
   idParam: string,
   actingUserId: number,
   input: unknown,
-): Promise<PublicUser> {
+): Promise<AdminUser> {
   const id = parseUserId(idParam);
   const current = await findUserById(id);
   if (!current) throw new HttpError(404, "User not found");
@@ -167,11 +173,24 @@ export async function updateUser(
   if (fields.email) await ensureUniqueEmail(fields.email, id);
   if (fields.displayName) await ensureUniqueDisplayName(fields.displayName, id);
 
-  const updates: Partial<Pick<User, "name" | "displayName" | "email" | "role" | "passwordHash">> = { ...fields };
+  const updates: Partial<Pick<
+    User,
+    | "name"
+    | "displayName"
+    | "email"
+    | "role"
+    | "passwordHash"
+    | "verificationStatus"
+    | "verificationCode"
+  >> = { ...fields };
+  if (fields.email && fields.email !== current.email) {
+    updates.verificationStatus = "pending_verification";
+    updates.verificationCode = createVerificationCode();
+  }
   if (password !== undefined) updates.passwordHash = hashPassword(password);
   const user: User = { ...current, ...updates };
   await publishUserEvent({ type: "user.updated", user: userSnapshot(user) }, id);
-  return toPublicUser(user);
+  return toAdminUser(user);
 }
 
 export async function deleteUser(idParam: string, actingUserId: number): Promise<void> {

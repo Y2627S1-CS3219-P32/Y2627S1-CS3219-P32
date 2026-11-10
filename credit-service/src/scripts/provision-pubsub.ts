@@ -1,5 +1,7 @@
 import { PubSub } from "@google-cloud/pubsub";
 import { config } from "../config.js";
+// Claude Code (Opus 5.5), 2026-11-04: logs through the shared pino logger. Author review: Pending.
+import { logger } from "../shared/logger.js";
 export async function provision() {
   const pubsub = new PubSub({ projectId: config.projectId });
   try {
@@ -54,13 +56,14 @@ export async function provision() {
             },
           });
       } else await subscription.setMetadata({ pushConfig });
-      console.log(
-        JSON.stringify({
+      logger.info(
+        {
           topic: descriptor.topic,
           subscription: descriptor.subscription,
           pushEndpoint: endpoint.origin + endpoint.pathname,
           status: "ready",
-        }),
+        },
+        "pubsub_subscription_ready",
       );
     }
   } finally {
@@ -74,9 +77,9 @@ while (true) {
     break;
   } catch (error) {
     if (++attempt >= 30) throw error;
-    console.error(
+    logger.error(
+      { reason: error instanceof Error ? error.message : "unknown" },
       "pubsub_provision_retry",
-      error instanceof Error ? error.message : "unknown",
     );
     await new Promise((resolve) => setTimeout(resolve, 1000));
   }

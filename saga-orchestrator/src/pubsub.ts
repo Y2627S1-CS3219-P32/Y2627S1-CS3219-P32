@@ -3,9 +3,12 @@
  * Scope: Pub/Sub publishing with ordering keys and attributes, push-message decoding, and
  * topic and push-subscription setup on the local emulator, as in order-service.
  * Author review: Pending.
+ * Claude Code (Opus 5.5), 2026-11-05: publishes through the shared helper, which logs and
+ * traces each message. Author review: Pending.
  */
 import { PubSub } from "@google-cloud/pubsub";
 import { config } from "./config.js";
+import { publishMessage } from "./shared/messaging.js";
 
 export type Publisher = (topic: string, data: unknown, orderingKey: string, attributes: Record<string, string>) => Promise<void>;
 
@@ -18,7 +21,7 @@ function pubsub(): PubSub {
 let publisher: Publisher = async (topicName, data, orderingKey, attributes) => {
   const topic = pubsub().topic(topicName, { messageOrdering: true });
   try {
-    await topic.publishMessage({ json: data, orderingKey, attributes });
+    await publishMessage(topic, { json: data, orderingKey, attributes });
   } catch (error) {
     topic.resumePublishing(orderingKey);
     throw error;

@@ -1,5 +1,6 @@
 # AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-28.
 # Scope: Add a development target for Drizzle tooling and Compose migrations. Author review: Check for correctness.
+# syntax=docker/dockerfile:1.7
 FROM node:22-bookworm-slim AS tooling
 
 WORKDIR /app
@@ -10,6 +11,9 @@ RUN npm ci
 COPY tsconfig.json tsconfig.build.json ./
 COPY drizzle.config.ts ./
 COPY src ./src
+# Claude Code (Opus 5.5), 2026-11-04: shared code (the logger) from the `shared` build
+# context, which compose.yaml and cloudbuild.yaml pass in. Author review: Pending.
+COPY --from=shared . ./src/shared/
 COPY drizzle ./drizzle
 CMD ["npm", "run", "db:check"]
 
@@ -28,4 +32,6 @@ COPY --from=build --chown=node:node /app/dist ./dist
 USER node
 EXPOSE 3000
 
-CMD ["node", "dist/index.js"]
+# Claude Code (Opus 5.5), 2026-11-04: OpenTelemetry loads first; it stays off unless
+# OTEL_EXPORTER_OTLP_ENDPOINT is set. See shared/README.md. Author review: Pending.
+CMD ["node", "--import", "./dist/shared/telemetry.mjs", "dist/index.js"]

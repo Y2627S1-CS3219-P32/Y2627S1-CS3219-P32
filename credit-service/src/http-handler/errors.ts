@@ -1,5 +1,7 @@
 import type { NextFunction, Request, Response } from "express";
 import { CreditError } from "../common/types.js";
+// Claude Code (Opus 5.5), 2026-11-04: logs through the shared pino logger. Author review: Pending.
+import { logger } from "../shared/logger.js";
 
 const statuses: Record<string, number> = {
   INVALID_INPUT: 400,
@@ -26,9 +28,9 @@ export function errorHandler(
         : 503;
   if (status === 503) res.set("retry-after", "2");
   if (!(error instanceof CreditError))
-    console.error(
+    logger.error(
+      { reason: error instanceof Error ? error.message : "unknown" },
       "credit_request_failed",
-      error instanceof Error ? error.message : "unknown",
     );
   res.status(status).json({
     code:

@@ -34,6 +34,145 @@ Author review: Checked for correctness. -->
   and the student confirmed the supplier directory loads on the deployed frontend.
 - Author review: Pending.
 
+## 2026-11-04: Local observability stack
+
+- Tool: Claude Code (Opus 5.5). Mode: Boilerplate generation (infrastructure config) and
+  verification.
+- Exact prompt: `can you spin up an observability stack in compose? (otel, prometheus, grafana,
+  loki, tempo) - beware of the port conflicts`
+- Key response: Added a Compose overlay with an OpenTelemetry Collector (OTLP in; traces to
+  Tempo, metrics to Prometheus over OTLP, logs to Loki over OTLP; Docker container metrics),
+  Prometheus, Loki, Tempo (service-graph and span metrics written to Prometheus) and Grafana
+  with provisioned, cross-linked data sources. Host ports avoid the app's: Grafana 3030,
+  Prometheus 9090, OTLP 4317/4318, all on 127.0.0.1; Loki and Tempo are not published.
+- Affected files: `compose.observability.yaml`, `observability/otel-collector.yaml`,
+  `observability/prometheus.yaml`, `observability/loki.yaml`, `observability/tempo.yaml`,
+  `observability/grafana/provisioning/datasources/datasources.yaml`, `README.md`, and this log.
+- Verification: `docker compose -f compose.yaml -f compose.observability.yaml config` passed.
+  Started the stack, sent test traces, logs and metrics with `telemetrygen`, and found them in
+  Tempo, Loki and Prometheus through Grafana's data-source proxy; Tempo's service-graph metrics
+  and per-container metrics labelled by Compose service reached Prometheus; all three Grafana
+  data-source health checks passed. The application services are not instrumented yet.
+- Author review: Pending.
+
+## 2026-11-04: Shared pino logger
+
+- Tool: Claude Code (Opus 5.5). Mode: Implementation and verification.
+- Exact prompt: `can you create some kind of shared utility file for a logger that every service
+  can use? perhaps use pino`
+- Student decisions (asked before implementing, as they are architecture and security
+  choices): share the file through Docker build contexts rather than committed copies or a
+  local npm package; also migrate the existing `console.*` calls; redact auth headers,
+  passwords and tokens/secrets; JSON output, with pino-pretty in development.
+- Key response: Added `shared/src/logger.ts` (pino; JSON on stdout with a Cloud Logging
+  `severity` field and `message` key; ISO timestamps; `service` from `OTEL_SERVICE_NAME`,
+  Cloud Run's `K_SERVICE` or `package.json`; `LOG_LEVEL`; `LOG_PRETTY`; redaction). The six
+  backend Dockerfiles copy it from a `shared` build context, which `compose.yaml` and
+  `cloudbuild.yaml` (now `docker buildx build`, since the builder's own `docker build` is
+  Docker 20.10) pass in. `shared/sync.mjs` makes the same git-ignored copy for running outside
+  Docker; `compose.dev.yaml` syncs it into dev containers and turns on pretty output. Replaced
+  the `console.*` calls in the six services, keeping each service's message names and keeping
+  the credit service's message-only error logging; left `send-command.ts`'s output on stdout,
+  as `test/pubsub.mjs` parses it. Set `OTEL_SERVICE_NAME` for the credit publisher and the user
+  and supplier event workers in Compose so they log under their Cloud Run names.
+- Affected files: `shared/src/logger.ts`, `shared/sync.mjs`, `shared/README.md`; the
+  Dockerfile, `package.json`, `package-lock.json` and logging call sites of credit,
+  notification, order, saga, supplier and user services; `compose.yaml`, `compose.dev.yaml`,
+  `cloudbuild.yaml`, `.gitignore`, `README.md`, and this log.
+- Verification: all five TypeScript services typecheck and build; test suites pass against a
+  disposable PostgreSQL (user 9, notification 12, order 18, saga 9, supplier 50, credit 40 of
+  41). The credit architecture test fails identically without these changes, because it
+  matches `/` against Windows paths. All 17 backend images built through Compose; the full
+  stack came up healthy with only JSON log lines; dev mode printed pretty logs and Compose
+  watch synced a `shared/src` edit into the container; the Cloud Build `buildx` command built
+  an image in the `gcr.io/cloud-builders/docker` image against the local daemon. Not yet run
+  on Cloud Build itself.
+- Author review: Pending.
+
+## 2026-11-04: OpenTelemetry in every service
+
+- Tool: Claude Code (Opus 5.5). Mode: Implementation and verification.
+- Exact prompt: `theres a observability stack already included in this setup with pino, but nothing
+  is done by otel, help me do that for each service.`
+- Key response: Added `shared/src/telemetry.mts`, an OpenTelemetry Node SDK bootstrap that every
+  service loads with `node --import` (`tsx --import` for user-service and dev mode) before its own
+  code. It registers the `import-in-the-middle` loader hook so ES modules can be patched, and sends
+  traces (http, fetch, Express, pg), metrics (HTTP durations, Node.js runtime) and pino logs (with
+  trace and span IDs) over OTLP. It does nothing unless `OTEL_EXPORTER_OTLP_ENDPOINT` is set;
+  `compose.observability.yaml` sets it, with a 15 s metric interval, on the ten app services, so
+  telemetry is off in tests, in plain Compose and on Cloud Run. Health-check requests and
+  parentless `pg` queries (pollers) are not traced; `token`, `ticket` and signature query
+  parameters are redacted from recorded URLs, as the Pub/Sub push endpoints carry the internal
+  secret as `?token=`. On SIGTERM it flushes, then exits with code 143 when the service has no
+  handler of its own (Node as PID 1 ignored the signal until Docker killed it). frontend-service
+  runs the same file uncompiled (Node strips its types) from packages installed in an image stage
+  of their own (`frontend-service/telemetry/`), so its server-side calls carry the trace into the
+  backends. Updated start scripts, Dockerfile `CMD`s, `compose.yaml`, `compose.dev.yaml`, the
+  supplier worker in `deploy.sh` (now `npm run worker`), the frontend's build context in
+  `compose.yaml` and `cloudbuild.yaml`, the services' `tsconfig` includes (`src/**/*.mts`), and
+  the READMEs. `compose.observability.yaml` now names the app's services, so it must be used with
+  `compose.yaml`. The `dev` scripts do not load telemetry, since `tsx watch` hangs while loading
+  it on Windows (it works in the Linux dev containers). Pub/Sub messages do not carry trace context.
+- Affected files: `shared/src/telemetry.mts`, `shared/README.md`; `package.json`,
+  `package-lock.json` and `tsconfig*.json` of the credit, notification, order, saga, supplier and
+  user services; the notification, order, saga, supplier and frontend `Dockerfile`s;
+  `frontend-service/telemetry/package.json` and `package-lock.json`; `compose.yaml`,
+  `compose.dev.yaml`, `compose.observability.yaml`, `cloudbuild.yaml`, `deploy.sh`, `README.md`,
+  and this log.
+- Verification: the five TypeScript services typecheck; user-service tests pass (9). Console
+  exporter smoke tests showed Express, http, fetch, pg and pino patched under `node` (ESM), `tsx`
+  (CommonJS) and `tsx watch` in the Linux tooling image, and the redaction working. Rebuilt and
+  ran the full stack with `compose.observability.yaml`: a login through the frontend appeared in
+  Tempo as one trace (frontend-service, then user-service's route and its PostgreSQL query); pino
+  logs from every pino-using service reached Loki, with `trace_id` and `span_id` on logs written
+  during a request; Prometheus had HTTP server metrics and Node.js runtime metrics for all ten
+  services; containers stop in about 2 s. `credit-publisher` stays unhealthy for a reason that
+  predates this change: its health-check script takes 7 to 11 s to exit, over the 5 s timeout.
+  Not run on Cloud Build or Cloud Run.
+- Author review: Pending.
+
+## 2026-11-05: Logs and traces for every Pub/Sub message
+
+- Tool: Claude Code (Opus 5.5). Mode: Implementation and verification.
+- Exact prompt: `log every event, particularly the interactions between the services through pubsub.`
+- Key response: Added `shared/src/messaging.ts`. `publishMessage` replaces `topic.publishMessage`
+  in every publisher (user, order, saga, supplier, credit-publisher). It logs `Published message`
+  with the topic, Pub/Sub `messageId`, `eventType` (the `type` attribute) and ordering key, and with
+  telemetry on adds a `send <topic>` span and the trace's `traceparent` to the message attributes.
+  `receivePush` wraps every push route handler (order, saga, credit, supplier and user workers) and
+  `processMessage` the notification-service pull subscriptions. Each message is handled in a
+  `process <subscription>` span in the publisher's trace and logged once as `Processed message`
+  (or a warning or error when not acknowledged) with the outcome, status, duration and delay since
+  publishing. `receivePush` wraps handlers rather than being a middleware, because the Express
+  instrumentation makes the request's span current again at each `next()`. That was found when
+  the first, middleware version stored the wrong trace. The outbox tables (`order_events`, saga
+  `outbox`, `supplier_events`, `credit_outbox`) gained a nullable `traceparent` column, set on
+  insert by a Drizzle `$defaultFn`, and the relays publish each row in that trace (Drizzle-generated
+  migrations). user-events messages now carry a `type` attribute, as the other topics do. The credit
+  migration test counts migrations from the journal instead of expecting exactly one. Logs are
+  written with or without telemetry; spans and trace attributes only with it.
+- Affected files: `shared/src/messaging.ts`, `shared/README.md`, `README.md`;
+  `user-service/src/events/user-events.ts`, `user-service/src/worker.ts`;
+  `order-service/src/app.ts`, `src/db/schema.ts`, `src/events/outbox.ts`, `src/events/pubsub.ts`,
+  `drizzle/0001_order_events_traceparent.sql`; `saga-orchestrator/src/app.ts`, `src/db/schema.ts`,
+  `src/outbox.ts`, `src/pubsub.ts`, `drizzle/0001_outbox_traceparent.sql`;
+  `supplier-service/src/db/schema.ts`, `src/supplier-events.ts`, `src/worker.ts`,
+  `drizzle/0003_supplier_events_traceparent.sql`; `credit-service/src/db/schema.ts`,
+  `src/event-handler/handlers.ts`, `src/outbox-publisher/publisher.ts`,
+  `migrations/0001_credit_outbox_traceparent.sql`, `test/postgres.test.mjs`;
+  `notification-service/src/subscription.ts`; the Drizzle `meta` journals and snapshots; this log.
+- Verification: the five TypeScript services and user-service's changed files typecheck. Tests pass
+  against a disposable PostgreSQL: order 18, saga 9, notification 12, supplier 50, user 9, and
+  credit 40 of 41. The remaining credit failure, the architecture test, fails on Windows before
+  this change too (it matches `/` in paths); with the separators normalised it passes. Rebuilt the
+  stack with `compose.observability.yaml` (migrations applied) and ran a signup and an order. Every
+  publish and every subscriber's receipt was logged with matching `messageId`s. The signup
+  (user-events to four subscribers, then credit-publisher's `credit.account_allocated`) was one
+  trace. The order was one 93-span trace in Tempo from `POST /orders` through the saga,
+  credit-service, credit-publisher, back to order-service and notification-service. Loki returned
+  both sides of a message for `{service_name=~".+"} | messageId="14"`. Not run on Cloud Run.
+- Author review: Pending.
+
 
 # AI usage log (User Service)
 
@@ -1309,6 +1448,54 @@ for context, frontend-service is being set up. The frontend’s supplier screen 
   1-3 and order-service stored them in `supplier_versions` (ending in a tombstone); the test
   supplier and type were removed afterwards. Cloud deployment was not run.
 
+# AI usage log (Order Ranking Service)
+
+## 2026-10-31: Smart request-to-courier ranking with explanations
+
+- Tool: Claude Code (Opus 5.5). Mode: Design discussion and implementation.
+- Exact prompt: `order-ranking-service makes sense, and for openai key ill give it to you later, just build it first, and then also you can start docker if u want to, and also finally one mroe question: is it possible to make it explainable, like having a threshold for time and coordinates and semantic similarity and if the similarity is high, then we show why we suggested that?`
+  (following the student's design: a separate service keeping a local copy of orders from
+  order events and embedding each order on creation, with time of day and coordinates
+  added to the embedding).
+- Key response: Added `order-ranking-service`, which copies orders from `order-events` and
+  suppliers from `supplier-events`, embeds orders in the background (OpenAI, or a keyless
+  hashing fallback) with retry back-off, and ranks open orders per courier from separate
+  parts (meaning, distance, time of day as a circular feature, preferences, reward). Each
+  part that reaches its threshold becomes a reason. The parts are kept separate instead of
+  one longer vector so each can be explained and weighted. Added a For You tab, reasons on
+  order cards, browser location, a preferences dialog, and Compose services.
+- Affected files: `order-ranking-service/`, `compose.yaml`, `.env.example`,
+  `frontend-service/` (order board, order card, ranking components, Nuxt endpoints, types,
+  config), and this log.
+- Verification: 17 unit and integration tests pass against PostgreSQL with pgvector and a
+  stand-in OpenAI server; the frontend passes `nuxt typecheck`. Not yet run end to end in
+  Docker Compose (the build failed because the machine's disk was full) and not yet run
+  with a real OpenAI key. Not added to `deploy.sh` or `cloudbuild.yaml`.
+- Author review: Pending.
+
+## 2026-11-01: Fixes to the ranking explanations, embeddings and For You refresh
+
+- Tool: Claude Code (Opus 5.5). Mode: Debugging and implementation.
+- Exact prompt: `sector 1, backlog, fix the problems with pr 26 and you can push directly to the pr`
+  (following a review of PR 26).
+- Key response: The time reason says "orders like this" only when both orders have
+  embeddings that reach the semantic threshold. Orders are embedded again when their
+  supplier arrives after them or changes name or type, or when an order moves to another
+  supplier; a new `embedding_input_version` column (migration 0001) stops an embedding of
+  the old text that was in flight from being stored. Past deliveries are only orders in
+  `DELIVERED`, `COMPLETE` or `SETTLED`, not every accepted order. The order board refreshes
+  the For You list, not the hidden ordinary list, after a failed action and on
+  notifications. Test teardown waits for database connections to close.
+- Affected files: `order-ranking-service/` (score, consumers, embedding job, queries, app,
+  schema, migration 0001, tests, README), `frontend-service/` (order board, ranked list,
+  rankings key), and this log.
+- Verification: `npm test` in order-ranking-service, 23/23, against PostgreSQL 16 with
+  pgvector 0.6.0 and the stand-in OpenAI server; new tests failed before each fix. The
+  frontend passes `nuxt typecheck`. The For You refresh was checked in headless Chromium
+  against the Nuxt dev server with stand-in services, before and after the fix. Not run in
+  Docker Compose or with a real OpenAI key.
+- Author review: Pending.
+
 # AI usage log (Deployment)
 
 ## 2026-10-18: Deploying the order, notification, credit and saga services
@@ -1599,4 +1786,185 @@ for context, frontend-service is being set up. The frontend’s supplier screen 
 - Verification: ran the main flow and the internal push requests with Newman against the local
   stack on the Pub/Sub emulator; fixed a variable-scope bug this found.
 
+- Author review: Pending.
+
+## 2026-10-19: Send Mailjet welcome email after user registration
+
+- Tool: ChatGPT (GPT-6). Mode: Implementation, tests, documentation, and verification.
+- User instruction: Add a Mailjet interface to the user service using Nodemailer and
+  send a welcome email after account signup.
+- Key response:
+  - Added a Nodemailer SMTP sender using Mailjet credentials and a configurable
+    verified sender address.
+  - Connected the welcome email to public registration after the user-created
+    event is published. Delivery failures are logged without undoing registration.
+  - Added optional environment and Compose configuration, validation for partial
+    settings, setup documentation, and sender tests.
+  - Added AI-assistance disclosures to the implementation files.
+- Affected files: `.env.example`, `compose.yaml`, `user-service/README.md`,
+  `user-service/package.json`, `user-service/package-lock.json`,
+  `user-service/src/config.ts`, `user-service/src/controllers/auth.controller.ts`,
+  `user-service/src/services/auth.service.ts`,
+  `user-service/src/services/mailjet.service.ts`,
+  `user-service/src/services/mailjet.service.test.ts`, and this log.
+- Verification: All 11 user-service tests passed; targeted strict TypeScript
+  checking, Compose configuration validation, package JSON parsing, and
+  `git diff --check` passed. Later verified the running container had all three
+  Mailjet settings and its SMTP connection/authentication succeeded; no live email
+  delivery confirmation was available.
+- Author review: Pending.
+
+## 2026-11-04: Move welcome email delivery to mail-service
+
+- Tool: ChatGPT (GPT-6). Mode: Refactoring, implementation, tests, and verification.
+- User instruction: Create a separate mail service that sends welcome email in
+  response to `user.created` events.
+- Key response:
+  - Added a standalone Express/Nodemailer service with a Pub/Sub push endpoint that
+    sends a welcome email only for `user.created`.
+  - Delivery failures return 500 so Pub/Sub retries; unrelated events and invalid
+    payloads are acknowledged without sending email.
+  - Removed SMTP configuration and email delivery from user-service; registration
+    now only publishes the existing user-created event.
+  - Wired a local emulator subscription and Cloud Run authenticated push
+    subscription, plus Cloud Build, Compose, Secret Manager, and service docs.
+- Affected files: `mail-service/`, `.env.example`, `compose.yaml`,
+  `compose.dev.yaml`, `cloudbuild.yaml`, `deploy.sh`, `README.md`,
+  `user-service/README.md`, `user-service/package.json`,
+  `user-service/package-lock.json`, `user-service/src/config.ts`,
+  `user-service/src/controllers/auth.controller.ts`,
+  `user-service/src/services/auth.service.ts`, and this log.
+- Verification: Mail-service tests (10/10) and user-service tests (9/9) passed;
+  strict TypeScript checks for both services and `docker compose config --quiet`
+  passed. Cloud Build YAML parsed; deployment script syntax passed; the mail and
+  user service container images built successfully, and the mail image test suite
+  passed.
+- Author review: Pending.
+
+## 2026-11-04: Add account verification status and codes
+
+- Tool: ChatGPT (GPT-6). Mode: Implementation, tests, and verification.
+- User instruction: Track pending/verified account status, generate and persist a
+  verification code, provide a verification command, and expose pending codes on
+  the administrator user page without sending verification email.
+- Key response:
+  - New accounts start pending verification with a generated six-digit code;
+    status and code are included in user events and persisted by the projection.
+  - Added `POST /verify` and an administrator action to verify accounts using the
+    displayed code. Successful verification clears the code.
+  - Public user responses expose verification status but not the code. No
+    verification email is sent.
+- Affected files: `frontend-service/app/pages/admin/users.vue`,
+  `frontend-service/server/api/user-service/verify.post.ts`,
+  `frontend-service/shared/services/user-service/types.ts`,
+  `user-service/README.md`, `user-service/package.json`,
+  `user-service/src/controllers/auth.controller.ts`, `user-service/src/db/schema.ts`,
+  `user-service/src/events/parse-user-event.test.ts`,
+  `user-service/src/events/parse-user-event.ts`,
+  `user-service/src/events/user-events.ts`,
+  `user-service/src/repositories/users.repository.ts`,
+  `user-service/src/routes/auth.routes.ts`,
+  `user-service/src/services/auth.service.ts`,
+  `user-service/src/services/users.service.ts`, `user-service/src/verification.test.ts`,
+  `user-service/src/verification.ts`, `user-service/src/worker.ts`, and this log.
+- Verification: All 12 user-service tests passed; strict user-service TypeScript
+  checking, frontend Nuxt typechecking, `docker compose config --quiet`, and
+  `git diff --check` passed.
+- Author review: Pending.
+
+## 2026-11-04: Gate app access on account verification
+
+- Tool: ChatGPT (GPT-6). Mode: Implementation, tests, and verification.
+- User instruction: Restrict app access to verified users, redirect after signup to
+  verification, and send welcome email when the mail service receives `user.verified`.
+- Key response:
+  - Pending accounts no longer receive a session on registration, cannot log in, and
+    are rejected by user-service authentication and authenticated frontend API proxies.
+    Protected page middleware sends pending users to `/verification`.
+  - Added a public code-entry verification page; successful verification publishes
+    `user.verified`, which is the only event that triggers the welcome email.
+  - Updated service documentation and tests for verified-user mail delivery.
+- Affected files: `README.md`, `frontend-service/app/app.vue`,
+  `frontend-service/app/middleware/admin.global.ts`,
+  `frontend-service/app/middleware/auth.ts`, `frontend-service/app/pages/signup.vue`,
+  `frontend-service/app/pages/verification.vue`,
+  `frontend-service/server/api/user-service/register.post.ts`,
+  `frontend-service/server/middleware/verified-user.ts`,
+  `mail-service/README.md`, `mail-service/src/app.test.ts`, `mail-service/src/app.ts`,
+  `mail-service/src/user-events.test.ts`, `mail-service/src/user-events.ts`,
+  `user-service/README.md`, `user-service/src/controllers/auth.controller.ts`,
+  `user-service/src/events/parse-user-event.test.ts`,
+  `user-service/src/events/parse-user-event.ts`, `user-service/src/events/user-events.ts`,
+  `user-service/src/middleware/authentication.ts`,
+  `user-service/src/services/auth.service.ts`, and this log.
+- Verification: All 12 user-service tests passed; the 8 targeted mail event tests,
+  strict TypeScript checks for user-service and mail-service, frontend Nuxt
+  typechecking, Compose configuration, and `git diff --check` passed. The full
+  mail-service suite has one pre-existing failure in
+  `welcome-email.test.ts`: its expected message text does not match the unchanged
+  sender implementation; 9 of 10 tests pass.
+- Author review: Pending.
+
+## 2026-11-04: Refine verification navigation
+
+- Tool: ChatGPT (GPT-6). Mode: Frontend implementation and verification.
+- User instruction: Use `/verify`, route unverified login attempts to verification,
+  and continue to login after verification.
+- Key response:
+  - Renamed the frontend verification page route to `/verify` and updated signup
+    and protected-page redirects.
+  - A 403 from login now redirects to `/verify` with the email prefilled.
+  - Successful verification redirects to `/login` with the email prefilled and
+    a success message.
+- Affected files: `frontend-service/app/app.vue`,
+  `frontend-service/app/middleware/admin.global.ts`,
+  `frontend-service/app/middleware/auth.ts`, `frontend-service/app/pages/login.vue`,
+  `frontend-service/app/pages/signup.vue`, `frontend-service/app/pages/verify.vue`,
+  and this log.
+- Verification: Frontend Nuxt typechecking and `git diff --check` passed.
+- Author review: Pending.
+
+## 2026-11-04: Send account verification emails
+
+- Tool: ChatGPT (GPT-6). Mode: Implementation, tests, and verification.
+- User instruction: Add email verification.
+- Key response:
+  - Mail-service now emails the six-digit verification code for pending account
+    creation and pending account email updates.
+  - Successful verification continues to trigger the separate welcome email.
+  - Delivery errors remain retryable through Pub/Sub; missing Mailjet settings
+    produce a warning and acknowledge events as before.
+- Affected files: `README.md`, `mail-service/README.md`, `mail-service/src/app.test.ts`,
+  `mail-service/src/app.ts`, `mail-service/src/index.ts`,
+  `mail-service/src/user-events.test.ts`, `mail-service/src/user-events.ts`,
+  `mail-service/src/welcome-email.test.ts`, `mail-service/src/welcome-email.ts`,
+  `user-service/README.md`, and this log.
+- Verification: All 18 mail-service tests passed; strict mail-service TypeScript
+  checking, `docker compose config --quiet`, and `git diff --check` passed.
+
+## 2026-11-05: Configure Mailjet secrets for deployment
+
+- Tool: ChatGPT (GPT-6). Mode: Deployment tooling and documentation.
+- User instruction: Add a way to provide Mailjet API keys for deployment.
+- Key response:
+  - Added `./deploy.sh mailjet`, an interactive command that hides the API and
+    secret keys while entered and saves all three Mailjet settings to Secret
+    Manager without placing the values in shell history.
+  - Existing secrets receive new versions; missing secrets are created.
+  - Documented the command and the subsequent deployment step.
+- Affected files: `deploy.sh`, `README.md`, and this log.
+- Verification: `bash -n` passed with Windows CRLF line endings normalized,
+  and `git diff --check` passed. No live Secret Manager update was run.
+- Author review: Pending.
+## 2026-10-18: Automatic deployment with GitHub Actions
+
+- Tool: Claude Code (Opus 5.5). Mode: Boilerplate generation (deployment config).
+- Exact prompt: `create github actions to automatically deploy this to google cloud.`
+- Key response: A workflow that, on every push to `main` (or a manual run, optionally seeding),
+  signs in to Google Cloud through Workload Identity Federation, submits `cloudbuild.yaml` and
+  waits for it, then runs `deploy.sh` with the build ID as the image tag. `./deploy.sh github`
+  creates the deployer service account and its roles, and an identity pool whose provider only
+  accepts this repository's `main` branch, and prints the repository variables to add.
+- Affected files: `.github/workflows/deploy.yml`, `deploy.sh`, `README.md`, and this log.
+- Verification: `bash -n deploy.sh` and workflow YAML parsing. Not yet run against GCP or GitHub.
 - Author review: Pending.

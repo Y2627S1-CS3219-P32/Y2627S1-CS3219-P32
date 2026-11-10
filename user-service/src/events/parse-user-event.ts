@@ -3,6 +3,9 @@
     Tool: Copilot SDK in VS Code, 2026-10-15
     Scope: Runtime validation for user Pub/Sub events
     Author review: Pending
+    Tool: ChatGPT (GPT-6), date: 2026-11-04
+    Scope: Validate verification fields in event snapshots
+    Author review: Pending
 **/
 import type { UserEvent, UserSnapshot } from "./user-events";
 
@@ -22,9 +25,23 @@ function parseUserSnapshot(value: unknown): UserSnapshot {
     typeof value.displayName !== "string" ||
     typeof value.email !== "string" ||
     (value.role !== "student" && value.role !== "admin") ||
-    typeof value.passwordHash !== "string"
+    typeof value.passwordHash !== "string" ||
+    (value.verificationStatus !== undefined &&
+      value.verificationStatus !== "pending_verification" &&
+      value.verificationStatus !== "verified") ||
+    (value.verificationCode !== undefined &&
+      value.verificationCode !== null &&
+      typeof value.verificationCode !== "string")
   ) {
     throw new Error("Invalid user snapshot in Pub/Sub event");
+  }
+  const verificationStatus = value.verificationStatus ?? "verified";
+  const verificationCode = value.verificationCode ?? null;
+  if (
+    (verificationStatus === "pending_verification" && typeof verificationCode !== "string") ||
+    (verificationStatus === "verified" && verificationCode !== null)
+  ) {
+    throw new Error("Invalid account verification fields in Pub/Sub event");
   }
 
   return {
@@ -34,6 +51,8 @@ function parseUserSnapshot(value: unknown): UserSnapshot {
     email: value.email,
     role: value.role,
     passwordHash: value.passwordHash,
+    verificationStatus,
+    verificationCode,
   };
 }
 
@@ -47,12 +66,20 @@ export function parseUserEvent(value: unknown): UserEvent {
     throw new Error("Invalid Pub/Sub user event envelope");
   }
 
-  if (value.type === "user.created" || value.type === "user.updated") {
+  if (
+    value.type === "user.created" ||
+    value.type === "user.updated" ||
+    value.type === "user.verified"
+  ) {
+    const user = parseUserSnapshot(value.user);
+    if (value.type === "user.verified" && user.verificationStatus !== "verified") {
+      throw new Error("Verified user event must contain a verified account");
+    }
     return {
       eventId: value.eventId,
       version: value.version,
       type: value.type,
-      user: parseUserSnapshot(value.user),
+      user,
     };
   }
 
