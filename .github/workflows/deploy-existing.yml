@@ -1,5 +1,7 @@
 # AI Assistance Disclosure: Copilot, 2026-11-11.
 # Scope: Manually deploy already-built images by running deploy.sh without Cloud Build.
+# Claude Code (Opus 5.5), 2026-11-11: RANKING_EMBEDDING_SEND_DIMENSIONS, as in deploy.yml.
+# Author review: Pending.
 name: Deploy Existing Images
 
 on:
@@ -24,6 +26,7 @@ env:
   PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
   REGION: asia-southeast1
   TAG: ${{ inputs.tag }}
+  RANKING_EMBEDDING_SEND_DIMENSIONS: ${{ vars.RANKING_EMBEDDING_SEND_DIMENSIONS || 'true' }}
 
 jobs:
   deploy:
