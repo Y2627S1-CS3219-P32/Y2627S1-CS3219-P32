@@ -14,7 +14,7 @@ export async function receiveUserEvent(req: Request, res: Response) {
   const event = parseUserEvent(decodeMessage(req.body));
   const input = { requestId: event.eventId, userId: event.userId };
   switch (event.type) {
-    case "user.created":
+    case "user.verified":
       await initializeAccount(input);
       break;
     case "user.deleted":
