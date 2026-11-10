@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import type { ChatMessage } from "#shared/services/chat-service/types";
 import type { Order } from "#shared/services/order-service/types";
+import type { User } from "#shared/services/user-service/types";
 import { statusOf, useViewerId } from "~/services/order-service/composables/useOrders";
-import { personName } from "~/services/order-service/order-view";
 
 definePageMeta({ middleware: "auth" });
 
@@ -12,12 +12,22 @@ const orderPath = `/api/order-service/orders/${encodeURIComponent(id)}`;
 const messagesPath = `/api/chat-service/orders/${encodeURIComponent(id)}/messages`;
 const { data: order, error: orderError } = await useFetch<Order>(orderPath);
 const viewerId = useViewerId();
+const { data: viewer } = useNuxtData<User | null>("navigation-user");
 const {
   data: messages,
   error: chatError,
   refresh: refreshMessages,
 } = await useFetch<ChatMessage[]>(messagesPath, { default: () => [] });
 
+const optimisticMessages = ref<ChatMessage[]>([]);
+const visibleMessages = computed(() => {
+  const serverMessages = messages.value ?? [];
+  const serverIds = new Set(serverMessages.map(({ id }) => id));
+  return [
+    ...serverMessages,
+    ...optimisticMessages.value.filter(({ id: messageId }) => !serverIds.has(messageId)),
+  ];
+});
 const text = ref("");
 const sending = ref(false);
 const sendError = ref("");
@@ -25,16 +35,34 @@ let pollTimer: ReturnType<typeof setInterval> | undefined;
 
 const error = computed(() => chatError.value ?? orderError.value);
 
+watch(messages, (serverMessages) => {
+  if (!serverMessages) return;
+  const serverIds = new Set(serverMessages.map(({ id: messageId }) => messageId));
+  optimisticMessages.value = optimisticMessages.value.filter(({ id: messageId }) => !serverIds.has(messageId));
+});
+
 async function send() {
   const body = text.value.trim();
   if (!body || sending.value) return;
   sending.value = true;
   sendError.value = "";
+  const optimisticId = `pending:${crypto.randomUUID()}`;
+  optimisticMessages.value.push({
+    id: optimisticId,
+    orderId: id,
+    senderId: viewerId.value ?? -1,
+    body,
+    sentAt: new Date().toISOString(),
+  });
   try {
-    await $fetch(messagesPath, { method: "POST", body: { body } });
+    const sentMessage = await $fetch<ChatMessage>(messagesPath, { method: "POST", body: { body } });
+    optimisticMessages.value = optimisticMessages.value.map((message) =>
+      message.id === optimisticId ? sentMessage : message,
+    );
     text.value = "";
-    await refreshMessages();
+    void refreshMessages();
   } catch (cause) {
+    optimisticMessages.value = optimisticMessages.value.filter(({ id: messageId }) => messageId !== optimisticId);
     sendError.value = getApiErrorMessage(cause) ?? "Your message could not be sent.";
   } finally {
     sending.value = false;
@@ -51,11 +79,12 @@ watch(error, (value) => {
 }, { immediate: true });
 
 function senderName(senderId: number): string {
+  if (senderId === viewer.value?.id && viewer.value.displayName) return viewer.value.displayName;
   if (!order.value) return "Unknown user";
-  if (senderId === order.value.requester.id) return personName(order.value.requester);
-  if (senderId === order.value.courier?.id) return personName(order.value.courier);
+  if (senderId === order.value.requester.id) return order.value.requester.displayName || "Requester";
+  if (senderId === order.value.courier?.id) return order.value.courier.displayName || "Courier";
   const member = order.value.members.find(({ id: memberId }) => memberId === senderId);
-  if (member) return personName(member);
+  if (member) return member.displayName || "Group member";
   return "Unknown user";
 }
 </script>
@@ -75,11 +104,11 @@ function senderName(senderId: number): string {
 
       <section v-else class="flex min-h-[65vh] flex-col overflow-hidden rounded-2xl border border-[#e1e6eb] bg-white shadow-sm">
         <div class="flex-1 space-y-3 overflow-y-auto p-4 md:p-6" aria-live="polite" aria-label="Chat messages">
-          <p v-if="messages.length === 0" class="py-10 text-center text-sm text-[#5b6570]">
+          <p v-if="visibleMessages.length === 0" class="py-10 text-center text-sm text-[#5b6570]">
             No messages yet. Send a message to get started.
           </p>
           <article
-            v-for="message in messages"
+            v-for="message in visibleMessages"
             :key="message.id"
             class="max-w-[85%] rounded-2xl px-4 py-3 text-sm"
             :class="message.senderId === viewerId ? 'ml-auto bg-[#173a73] text-white' : 'bg-[#eef4fa] text-[#18212b]'"
