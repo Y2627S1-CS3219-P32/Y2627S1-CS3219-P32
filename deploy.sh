@@ -29,6 +29,7 @@
 #   ./deploy.sh github  # one-time: let .github/workflows/deploy.yml deploy from main
 #   ./deploy.sh mailjet # securely add/update Mailjet secrets for mail-service
 #   ./deploy.sh soclass # securely configure SoC LLaaS credentials for agent-service
+#   OBSERVABILITY=on ./deploy.sh observability # deploy only the observability stack
 #   ./deploy.sh observability-down  # delete the observability service now (stops its cost)
 #
 # OBSERVABILITY=on ./deploy.sh also deploys the observability stack (Grafana, the
@@ -386,7 +387,7 @@ ensure_observability_resources() {
 # The observability stack as one service: its containers share the instance's localhost,
 # and nginx (the ingress container) sends OTLP to the collector and the rest to Grafana.
 # Exactly one instance, CPU always on: the stores keep recent data in memory and write it to
-# their buckets in the background. Images: observability/Dockerfile, through cloudbuild.yaml.
+# their buckets in the background. Images: observability/Dockerfile, through Cloud Build.
 deploy_observability() {
   ensure_observability_resources
   local image="${REGISTRY}/observability" hosts="MIMIR_HOST=localhost,LOKI_HOST=localhost,TEMPO_HOST=localhost"
@@ -410,6 +411,15 @@ deploy_observability() {
     --set-env-vars "LOKI_OBJECT_STORE=gcs,LOKI_GCS_BUCKET=${OBSERVABILITY_BUCKET_PREFIX}-loki,LOKI_FLUSH_ON_SHUTDOWN=true" \
     --container tempo --image "${image}-tempo:${TAG}" --cpu 1 --memory 1Gi \
     --set-env-vars "MIMIR_HOST=localhost,TEMPO_STORAGE_BACKEND=gcs,TEMPO_GCS_BUCKET=${OBSERVABILITY_BUCKET_PREFIX}-tempo"
+}
+
+deploy_observability_only() {
+  if [ "$OBSERVABILITY" != on ]; then
+    echo "Set OBSERVABILITY=on to deploy the observability stack." >&2
+    return 1
+  fi
+  deploy_observability
+  check_observability "$(run_url observability)"
 }
 
 # Stops the deploy, before any app service is pointed at it, unless the observability service
@@ -958,10 +968,11 @@ case "${1:-deploy}" in
   setup) setup ;;
   deploy) deploy ;;
   agent-services) deploy_agent_services_only ;;
+  observability) deploy_observability_only ;;
   seed) seed ;;
   github) github_ci ;;
   mailjet) configure_mailjet ;;
   soclass) configure_soclass ;;
   observability-down) remove_observability ;;
-  *) echo "Usage: $0 [setup|deploy|agent-services|seed|github|mailjet|soclass|observability-down]" >&2; exit 1 ;;
+  *) echo "Usage: $0 [setup|deploy|agent-services|observability|seed|github|mailjet|soclass|observability-down]" >&2; exit 1 ;;
 esac
