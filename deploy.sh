@@ -21,6 +21,9 @@
 # Author review: Pending.
 # Claude Code (Opus 5.5), 2026-11-11: check_observability, which stops the deploy before the
 # app services if the observability service does not take OTLP. Author review: Pending.
+# Claude Code (Opus 5.5), 2026-11-11: order-ranking-service (database, migrations, SoCLaaS
+# embeddings check, service, push subscriptions, scheduler job, frontend URL) and the
+# `soclaas-embedding` command. Author review: Pending.
 #
 # Usage (from the repository root, after `gcloud builds submit --config cloudbuild.yaml`):
 #   ./deploy.sh setup   # one-time: Cloud SQL, databases, secrets, IAM, networking
@@ -29,6 +32,7 @@
 #   ./deploy.sh github  # one-time: let .github/workflows/deploy.yml deploy from main
 #   ./deploy.sh mailjet # securely add/update Mailjet secrets for mail-service
 #   ./deploy.sh soclass # securely configure SoC LLaaS credentials for agent-service
+#   ./deploy.sh soclaas-embedding # set the SoCLaaS embedding model for order-ranking-service
 #   OBSERVABILITY=on ./deploy.sh observability # deploy only the observability stack
 #   ./deploy.sh observability-down  # delete the observability service now (stops its cost)
 #
@@ -75,6 +79,10 @@ PUBLIC_ORIGINS="${PUBLIC_ORIGINS:-https://nusfoc.com}"
 OBSERVABILITY="${OBSERVABILITY:-off}"
 # Its buckets are <prefix>-mimir, <prefix>-loki and <prefix>-tempo (bucket names are global).
 OBSERVABILITY_BUCKET_PREFIX="${OBSERVABILITY_BUCKET_PREFIX:-${PROJECT_ID}-observability}"
+# order-ranking-service embeddings: SoCLaaS, unless the soclaas-base-url secret says otherwise.
+SOCLAAS_BASE_URL="${SOCLAAS_BASE_URL:-https://soclaas-api.comp.nus.edu.sg/v1}"
+# false for an embedding model that returns 1536 numbers itself but rejects `dimensions`.
+RANKING_EMBEDDING_SEND_DIMENSIONS="${RANKING_EMBEDDING_SEND_DIMENSIONS:-true}"
 
 REGISTRY="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPOSITORY}"
 SQL_CONNECTION="${PROJECT_ID}:${REGION}:${SQL_INSTANCE}"
@@ -91,6 +99,15 @@ require_agent_secrets() {
       return 1
     fi
   done
+}
+
+# order-ranking-service embeds through SoCLaaS with the agent's key and its own model ID:
+# the agent's soclaas-model is a chat model.
+require_ranking_secrets() {
+  if ! secret_exists soclaas-embedding-model; then
+    echo "Missing soclaas-embedding-model. Run './deploy.sh soclaas-embedding' first." >&2
+    return 1
+  fi
 }
 
 # Runtime logins are created after migrations define their restricted roles.
@@ -583,6 +600,52 @@ deploy_event_services() {
   ensure_scheduler_job saga-outbox-publish "${saga_url}/internal/outbox/publish" "$saga_url"
 }
 
+# Ranks open orders for couriers (frontend "Suggested" tab). Its embeddings come from SoCLaaS,
+# checked by a one-off job before the service changes, so a wrong key, model or vector length
+# stops the deploy with the reason. It learns orders and suppliers from events published from
+# now on (see order-ranking-service/README.md). Needs ensure_service_resources (topics,
+# scheduler identity), which deploy_event_services runs first.
+deploy_ranking_service() {
+  create_database socket order_ranking_service rankings order-ranking-database-url
+  # The migrations create the pgvector extension (supported by Cloud SQL; the owner can create it).
+  run_job order-ranking-migrate "${REGISTRY}/order-ranking-service-tooling:${TAG}" order-ranking-database-url \
+    "${SOCKET_DB_FLAGS[@]}" --command npm --args run,db:migrate
+
+  local ranking_url env secrets
+  ranking_url="$(run_url order-ranking-service)"
+  env="^|^PUBSUB_PROJECT_ID=${PROJECT_ID}|INTERNAL_AUDIENCE=${ranking_url}|INTERNAL_INVOKER_EMAILS=${PUBSUB_PUSH_SERVICE_ACCOUNT},${SCHEDULER_SERVICE_ACCOUNT}"
+  env="${env}|EMBEDDING_PROVIDER=openai|EMBEDDING_SEND_DIMENSIONS=${RANKING_EMBEDDING_SEND_DIMENSIONS}"
+  secrets="JWT_SECRET=jwt-secret:latest,OPENAI_API_KEY=soclaas-api-key:latest,EMBEDDING_MODEL=soclaas-embedding-model:latest"
+  if secret_exists soclaas-base-url; then
+    secrets="${secrets},OPENAI_BASE_URL=soclaas-base-url:latest"
+  else
+    env="${env}|OPENAI_BASE_URL=${SOCLAAS_BASE_URL}"
+  fi
+
+  # One embedding request with the settings below; retried twice for a passing provider error.
+  run run jobs deploy order-ranking-embeddings-check --region "$REGION" \
+    --image "${REGISTRY}/order-ranking-service:${TAG}" \
+    --set-env-vars "$env" --set-secrets "$secrets" \
+    --command node --args dist/check-embeddings.js \
+    --max-retries 2 --execute-now --wait
+
+  # Internal ingress, as order-service: users' tokens are verified by the service, and the
+  # internal routes take Google OIDC tokens from Pub/Sub push and Cloud Scheduler only. CPU
+  # stays on because embedding runs after the push handler has answered.
+  run run deploy order-ranking-service --region "$REGION" --image "${REGISTRY}/order-ranking-service:${TAG}" \
+    --port 3000 --ingress internal --allow-unauthenticated --no-cpu-throttling \
+    --startup-probe=httpGet.path=/health,httpGet.port=3000,periodSeconds=2,timeoutSeconds=1,failureThreshold=30 \
+    --add-cloudsql-instances "$SQL_CONNECTION" \
+    --set-env-vars "${env}$(otel_env '|')" \
+    --set-secrets "DATABASE_URL=order-ranking-database-url:latest,${secrets}$(otel_secrets)"
+  ensure_push_subscription order-ranking-service-order-events order-events \
+    "${ranking_url}/internal/pubsub/order-events" "$ranking_url" --enable-message-ordering
+  ensure_push_subscription order-ranking-service-supplier-events supplier-events \
+    "${ranking_url}/internal/pubsub/supplier-events" "$ranking_url" --enable-message-ordering
+  # Retries failed embeddings once their back-off has passed.
+  ensure_scheduler_job order-ranking-embeddings "${ranking_url}/internal/embeddings/process" "$ranking_url"
+}
+
 provision_runtime_login() {
   local name="$1" owner_secret="$2" runtime_secret="$3" role="$4"
   run run jobs deploy "${name}-runtime-login" --region "$REGION" \
@@ -694,6 +757,7 @@ deploy_agent_services_only() {
 
 deploy() {
   require_agent_secrets
+  require_ranking_secrets
   ensure_pubsub
 
   # First, so its URL answers by the time the services start sending to it, and so a broken
@@ -814,6 +878,7 @@ deploy() {
 
   deploy_event_services
   deploy_agent_services
+  deploy_ranking_service
   local notification_url
   notification_url="$(service_url notification-service)"
 
@@ -823,7 +888,7 @@ deploy() {
   run run deploy frontend-service --region "$REGION" --image "${REGISTRY}/frontend-service:${TAG}" \
     --port 3000 --ingress all --allow-unauthenticated \
     --network "$NETWORK" --subnet "$SUBNET" --vpc-egress all-traffic \
-    --set-env-vars "NUXT_USER_SERVICE_BASE_URL=${user_url},NUXT_SUPPLIER_SERVICE_BASE_URL=${supplier_url},NUXT_ORDER_SERVICE_BASE_URL=$(service_url order-service),NUXT_CHAT_SERVICE_BASE_URL=$(service_url chat-service),NUXT_CREDIT_SERVICE_BASE_URL=$(service_url credit-service),NUXT_NOTIFICATION_SERVICE_BASE_URL=${notification_url},NUXT_AGENT_SERVICE_BASE_URL=$(service_url agent-chat-service),NUXT_MANDATE_SERVICE_BASE_URL=$(service_url mandate-service),NUXT_PUBLIC_NOTIFICATION_SERVICE_URL=${notification_url/https:/wss:}$(otel_env ,)" \
+    --set-env-vars "NUXT_USER_SERVICE_BASE_URL=${user_url},NUXT_SUPPLIER_SERVICE_BASE_URL=${supplier_url},NUXT_ORDER_SERVICE_BASE_URL=$(service_url order-service),NUXT_CHAT_SERVICE_BASE_URL=$(service_url chat-service),NUXT_CREDIT_SERVICE_BASE_URL=$(service_url credit-service),NUXT_NOTIFICATION_SERVICE_BASE_URL=${notification_url},NUXT_AGENT_SERVICE_BASE_URL=$(service_url agent-chat-service),NUXT_MANDATE_SERVICE_BASE_URL=$(service_url mandate-service),NUXT_ORDER_RANKING_SERVICE_BASE_URL=$(service_url order-ranking-service),NUXT_PUBLIC_NOTIFICATION_SERVICE_URL=${notification_url/https:/wss:}$(otel_env ,)" \
     "${frontend_secret_flags[@]}"
 
   echo "Frontend: $(service_url frontend-service)"
@@ -959,6 +1024,25 @@ configure_soclass() {
   echo "SoC LLaaS settings saved to Secret Manager. Run './deploy.sh' to deploy agent-orchestrator-service."
 }
 
+# The SoCLaaS model order-ranking-service embeds with: an ID from GET <base URL>/models that
+# supports embeddings and returns 1536 numbers (or accepts `dimensions`). Not a secret, but kept
+# with the other SoCLaaS settings.
+configure_soclaas_embedding() {
+  if [ ! -t 0 ]; then
+    echo "Run './deploy.sh soclaas-embedding' in an interactive terminal." >&2
+    return 1
+  fi
+  local model
+  read -r -p "SoCLaaS embedding model ID: " model
+  if [ -z "$model" ]; then
+    echo "A model ID is required; no secrets were changed." >&2
+    return 1
+  fi
+  store_secret soclaas-embedding-model "$model" >/dev/null
+  unset model
+  echo "Saved soclaas-embedding-model. The next './deploy.sh' checks it before deploying order-ranking-service."
+}
+
 seed() {
   run_job supplier-seed "${REGISTRY}/supplier-service-tooling:${TAG}" supplier-database-url \
     "${PRIVATE_DB_FLAGS[@]}" --command npm --args run,db:seed
@@ -973,6 +1057,7 @@ case "${1:-deploy}" in
   github) github_ci ;;
   mailjet) configure_mailjet ;;
   soclass) configure_soclass ;;
+  soclaas-embedding) configure_soclaas_embedding ;;
   observability-down) remove_observability ;;
-  *) echo "Usage: $0 [setup|deploy|agent-services|observability|seed|github|mailjet|soclass|observability-down]" >&2; exit 1 ;;
+  *) echo "Usage: $0 [setup|deploy|agent-services|observability|seed|github|mailjet|soclass|soclaas-embedding|observability-down]" >&2; exit 1 ;;
 esac
