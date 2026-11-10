@@ -2,7 +2,7 @@
 
 Chat owns authenticated conversation HTTP/SSE, message acceptance, the turn outbox, and approval continuations. Orchestrator owns ordered turn execution, model streaming, and the six domain tools. Mandate Service owns its separate database and user consent.
 
-Run `npm ci && npm run build` from the repository root. See [local startup and deployment](docs/agent-deployment.md) and [runtime behavior](docs/agent-skeleton-implementation.md).
+Run `node shared/sync.mjs && npm ci && npm run build` from the repository root (the sync copies the shared logger, telemetry and Pub/Sub messaging into `common/shared/`; see [shared/README.md](../shared/README.md)). See [local startup and deployment](docs/agent-deployment.md) and [runtime behavior](docs/agent-skeleton-implementation.md).
 
 The `@campus/agent-contracts` workspace owns contracts, the conversation schema, and infrastructure adapters shared within Agent. Runtime repositories use separate restricted database logins. The single initial migration `db/migrations/0000_conversation.sql` creates the current schema and runtime roles.
 

@@ -8,6 +8,13 @@
       "when": 1794319085228,
       "tag": "0000_mandates",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1794325798865,
+      "tag": "0001_mandate_outbox_traceparent",
+      "breakpoints": true
     }
   ]
 }

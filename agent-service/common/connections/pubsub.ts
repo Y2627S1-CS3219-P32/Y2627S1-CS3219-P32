@@ -1,12 +1,26 @@
+// AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-11-10.
+// Scope: messages published and processed through the shared Pub/Sub messaging (common/shared/,
+// a copy of shared/src): a log line on each side and, with telemetry on, a span in the trace
+// that published the message. Author review: Pending.
 import { PubSub, v1 } from '@google-cloud/pubsub';
 import type { z } from 'zod';
 import { parseBounded, turnSchema, approvalSchema } from '../../contracts/events.js';
+import { processDelivery, publishMessage, type Delivery } from '../shared/messaging.js';
 
 export interface BrokerDelivery<T> {
   event: T;
   ack(): Promise<void>;
   renew(seconds?: number): Promise<void>;
   defer(): Promise<void>;
+  /** The message as received, for its log line and trace. */
+  message?: Delivery;
+}
+
+// A protobuf Timestamp, whose seconds may be a number, string or Long.
+function timestamp(value: { seconds?: unknown; nanos?: number | null } | null | undefined) {
+  if (value?.seconds == null) return undefined;
+  const ms = Number(value.seconds) * 1000 + Math.floor((value.nanos ?? 0) / 1e6);
+  return Number.isFinite(ms) ? new Date(ms) : undefined;
 }
 export function createBroker(projectId: string, emulator = process.env.PUBSUB_EMULATOR_HOST) {
   if (!projectId || !/^[a-z][a-z0-9-]+$/.test(projectId))
@@ -38,7 +52,7 @@ export function createBroker(projectId: string, emulator = process.env.PUBSUB_EM
       topics.set(topic, handle);
     }
     try {
-      return await handle.publishMessage({
+      return await publishMessage(handle, {
         data: Buffer.from(JSON.stringify(orderingKey ? turnSchema.parse(event).data : event)),
         orderingKey,
         attributes,
@@ -89,8 +103,18 @@ export function createBroker(projectId: string, emulator = process.env.PUBSUB_EM
             }
           : body,
       );
+      const message = received.message;
       return {
         event,
+        message: {
+          subscription: name,
+          messageId: message?.messageId ?? undefined,
+          attributes: message?.attributes ?? undefined,
+          orderingKey: message?.orderingKey ?? undefined,
+          deliveryAttempt: received.deliveryAttempt ?? undefined,
+          publishTime: timestamp(message?.publishTime),
+          data: Buffer.from(bytes),
+        },
         renew,
         async ack() {
           await subscriber.acknowledge(
@@ -159,6 +183,8 @@ export async function consume<T>(input: {
       let timer: ReturnType<typeof setInterval> | undefined;
       const lease = new AbortController();
       const signal = AbortSignal.any([input.signal, lease.signal, AbortSignal.timeout(120_000)]);
+      // Set once processDelivery has logged a failure itself.
+      let logged = false;
       try {
         delivery = await input.pull(input.signal);
         if (!delivery) continue;
@@ -170,10 +196,18 @@ export async function consume<T>(input: {
             input.onError(error);
           });
         }, 10_000);
-        await input.handle(current.event, signal);
-        if (!signal.aborted) await current.ack();
+        const run = async () => {
+          await input.handle(current.event, signal);
+          if (signal.aborted) return 'nack' as const;
+          await current.ack();
+          return 'ack' as const;
+        };
+        if (current.message) {
+          logged = true;
+          await processDelivery(current.message, run);
+        } else await run();
       } catch (error) {
-        if (!input.signal.aborted) input.onError(error);
+        if (!input.signal.aborted && !logged) input.onError(error);
         if (delivery) await delivery.defer().catch(input.onError);
         if (!input.signal.aborted) await new Promise((resolve) => setTimeout(resolve, 200));
       } finally {

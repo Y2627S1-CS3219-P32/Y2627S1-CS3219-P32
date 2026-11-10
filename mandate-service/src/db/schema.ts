@@ -48,4 +48,7 @@ export const mandateOutbox = pgTable('mandate_outbox', {
   payload: jsonb('payload').$type<MandateApproved>().notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   publishedAt: timestamp('published_at', { withTimezone: true }),
+  // Claude Code (Opus 5.5), 2026-11-10: the W3C trace context the row was written in, so the
+  // relay publishes it in that trace (shared/src/messaging.ts). Author review: Pending.
+  traceparent: text('traceparent'),
 }, table => [index('mandate_outbox_unpublished').on(table.createdAt).where(sql`${table.publishedAt} IS NULL`)]);

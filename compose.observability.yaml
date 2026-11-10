@@ -14,6 +14,9 @@
 # names the app's services. Author review: Pending.
 # Claude Code (Opus 5.5), 2026-11-10: the chat, mail, order-ranking and sync services too.
 # Author review: Pending.
+# Claude Code (Opus 5.5), 2026-11-10: the agent-skeleton profile's agent-chat, agent-orchestrator
+# and mandate services, which still start only with `--profile agent-skeleton`.
+# Author review: Pending.
 #
 # Host ports avoid the app's 3000-3004, 3333 and 543x. All bind to 127.0.0.1:
 #   Grafana        http://127.0.0.1:3030   (admin / admin unless GRAFANA_ADMIN_* is set)
@@ -73,6 +76,16 @@ services:
     environment: *otel-environment
     depends_on: *otel-depends-on
   sync-service:
+    environment: *otel-environment
+    depends_on: *otel-depends-on
+  # In the agent-skeleton profile; their images set OTEL_SERVICE_NAME.
+  agent-chat-service:
+    environment: *otel-environment
+    depends_on: *otel-depends-on
+  agent-orchestrator-service:
+    environment: *otel-environment
+    depends_on: *otel-depends-on
+  mandate-service:
     environment: *otel-environment
     depends_on: *otel-depends-on
   frontend-service:

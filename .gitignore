@@ -17,4 +17,5 @@ Thumbs.db
 
 # Copies of shared/src made by `node shared/sync.mjs`; edit shared/src instead.
 /*/src/shared/
+/agent-service/common/shared/
 node_modules/

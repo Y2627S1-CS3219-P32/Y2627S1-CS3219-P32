@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import type { MandateConstraint, MandateId, CreateMandate, ApprovalRequest, UserId } from './common/validation.js';
 import { z } from 'zod';
 import { sql, rows, transaction } from './db/client.js';
+import { currentTraceparent } from './shared/messaging.js';
 import {
   approvalSchema,
   HttpError,
@@ -125,9 +126,11 @@ export async function approveMandate(input: ApprovalInput) {
       business_key_id: mandate.business_key_id,
       occurred_at: new Date().toISOString(),
     });
+    // Claude Code (Opus 5.5), 2026-11-10: the trace the approval was made in, for the relay to
+    // publish it in; null with telemetry off. Author review: Pending.
     await sql(
-      'INSERT INTO mandate_outbox(event_id,mandate_id,event_type,payload) VALUES($1,$2,$3,$4)',
-      [event.event_id, mandate.id, event.event_type, JSON.stringify(event)],
+      'INSERT INTO mandate_outbox(event_id,mandate_id,event_type,payload,traceparent) VALUES($1,$2,$3,$4,$5)',
+      [event.event_id, mandate.id, event.event_type, JSON.stringify(event), currentTraceparent()],
     );
     return getMandate(input.owner, mandate.id);
   });
@@ -158,8 +161,8 @@ export async function transitionMandate(input: LifecycleInput) {
 }
 export async function listPendingApprovalEvents() {
   return rows(
-    z.object({ payload: approvalSchema }),
-    'SELECT payload FROM mandate_outbox WHERE published_at IS NULL ORDER BY created_at LIMIT 50',
+    z.object({ payload: approvalSchema, traceparent: z.string().nullable() }),
+    'SELECT payload,traceparent FROM mandate_outbox WHERE published_at IS NULL ORDER BY created_at LIMIT 50',
   );
 }
 export async function markApprovalPublished(id: string) {

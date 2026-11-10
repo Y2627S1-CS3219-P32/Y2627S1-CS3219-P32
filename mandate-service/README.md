@@ -2,7 +2,7 @@
 
 Mandate owns pending terms, immutable constraints, explicit owner approval, lifecycle transitions, coverage checks, and a transactional approval outbox. Agent never accesses its database.
 
-Run `npm start --workspace mandate-service` after `npm run build --workspace mandate-service`, or follow the [local Compose setup](../agent-service/docs/agent-deployment.md). Supply `DATABASE_URL`, `JWT_SECRET`, service authentication settings, `PUBSUB_PROJECT_ID`, and `MANDATE_TOPIC`.
+Run `npm start --workspace mandate-service` after `node shared/sync.mjs` (which copies the shared logger, telemetry and Pub/Sub messaging into `src/shared/`; see [shared/README.md](../shared/README.md)) and `npm run build --workspace mandate-service`, or follow the [local Compose setup](../agent-service/docs/agent-deployment.md). Supply `DATABASE_URL`, `JWT_SECRET`, service authentication settings, `PUBSUB_PROJECT_ID`, and `MANDATE_TOPIC`.
 
 The single initial migration `migrations/0000_mandates.sql` creates the current schema and restricted runtime role. See the local setup guide before using it with a database that applied the earlier migration history.
 

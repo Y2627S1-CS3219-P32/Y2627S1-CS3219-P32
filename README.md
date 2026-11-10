@@ -118,7 +118,8 @@ Scope: Local observability stack instructions. Author review: Pending.
 Claude Code (Opus 5.5), 2026-11-04: the services' own OpenTelemetry data. Author review: Pending.
 Claude Code (Opus 5.5), 2026-11-05: Pub/Sub messages in logs and traces. Author review: Pending.
 Claude Code (Opus 5.5), 2026-11-10: Mimir in place of Prometheus; the stack on Cloud Run.
-Author review: Pending. -->
+Author review: Pending.
+Claude Code (Opus 5.5), 2026-11-10: the agent and mandate services. Author review: Pending. -->
 
 [`compose.observability.yaml`](compose.observability.yaml) adds an OpenTelemetry
 Collector, Grafana Mimir (for metrics), Loki, Tempo and Grafana, built from
@@ -157,6 +158,13 @@ or **Service Graph**, or **Explore → Loki** with `{service_name="order-service
 `compose.observability.yaml` telemetry is off, and on Cloud Run unless the observability stack
 is deployed ([below](#observability-on-cloud-run)). See
 [`shared/README.md`](shared/README.md#telemetry) for what is recorded and the settings.
+
+The agent-chat, agent-orchestrator and mandate services are instrumented the same way, and
+start only with Compose's `agent-skeleton` profile:
+`docker compose -f compose.yaml -f compose.observability.yaml --profile agent-skeleton up -d --build`.
+A chat message's trace runs from frontend-service through agent-chat-service, Pub/Sub and
+agent-orchestrator-service into the services its tools call; a mandate approval's runs from
+mandate-service through agent-chat-service into the turn it resumes.
 
 ## Logging
 

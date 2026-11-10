@@ -6,7 +6,9 @@ Claude Code (Opus 5.5), 2026-11-10: log messages that describe each message. Aut
 Claude Code (Opus 5.5), 2026-11-10: the chat, mail, order-ranking and sync services; the `level`
 option. Author review: Pending.
 Claude Code (Opus 5.5), 2026-11-10: Cloud Run telemetry settings; service.instance.id.
-Author review: Pending. -->
+Author review: Pending.
+Claude Code (Opus 5.5), 2026-11-10: agent-service (chat, orchestrator) and mandate-service;
+processDelivery. Author review: Pending. -->
 # Shared code
 
 Code used by more than one backend service: the logger,
@@ -23,6 +25,11 @@ Edit files here only. The services get copies:
   docker buildx build --build-context shared=shared/src order-service
   ```
 
+  agent-service and mandate-service build from the repository root, so their Dockerfiles copy
+  `shared/src` straight from it. agent-service's copy is `common/shared/`, part of
+  `@campus/agent-contracts`, which exports it to the chat and orchestrator services as
+  `@campus/agent-contracts/shared/logger` and `.../shared/messaging`.
+
 - **Outside Docker** (`npm run dev`, `npm test`, your editor): run this once after cloning
   and again after changing anything in `shared/src`:
 
@@ -30,8 +37,8 @@ Edit files here only. The services get copies:
   node shared/sync.mjs
   ```
 
-  It replaces each service's `src/shared/` with a fresh copy. Those folders are
-  git-ignored, so never edit them.
+  It replaces each service's `src/shared/` (agent-service: `common/shared/`) with a fresh
+  copy. Those folders are git-ignored, so never edit them.
 
 - **`compose.dev.yaml`** syncs `shared/src` into the running containers on every change.
 
@@ -68,7 +75,14 @@ it with `--import`:
 node --import ./dist/shared/telemetry.mjs dist/index.js   # compiled services
 tsx --import ./src/shared/telemetry.mts src/index.ts      # user-service, mail-service, compose.dev.yaml
 node --import ./otel/telemetry.mts .output/server/index.mjs   # frontend-service image
+node --import ./agent-service/dist/common/shared/telemetry.mjs agent-service/chat/dist/main.js
+node --import ./mandate-service/dist/shared/telemetry.mjs mandate-service/dist/main.js
 ```
+
+The agent and mandate images run from the repository root, which has no `package.json`, so
+they set `OTEL_SERVICE_NAME` (`agent-chat-service`, `agent-orchestrator-service`,
+`mandate-service`). They are in Compose's `agent-skeleton` profile, so add
+`--profile agent-skeleton` to see them.
 
 It does nothing unless `OTEL_EXPORTER_OTLP_ENDPOINT` is set. `compose.observability.yaml`
 sets it on every app service, so telemetry is on with that file and off without it (and in
@@ -121,7 +135,13 @@ await publishMessage(topic, { json, orderingKey, attributes });  // instead of t
 router.post("/pubsub/order-events", receivePush(async (req: Request, res: Response) => { ... }));
 subscription.on("message", (m) => processMessage(name, m, async () => "ack"));  // pull
 await publishMessage(topic, message, { level: "debug" });                    // frequent messages
+await processDelivery(delivery, async () => { await handle(); await ack(); return "ack"; });  // own pull loop
 ```
+
+`processDelivery` is for a pull loop that acknowledges messages itself, as agent-service's
+`consume()` does (it renews each message's lease while the handler runs). It runs the handler
+in the message's trace and logs the outcome it returns; if the handler throws, it logs the
+failure and rethrows. `processMessage` is built on it.
 
 `{ level: "debug" }` (on `publishMessage` and `processMessage`) logs the success line at debug,
 for messages too frequent to read at info; failures stay warn or error. sync-service uses it
@@ -154,7 +174,10 @@ After the colon come the message's key fields, from `SUMMARY_FIELDS` in
 [`src/messaging.ts`](src/messaging.ts): ids (`orderId`, `userId`, `supplierId`,
 `requesterId`, `courierId`, `actorId`, `senderId`, `placedBy`), `state`, `status`, `code`, `reservationState`,
 `amount`, `creditReward`, `reason`, `role`, `displayName`, the verification status and
-purpose, `isActive`, `applied`, `sequence` and `version`. They are read from the top level of
+purpose, `isActive`, `applied`, `sequence` and `version`, and agent-service's and
+mandate-service's snake_case ids (`conversation_id`, `message_id`, `mandate_id`, `user_id`).
+The message type is the `type` attribute, or agent-service's `event_type` attribute, or the
+JSON's `event_type` (mandate-service). They are read from the top level of
 the message's JSON or one object down (`user.id` is shown as `userId`), and from the message's
 attributes for what the JSON lacks (all of it, for sync-service's binary relay messages). Only
 fields on that list are logged, so password hashes, verification codes, reset tokens, emails,
@@ -186,8 +209,11 @@ The spans are `send <topic>` and `process <subscription>`. A push request's own 
 starts without trace context (Pub/Sub does not send it), so it is linked to the
 `process` span instead.
 
-The outbox tables (`order_events`, saga `outbox`, `supplier_events`, `credit_outbox`) have
-a `traceparent` column, filled in on insert with the trace the row was written in. The
+The outbox tables (`order_events`, saga `outbox`, `supplier_events`, `credit_outbox`,
+`mandate_outbox`) have a `traceparent` column, filled in on insert with the trace the row was
+written in. agent-service's `turn_outbox` keeps it in the stored event, as
+`attributes.traceparent`, so a chat message's trace runs on through the orchestrator's turn,
+and an approval's from mandate-service through agent-chat-service into the turn it resumes. The
 relay publishes each row in its own trace, even when it runs later or in another process,
 as credit-publisher does:
 
