@@ -11,13 +11,13 @@
  * and cancelling before acceptance. Author review: Pending.
  * Claude Code (Opus 5.5), 2026-10-18: wait for the publish before returning. Author review: Pending.
  */
-import { and, asc, desc, eq, lte } from "drizzle-orm";
+import { and, asc, desc, eq, lte, sql } from "drizzle-orm";
 import { config } from "../config.js";
 import { db, type Transaction } from "../db/index.js";
 import { orderEvents, orderMembers, orders, supplierVersions, users, type OrderState } from "../db/schema.js";
 import { HttpError } from "../errors.js";
 import { requestOutboxPublish } from "../events/outbox.js";
-import type { OrderEdit, OrderInput } from "./input.js";
+import { parseOrderInput, type OrderEdit, type OrderInput } from "./input.js";
 
 type Order = typeof orders.$inferSelect;
 type OrderUpdates = Partial<Pick<Order, "courierId" | "acceptedAt" | "expiresAt" | "title" | "description" | "deliveryLocation">>;
@@ -95,8 +95,19 @@ async function appendEvent(
 // FR10.1: the order starts PENDING and records order.created, which starts the
 // credit reservation saga. A group order starts SYNCHRONISING (order.group_started) while
 // members edit the description together; order.created follows when it is placed.
-export async function createOrder(requesterId: number, input: OrderInput): Promise<string> {
+export async function createOrder(requesterId: number, input: OrderInput, commandId?: string): Promise<string> {
   const id = await db.transaction(async (tx) => {
+    if (commandId) {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${commandId},0))`);
+      const [prior] = await tx.select().from(orderEvents).where(eq(orderEvents.commandId, commandId));
+      if (prior) {
+        const type = input.isGroupOrder ? "order.group_started" : "order.created";
+        if (prior.actorId !== requesterId || prior.type !== type ||
+            JSON.stringify(parseOrderInput(prior.payload)) !== JSON.stringify(parseOrderInput(input)))
+          throw new HttpError(409, "Command ID already used for different order details");
+        return prior.orderId;
+      }
+    }
     // The latest version is the supplier as it is now; the order keeps pointing at it.
     const [supplier] = await tx.select().from(supplierVersions)
       .where(eq(supplierVersions.supplierId, input.supplierId))
@@ -123,6 +134,7 @@ export async function createOrder(requesterId: number, input: OrderInput): Promi
       type: input.isGroupOrder ? "order.group_started" : "order.created",
       state: order.currentState,
       actorId: requesterId,
+      commandId: commandId ?? null,
       payload: snapshot(order, input.isGroupOrder ? [requesterId] : []),
     });
     return order.id;
@@ -163,9 +175,18 @@ function forbiddenReason(action: UserAction, order: Order, userId: number): stri
   }
 }
 
-export async function performUserAction(action: UserAction, orderId: string, userId: number): Promise<void> {
+export async function performUserAction(action: UserAction, orderId: string, userId: number, commandId?: string): Promise<void> {
   const transition = USER_ACTIONS[action];
   await db.transaction(async (tx) => {
+    if (commandId) {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${commandId},0))`);
+      const [prior] = await tx.select().from(orderEvents).where(eq(orderEvents.commandId, commandId));
+      if (prior) {
+        if (prior.actorId !== userId || prior.orderId !== orderId || prior.type !== transition.type)
+          throw new HttpError(409, "Command ID already used for another action");
+        return;
+      }
+    }
     const order = await lockOrder(tx, orderId);
     if (!order) throw new HttpError(404, "Order not found");
 
@@ -183,7 +204,7 @@ export async function performUserAction(action: UserAction, orderId: string, use
     }
 
     const updates: OrderUpdates = action === "accept" ? { courierId: userId, acceptedAt: new Date() } : {};
-    await appendEvent(tx, order, transition, { actorId: userId, updates });
+    await appendEvent(tx, order, transition, { actorId: userId, updates, ...(commandId ? { commandId } : {}) });
   });
   await requestOutboxPublish();
 }

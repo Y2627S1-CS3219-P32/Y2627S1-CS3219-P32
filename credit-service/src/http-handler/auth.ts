@@ -67,7 +67,7 @@ export function userId(req: Request) {
   if (id === undefined) throw new CreditError("UNAUTHORIZED");
   return id;
 }
-export async function requirePubSubCaller(req: Request) {
+async function requireServiceCaller(req: Request, allowedEmails: string[]) {
   const supplied =
     req.header("x-internal-secret") ??
     (typeof req.query.token === "string" ? req.query.token : undefined);
@@ -85,8 +85,16 @@ export async function requirePubSubCaller(req: Request) {
         audience: config.internalAudience,
       });
       const p = ticket.getPayload();
-      if (p?.email_verified && p.email && p.email === config.pushInvokerEmail) return;
+      if (p?.email_verified && p.email && allowedEmails.includes(p.email)) return;
     } catch {}
   }
   throw new CreditError("UNAUTHORIZED");
+}
+
+export function requirePubSubCaller(req: Request) {
+  return requireServiceCaller(req, config.pushInvokerEmail ? [config.pushInvokerEmail] : []);
+}
+
+export function requireInternalCaller(req: Request) {
+  return requireServiceCaller(req, config.internalInvokerEmails);
 }

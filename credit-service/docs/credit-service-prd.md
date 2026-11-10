@@ -22,7 +22,7 @@ The selected four tables are credit_accounts, credit_orders, credit_transactions
 | PostgreSQL with atomic local transactions | Proposed implementation choice |
 | Initial allocation of 1,000 whole credits | Proposed default from the PDF annotation; team must confirm |
 | Atomic command execution followed by credit events; saga progresses from events | Agreed |
-| Provision accounts from authenticated user.created events only | Selected; no lazy or request-triggered account creation |
+| Provision accounts from authenticated user.verified events only | Selected; no lazy or request-triggered account creation |
 | One total/reserved balance row per user | Agreed; deleted-user history is retained |
 | Four-table model | Account lifecycle is merged into accounts; errand state is derived from CreditOrders/movements; transactional outbox retained |
 | Version removal | No lifecycle, reservation, or event version fields; permanent deletion, unique identities, request locks, and per-errand locks protect correctness |
@@ -39,7 +39,7 @@ Credit’s asynchronous responsibilities are consuming user lifecycle events and
 
 ## Credit domain model
 
-A CreditOrder is one requested credit action, distinct from an errand order. Its finalized request and result are immutable. It handles request idempotency, business intent, lifecycle/status, task/reservation references, the aggregate execution result, and the actual initial grant amount for ALLOCATE. The original reserve is found by errand ID through a successful CreditOrder and its movement, rather than a separate original-request field. Command callers supply a stable request ID and reuse it on retries. Event-driven ALLOCATE uses the source user.created eventId as its request ID.
+A CreditOrder is one requested credit action, distinct from an errand order. Its finalized request and result are immutable. It handles request idempotency, business intent, lifecycle/status, task/reservation references, the aggregate execution result, and the actual initial grant amount for ALLOCATE. The original reserve is found by errand ID through a successful CreditOrder and its movement, rather than a separate original-request field. Command callers supply a stable request ID and reuse it on retries. Event-driven ALLOCATE uses the source user.verified eventId as its request ID.
 
 A CreditTransaction is one concrete movement between account buckets, linked to its CreditOrder. It records debit/source, credit/destination, amount and immutable ledger evidence. Only successful committed movements enter the ledger. CreditOrder records SUCCEEDED or REJECTED; a technical database failure rolls back. No persisted pending status or transaction execution-status column is needed. One successful balance-changing action currently produces one movement; a rejection or no-op produces none.
 
@@ -62,7 +62,7 @@ A definitive rejection is fixed for that request ID. A later deliberate attempt 
 |---|---|
 | Requester | See total, reserved, and available credits; reserve the reward when placing an errand |
 | Courier | Receive the reserved reward once delivery is confirmed |
-| User Service | Publish its existing user.created, user.updated, and user.deleted events |
+| User Service | Publish user.created, user.verified, user.updated, and user.deleted events |
 | Order Service and orchestrator | Validate order ownership, lifecycle, reward, and courier assignment; request credit actions; resolve incomplete sagas |
 | Credit Service | Consume user lifecycle events, provision once, retain deletion state, enforce balance rules, and expose durable results |
 
@@ -72,7 +72,7 @@ User IDs follow User Service’s positive integer IDs; Credit does not generate 
 
 | ID | Requirement | Acceptance criterion |
 |---|---|---|
-| C1 | Grant the configured initial allocation once per valid user | Authenticated user.created delivery creates the account, allocation order, issuance movement, and outcome atomically. Duplicate/concurrent creation events grant once per user ID and create no extra financial evidence. Changing configuration does not regrant existing users; requests never initialise accounts. |
+| C1 | Grant the configured initial allocation once per verified user | Authenticated user.verified delivery creates the account, allocation order, issuance movement, and outcome atomically. User-created events alone do not initialize accounts. Duplicate/concurrent verification events grant once per user ID and create no extra financial evidence. Changing configuration does not regrant existing users; requests never initialise accounts. |
 | C2 | Expose the authenticated user's balance | Return total, reserved, and available credits where available = total - reserved. An unrelated user cannot query that account. |
 | C3 | Reserve a positive whole-credit reward for an order | With 1,000 available credits, reserving 120 leaves total 1,000, reserved 120, available 880. The reservation belongs to the requester and order. |
 | C4 | Reject insufficient available credits | A request exceeding available credits makes no reservation movement and records a definitive rejection. Concurrent reservations cannot spend the same available credits. |
@@ -82,9 +82,9 @@ User IDs follow User Service’s positive integer IDs; Credit does not generate 
 | C8 | Resolve uncertain credit outcomes | After uncertain delivery, the publisher can query or redeliver the command and recover its committed result. Events eventually expose committed outcomes after a broker outage. |
 | C9 | Publish credit results reliably | Every committed result is saved in the transactional outbox with its business effects and published to the credit event queue after commit. A publisher restart may repeat delivery; the consumer recognizes the stable event ID. |
 | C10 | Protect the closed economy | No purchase, withdrawal, cash exchange, arbitrary balance-edit, or general peer-to-peer transfer endpoint. Transfer uses the amount in the reservation. |
-| C11 | Recover delayed initial allocation | Successful registration remains valid while Credit is unavailable. Credit’s durable subscription retries uncommitted creation events; meanwhile reads and commands needing an absent account return retryable ACCOUNT_PENDING. |
+| C11 | Recover delayed initial allocation | Successful registration remains valid while Credit is unavailable. Credit’s durable subscription retries uncommitted verification events; meanwhile reads and commands needing an absent account return retryable ACCOUNT_PENDING. |
 | C12 | Preserve movement evidence | Each balance-changing credit order links to its committed transaction. Rejections and successful no-ops have no movement; compensation creates new evidence rather than rewriting history. |
-| C13 | Handle user deletion safely | Store deletion on the account, inserting a zero-balance tombstone if creation has not arrived; delayed creation cannot allocate to it. Retain balances and ledger history, deny deleted-user balance access and new reserve/transfer, and allow existing holds to be released. |
+| C13 | Handle user deletion safely | Store deletion on the account, inserting a zero-balance tombstone if verification has not arrived; delayed verification cannot allocate to it. Retain balances and ledger history, deny deleted-user balance access and new reserve/transfer, and allow existing holds to be released. |
 
 The Credit Service authenticates Pub/Sub delivery. Topic publisher IAM controls who can submit credit commands. The order owner verifies that an order may be completed or cancelled and that the courier is assigned to it. Credit must still reject self-transfer, mismatched requester or amount, and contradictory reservation transitions.
 
@@ -92,11 +92,11 @@ The Credit Service authenticates Pub/Sub delivery. Topic publisher IAM controls 
 
 ### Registration and account provisioning
 
-User Service acknowledges registration after Pub/Sub accepts `user.created`; its worker projects the user into PostgreSQL afterward. Credit independently consumes the same event through its own durable subscription, so no synchronous User-to-Credit call is needed.
+User Service publishes `user.created` after registration and `user.verified` after successful verification. Credit independently consumes user events through its own durable subscription and initializes the account only on `user.verified`, so no synchronous User-to-Credit call is needed.
 
-Credit provisions the account and initial grant in one transaction and acknowledges the event after commit. If processing fails, Pub/Sub retries. Duplicate creation events never issue additional credits. No balance read, reserve, transfer, JWT, or supplied user ID creates an account. Pending reads and commands return 503 ACCOUNT_PENDING and may retry once the creation event has been processed.
+Credit provisions the account and initial grant in one transaction and acknowledges the event after commit. If processing fails, Pub/Sub retries. Duplicate verification events never issue additional credits. No balance read, reserve, transfer, JWT, or supplied user ID creates an account. Pending reads and commands return 503 ACCOUNT_PENDING and may retry once the verification event has been processed.
 
-Credit stores permanent deletion state on the account without version counters. A deletion arriving first creates a zero-balance deleted account; later creation cannot allocate or reactivate it. Deletion after creation preserves the grant and financial history. Profile updates do not provision or regrant. This assumes user IDs are never reused and undelete is unsupported. Establish the durable subscription before registration traffic.
+Credit stores permanent deletion state on the account without version counters. A deletion arriving first creates a zero-balance deleted account; later verification cannot allocate or reactivate it. Deletion after verification preserves the grant and financial history. Profile updates do not provision or regrant. This assumes user IDs are never reused and undelete is unsupported. Establish the durable subscription before registration traffic.
 
 The suggested 1,000-credit default permits ten 100-credit example errands before any earnings. This is a product assumption, not a prescribed reward price. The team must agree on reward sizing and the allocation together.
 
@@ -163,4 +163,4 @@ Request deduplication, atomic balance movements, immutable ledger evidence, and 
 - [D3 instructions](CS3219-Instructions-MilestoneD3.pdf), Part 2 for Credit Service, Part 3 for asynchronous workflows, and Part 4 for containerization.
 - [Project description](CS3219-ProjectDescription.pdf), M5 through M7 and closed-economy boundaries; [existing requirements](requirements.md), F4 and N2 through N4.
 - The attached discussion diagram depicts the orchestrator calling Credit and consuming credit outcomes to approve, cancel, or continue orders. Its frontend-to-credit arrow is not adopted for mutations because lifecycle authorization belongs to the order workflow.
-- Red annotations in the D3 PDF suggest lazy provisioning, 1,000 credits, Redis Streams, and direct Order-to-Credit communication. The current design supersedes lazy provisioning with user.created provisioning and Redis with Pub/Sub. These are design notes rather than milestone mandates. The direct-consumer suggestion predates the orchestrator design described in the request.
+- Red annotations in the D3 PDF suggest lazy provisioning, 1,000 credits, Redis Streams, and direct Order-to-Credit communication. The current design supersedes lazy provisioning with user.verified provisioning and Redis with Pub/Sub. These are design notes rather than milestone mandates. The direct-consumer suggestion predates the orchestrator design described in the request.

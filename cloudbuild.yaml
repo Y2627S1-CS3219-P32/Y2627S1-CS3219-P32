@@ -10,6 +10,9 @@
 # Claude Code (Opus 5.5), 2026-11-10: the observability stack's images (observability/Dockerfile,
 # one target each), which deploy.sh runs as one service with OBSERVABILITY=on.
 # Author review: Pending.
+# Claude Code (Opus 5.5), 2026-11-10: merged main's agent-chat, agent-orchestrator and mandate
+# images with the above; their Dockerfiles now copy shared/src from the root context.
+# Author review: Pending.
 #
 # Usage (from the repository root):
 #   gcloud builds submit --config cloudbuild.yaml
@@ -322,6 +325,38 @@ steps:
       - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/observability-tempo:latest
       - observability
 
+  # Built from the repository root, which also gives them shared/src (logger, telemetry and
+  # Pub/Sub messaging), so they need no `shared` build context.
+  - id: agent-chat-service
+    name: gcr.io/cloud-builders/docker
+    waitFor: ["-"]
+    args:
+      - build
+      - -f=agent-service/chat/Dockerfile
+      - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/agent-chat-service:${BUILD_ID}
+      - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/agent-chat-service:latest
+      - .
+
+  - id: agent-orchestrator-service
+    name: gcr.io/cloud-builders/docker
+    waitFor: ["-"]
+    args:
+      - build
+      - -f=agent-service/orchestrator/Dockerfile
+      - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/agent-orchestrator-service:${BUILD_ID}
+      - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/agent-orchestrator-service:latest
+      - .
+
+  - id: mandate-service
+    name: gcr.io/cloud-builders/docker
+    waitFor: ["-"]
+    args:
+      - build
+      - -f=mandate-service/Dockerfile
+      - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/mandate-service:${BUILD_ID}
+      - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/mandate-service:latest
+      - .
+
 images:
   - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/frontend-service:${BUILD_ID}
   - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/frontend-service:latest
@@ -371,3 +406,9 @@ images:
   - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/observability-loki:latest
   - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/observability-tempo:${BUILD_ID}
   - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/observability-tempo:latest
+  - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/mandate-service:${BUILD_ID}
+  - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/mandate-service:latest
+  - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/agent-chat-service:${BUILD_ID}
+  - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/agent-chat-service:latest
+  - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/agent-orchestrator-service:${BUILD_ID}
+  - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/agent-orchestrator-service:latest

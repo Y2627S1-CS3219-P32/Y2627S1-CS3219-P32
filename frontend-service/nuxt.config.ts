@@ -1,4 +1,5 @@
 // AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-28.
+// Codex (GPT-6.1), 2026-11-10: merge service URLs and avoid host port collisions. Author review: Pending.
 // Scope: Nuxt runtime and frontend configuration. Author review: Done.
 // Claude Code (Opus 5.5), 2026-10-17: order-service base URL. Author review: Pending.
 // Claude Code (Opus 5.5), 2026-10-17: notification-service URLs. Author review: Pending.
@@ -17,6 +18,8 @@ export default defineNuxtConfig({
     orderServiceBaseUrl: "http://127.0.0.1:3002",
     orderRankingServiceBaseUrl: "http://127.0.0.1:3007",
     chatServiceBaseUrl: "http://127.0.0.1:3006",
+    agentServiceBaseUrl: "http://127.0.0.1:3008",
+    mandateServiceBaseUrl: "http://127.0.0.1:3009",
     // Server-side, for issuing tickets.
     notificationServiceBaseUrl: "http://127.0.0.1:3003",
     syncServiceBaseUrl: "http://127.0.0.1:3005",

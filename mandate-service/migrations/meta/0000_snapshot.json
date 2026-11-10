@@ -1,0 +1,325 @@
+{
+  "id": "e89f0ccf-6efa-4ddf-a807-4654e7d9164b",
+  "prevId": "00000000-0000-0000-0000-000000000000",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.mandate_constraints": {
+      "name": "mandate_constraints",
+      "schema": "",
+      "columns": {
+        "mandate_id": {
+          "name": "mandate_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "constraint_type": {
+          "name": "constraint_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "value": {
+          "name": "value",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "mandate_constraints_one_amount": {
+          "name": "mandate_constraints_one_amount",
+          "columns": [
+            {
+              "expression": "mandate_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"mandate_constraints\".\"constraint_type\" = 'max_credit_amount'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "mandate_constraints_mandate_id_mandates_id_fk": {
+          "name": "mandate_constraints_mandate_id_mandates_id_fk",
+          "tableFrom": "mandate_constraints",
+          "tableTo": "mandates",
+          "columnsFrom": [
+            "mandate_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "mandate_constraints_pk": {
+          "name": "mandate_constraints_pk",
+          "columns": [
+            "mandate_id",
+            "constraint_type",
+            "value"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "mandate_constraints_type_check": {
+          "name": "mandate_constraints_type_check",
+          "value": "\"mandate_constraints\".\"constraint_type\" IN ('supplier_id', 'max_credit_amount')"
+        },
+        "mandate_constraints_value_check": {
+          "name": "mandate_constraints_value_check",
+          "value": "length(trim(\"mandate_constraints\".\"value\")) > 0"
+        },
+        "mandate_constraints_amount_check": {
+          "name": "mandate_constraints_amount_check",
+          "value": "CASE WHEN \"mandate_constraints\".\"constraint_type\" = 'max_credit_amount' THEN\n    CASE WHEN \"mandate_constraints\".\"value\" ~ '^(0|[1-9][0-9]{0,15})$' THEN \"mandate_constraints\".\"value\"::numeric <= 9007199254740991 ELSE false END\n    ELSE true END"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.mandate_outbox": {
+      "name": "mandate_outbox",
+      "schema": "",
+      "columns": {
+        "event_id": {
+          "name": "event_id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "mandate_id": {
+          "name": "mandate_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "event_type": {
+          "name": "event_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "payload": {
+          "name": "payload",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "published_at": {
+          "name": "published_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "mandate_outbox_unpublished": {
+          "name": "mandate_outbox_unpublished",
+          "columns": [
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"mandate_outbox\".\"published_at\" IS NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "mandate_outbox_mandate_id_mandates_id_fk": {
+          "name": "mandate_outbox_mandate_id_mandates_id_fk",
+          "tableFrom": "mandate_outbox",
+          "tableTo": "mandates",
+          "columnsFrom": [
+            "mandate_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.mandates": {
+      "name": "mandates",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "business_key_id": {
+          "name": "business_key_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "terms_hash": {
+          "name": "terms_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "title": {
+          "name": "title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'Order authorization'"
+        },
+        "starts_at": {
+          "name": "starts_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "approval_expires_at": {
+          "name": "approval_expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now() + interval '1 hour'"
+        },
+        "approved_at": {
+          "name": "approved_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "revoked_at": {
+          "name": "revoked_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "mandates_owner": {
+          "name": "mandates_owner",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "mandates_user_id_business_key_id_unique": {
+          "name": "mandates_user_id_business_key_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "user_id",
+            "business_key_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "mandates_business_key_check": {
+          "name": "mandates_business_key_check",
+          "value": "length(trim(\"mandates\".\"business_key_id\")) > 0"
+        },
+        "mandates_status_check": {
+          "name": "mandates_status_check",
+          "value": "\"mandates\".\"status\" IN ('pending','active','paused','revoked','expired')"
+        },
+        "mandates_validity_check": {
+          "name": "mandates_validity_check",
+          "value": "\"mandates\".\"expires_at\" > \"mandates\".\"starts_at\""
+        },
+        "mandates_expiry_check": {
+          "name": "mandates_expiry_check",
+          "value": "\"mandates\".\"approved_at\" IS NULL OR \"mandates\".\"expires_at\" > \"mandates\".\"approved_at\""
+        },
+        "mandates_approval_check": {
+          "name": "mandates_approval_check",
+          "value": "\"mandates\".\"status\" NOT IN ('active', 'paused') OR \"mandates\".\"approved_at\" IS NOT NULL"
+        }
+      },
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {},
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

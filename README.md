@@ -292,3 +292,34 @@ of the student-defined database schema. Database schema and architecture decisio
 remain with the student. Prior setup was reviewed; the latest schema, migration, and seed
 changes await student review.
 Link this README from the submission slide deck when it is created.
+
+## Agent service
+
+The `/agent` and `/mandates` pages use persistent conversations, streamed model responses, and explicit mandate approval. Creation requires mandate coverage; cancellation requires order ownership and a cancellable state.
+The Agent domain is grouped under `agent-service/` with `chat/`, `orchestrator/`, shared `contracts/`, and shared `db/`.
+Mandate remains a separate top-level service.
+The backend follows [the current runtime behavior](agent-service/docs/agent-skeleton-implementation.md).
+See [implementation order and ownership](agent-service/docs/agent-skeleton-implementation.md) and [deployment plan](agent-service/docs/agent-deployment.md).
+
+Run `npm ci && npm run build` at the repository root to compile the three backend services.
+Frontend dependencies remain managed inside `frontend-service`.
+
+## Service connection checks
+
+Run `npm run test:connections` with Docker running after installing root, Order and Supplier dependencies.
+See [connection configuration and limits](agent-service/docs/agent-deployment.md#connection-layer).
+Internal Supplier and owner-scoped Order reads accept authenticated Agent/Mandate service credentials.
+Run the opt-in Agent stack with `docker compose --profile agent-skeleton up --build`. Set `SOCLAAS_API_KEY` and `SOCLAAS_MODEL` in `.env`.
+
+## AI assistance disclosure — 2026-11-09
+
+Codex (GPT-6) implemented the user-approved service connection plan, internal read routes,
+configuration and verification. Author review: Pending. See [exact prompts and key responses](AI_USAGE_LOG.md).
+Link this README from the submission slide deck.
+
+### Rebase assistance — 2026-11-10
+
+Codex (GPT-6.1) executed the approved rebase plan: preserved the original commits,
+merged onto remote main, resolved configuration conflicts, moved agent/mandate host
+ports to 3008/3009, aligned stale test fixtures, and ran verification. Author review:
+Pending. Exact prompts and key responses are recorded in [AI_USAGE_LOG.md](AI_USAGE_LOG.md).

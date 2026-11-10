@@ -403,6 +403,7 @@ deploy_event_services() {
   credit_url="$(run_url credit-service)"
   credit_env="^|^PUBSUB_PROJECT_ID=${PROJECT_ID}|INTERNAL_AUDIENCE=${credit_url}"
   credit_env="${credit_env}|PUBSUB_PUSH_SERVICE_ACCOUNT=${PUBSUB_PUSH_SERVICE_ACCOUNT}|PUBSUB_PUSH_BASE_URL=${credit_url}|INITIAL_CREDITS=${INITIAL_CREDITS}"
+  credit_env="${credit_env}|INTERNAL_INVOKER_EMAILS=${CREDIT_INTERNAL_INVOKER_EMAILS:-}"
   run run deploy credit-service --region "$REGION" --image "${REGISTRY}/credit-service:${TAG}" \
     --port 3000 --ingress internal --allow-unauthenticated \
     --add-cloudsql-instances "$SQL_CONNECTION" \

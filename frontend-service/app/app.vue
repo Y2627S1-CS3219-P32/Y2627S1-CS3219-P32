@@ -89,6 +89,7 @@ const { data: user } = await useAsyncData<User | null>("navigation-user", async 
           >
             Users
           </NuxtLink>
+          <NuxtLink to="/agent" class="rounded-lg px-3 py-2.5 text-sm font-medium text-[#064784]">Friend</NuxtLink>
           <NotificationCenter v-if="user" />
         </div>
       </div>

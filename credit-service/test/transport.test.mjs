@@ -1,3 +1,5 @@
+// AI Assistance Disclosure: Codex (GPT-6.1), 2026-11-10.
+// Scope: Align rebased credit fixtures with verified-user provisioning. Author review: Pending.
 import { test, before, beforeEach, after } from "node:test";
 import assert from "node:assert/strict";
 import { createHmac, randomUUID } from "node:crypto";
@@ -40,8 +42,11 @@ async function withCreditApi(run) {
 const post = (base, path, value) => fetch(base + path, {
   method: "POST", headers, body: JSON.stringify(envelope(value)),
 });
-const createUser = (base, id) => post(base, "/internal/pubsub/user-events", {
-  type: "user.created", eventId: randomUUID(), user: { id },
+const verifyUser = (base, id) => post(base, "/internal/pubsub/user-events", {
+  type: "user.verified",
+  eventId: randomUUID(),
+  user: { id },
+  verificationPurpose: "registration",
 });
 const jwt = (payload, secret = "test-secret") => {
   const content = [{ alg: "HS256", typ: "JWT" }, payload]
@@ -76,8 +81,15 @@ const envelope = (value) => ({
 });
 test("user parser normalizes lifecycle events and rejects invalid identities", () => {
   const eventId = randomUUID().toUpperCase();
-  for (const type of ["user.created", "user.deleted", "user.updated"]) {
-    const identity = type === "user.deleted" ? { userId: 1 } : { user: { id: 1 } };
+  for (const type of ["user.created", "user.verified", "user.deleted", "user.updated"]) {
+    const identity = type === "user.deleted"
+      ? { userId: 1 }
+      : {
+          user: { id: 1 },
+          ...(type === "user.verified"
+            ? { verificationPurpose: "registration" }
+            : {}),
+        };
     assert.deepEqual(parseUserEvent({ type, eventId, ...identity }), {
       type,
       eventId: eventId.toLowerCase(),
@@ -101,6 +113,7 @@ test("user parser normalizes lifecycle events and rejects invalid identities", (
     { type: "user.created", eventId: "bad", user: { id: 1 } },
     { type: "user.created", eventId, userId: 1 },
     { type: "user.updated", eventId, user: null },
+    { type: "user.verified", eventId, user: null },
     { type: "user.deleted", eventId, user: { id: 1 } },
   ])
     assert.throws(() => parseUserEvent(value), { code: "INVALID_EVENT" });
@@ -153,22 +166,26 @@ test("HTTP rejects forged deliveries and unauthenticated reads without changing 
   });
 });
 
-test("health endpoints use the database and lifecycle delivery initializes and deactivates accounts", async () => {
+test("health endpoints use the database and only verified users are initialized", async () => {
   await withCreditApi(async (base) => {
     for (const path of ["/health/live", "/health/ready"])
       assert.equal((await fetch(base + path)).status, 200);
-    assert.equal((await createUser(base, 1)).status, 200);
+    assert.equal((await post(base, "/internal/pubsub/user-events", {
+      type: "user.created", eventId: randomUUID(), user: { id: 1 },
+    })).status, 200);
+    assert.equal(await count("credit_accounts"), 0);
+    assert.equal(await count("credit_transactions"), 0);
+    assert.equal((await post(base, "/internal/pubsub/user-events", {
+      type: "user.updated", eventId: randomUUID(), user: { id: 9 },
+    })).status, 200);
+    assert.equal(await count("credit_accounts"), 0);
+    assert.equal((await verifyUser(base, 1)).status, 200);
     assert.equal(await count("credit_accounts"), 1);
     assert.equal(await count("credit_transactions"), 1);
     const token = jwt({ sub: "1", exp: Math.floor(Date.now() / 1000) + 60 });
     const read = () => fetch(base + "/api/v1/credits/me", { headers: { authorization: `Bearer ${token}` } });
     const balance = await read();
     assert.deepEqual(await balance.json(), { totalCredits: Number(config.initialCredits), reservedCredits: 0, availableCredits: Number(config.initialCredits) });
-    assert.equal((await post(base, "/internal/pubsub/user-events", {
-      type: "user.updated", eventId: randomUUID(), user: { id: 9 },
-    })).status, 200);
-    assert.equal(await count("credit_accounts"), 1);
-    assert.equal(await count("credit_transactions"), 1);
     assert.equal((await post(base, "/internal/pubsub/user-events", {
       type: "user.deleted", eventId: randomUUID(), userId: 1,
     })).status, 200);
@@ -180,6 +197,63 @@ test("health endpoints use the database and lifecycle delivery initializes and d
   });
 });
 
+test("internal balance read authenticates services, validates the owner, and reports available credits", async () => {
+  await withCreditApi(async (base) => {
+    const read = (body, requestHeaders = headers) => fetch(base + '/internal/credits/balance', {
+      method: 'POST', headers: requestHeaders, body: JSON.stringify(body),
+    });
+    assert.equal((await read({ user_id: 1 }, { 'content-type': 'application/json' })).status, 401);
+    for (const user_id of [undefined, 0, -1, 1.5, '1', 2147483648])
+      assert.equal((await read({ user_id })).status, 400);
+    assert.equal((await read({ user_id: 1 })).status, 503);
+    assert.equal(await count('credit_accounts'), 0);
+    await verifyUser(base, 1);
+    await post(base, '/internal/pubsub/credit-commands', wire());
+    const response = await read({ user_id: 1 });
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), {
+      totalCredits: Number(config.initialCredits), reservedCredits: 120,
+      availableCredits: Number(config.initialCredits) - 120,
+    });
+    await post(base, '/internal/pubsub/user-events', { type: 'user.deleted', eventId: randomUUID(), userId: 1 });
+    assert.equal((await read({ user_id: 1 })).status, 401);
+  });
+});
+
+test("internal balance and Pub/Sub use separate Google caller allowlists", async () => {
+  const { OAuth2Client } = await import('google-auth-library');
+  const originalVerify = OAuth2Client.prototype.verifyIdToken;
+  const settings = {
+    internalAudience: config.internalAudience, internalInvokerEmails: config.internalInvokerEmails,
+    pushInvokerEmail: config.pushInvokerEmail, internalSharedSecret: config.internalSharedSecret,
+  };
+  Object.assign(config, {
+    internalAudience: 'credit-audience', internalInvokerEmails: ['agent@example.test'],
+    pushInvokerEmail: 'pubsub@example.test', internalSharedSecret: undefined,
+  });
+  OAuth2Client.prototype.verifyIdToken = async ({ idToken, audience }) => {
+    assert.equal(audience, 'credit-audience');
+    return { getPayload: () => ({ email: `${idToken}@example.test`, email_verified: true }) };
+  };
+  try {
+    await withServer(createApp(), async base => {
+      const send = (path, token, body) => fetch(base + path, {
+        method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+        body: JSON.stringify(body),
+      });
+      assert.equal((await send('/internal/credits/balance', 'pubsub', { user_id: 1 })).status, 401);
+      assert.equal((await send('/internal/credits/balance', 'agent', { user_id: 1 })).status, 503);
+      assert.equal((await send('/internal/pubsub/user-events', 'agent', envelope({
+        type: 'user.created', eventId: randomUUID(), user: { id: 1 },
+      }))).status, 401);
+      assert.equal(await count('credit_accounts'), 0);
+    });
+  } finally {
+    OAuth2Client.prototype.verifyIdToken = originalVerify;
+    Object.assign(config, settings);
+  }
+});
+
 test("Pub/Sub dispatches credit operations and acknowledges only persisted outcomes", async () => {
   await withCreditApi(async (base) => {
     const endpoint = "/internal/pubsub/credit-commands";
@@ -188,8 +262,8 @@ test("Pub/Sub dispatches credit operations and acknowledges only persisted outco
     assert.equal(missing.headers.get("retry-after"), "2");
     assert.deepEqual(await missing.json(), { code: "ACCOUNT_PENDING" });
     assert.equal(await count("credit_orders"), 0);
-    await createUser(base, 1);
-    await createUser(base, 2);
+    await verifyUser(base, 1);
+    await verifyUser(base, 2);
     const reserve = wire();
     assert.equal((await post(base, endpoint, reserve)).status, 204);
     assert.equal((await post(base, endpoint, reserve)).status, 204);
@@ -281,7 +355,7 @@ test("Pub/Sub push authentication rejects diagnostic identities on alternate URL
       },
       body: JSON.stringify(envelope(
         path.toLowerCase().includes("user-events")
-          ? { type: "user.created", eventId: randomUUID(), user: { id: 1 } }
+          ? { type: "user.verified", eventId: randomUUID(), user: { id: 1 }, verificationPurpose: "registration" }
           : wire(),
       )),
     });
