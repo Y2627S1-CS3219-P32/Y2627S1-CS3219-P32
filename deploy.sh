@@ -94,7 +94,7 @@ refresh_agent_redis_secrets() {
   local host port password ca
   host="$(run redis instances describe "$AGENT_REDIS_INSTANCE" --region "$REGION" --format 'value(host)')"
   port="$(run redis instances describe "$AGENT_REDIS_INSTANCE" --region "$REGION" --format 'value(port)')"
-  password="$(run redis instances describe "$AGENT_REDIS_INSTANCE" --region "$REGION" --format 'value(authString)')"
+  password="$(run redis instances get-auth-string "$AGENT_REDIS_INSTANCE" --region "$REGION" --format 'value(authString)')"
   ca="$(run redis instances describe "$AGENT_REDIS_INSTANCE" --region "$REGION" --flatten serverCaCerts --format 'value(serverCaCerts.cert)')"
   if [ -z "$host" ] || [ -z "$port" ] || [ -z "$password" ] || [ -z "$ca" ]; then
     echo "Agent Redis must provide a host, port, AUTH credentials, and a TLS CA certificate." >&2
