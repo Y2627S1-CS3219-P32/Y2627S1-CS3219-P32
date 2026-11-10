@@ -758,7 +758,7 @@ services:
   order-ranking-db:
     image: pgvector/pgvector:pg17
     ports:
-      - "127.0.0.1:5440:5432"
+      - "127.0.0.1:5441:5432"
     environment:
       POSTGRES_USER: ranking
       POSTGRES_PASSWORD: ranking
@@ -795,7 +795,7 @@ services:
       PUBSUB_PROJECT_ID: foc-local
       PUBSUB_PUSH_BASE_URL: http://order-ranking-service:3000
     ports:
-      - "3006:3000"
+      - "3007:3000"
     healthcheck:
       test:
         - CMD
