@@ -8,7 +8,6 @@ const password = ref("");
 const confirmPassword = ref("");
 const pending = ref(false);
 const errorMessage = ref("");
-const successMessage = ref("");
 const token = computed(() => typeof route.query.token === "string" ? route.query.token : "");
 const passwordMeetsCriteria = computed(() =>
   [...password.value].length >= 8 &&
@@ -19,7 +18,6 @@ const passwordMeetsCriteria = computed(() =>
 
 async function resetPassword() {
   errorMessage.value = "";
-  successMessage.value = "";
   if (!token.value) {
     errorMessage.value = "This password reset link is invalid or has expired.";
     return;
@@ -35,16 +33,17 @@ async function resetPassword() {
 
   pending.value = true;
   try {
-    const response = await $fetch<{ message: string }>(
+    await $fetch(
       "/api/user-service/password-reset/complete",
       {
         method: "POST",
         body: { token: token.value, password: password.value },
       },
     );
-    successMessage.value = response.message;
-    password.value = "";
-    confirmPassword.value = "";
+    await navigateTo({
+      path: "/login",
+      query: { passwordReset: "1" },
+    });
   } catch (error) {
     errorMessage.value = getApiErrorMessage(error) ?? "Your password could not be reset. Request a new link and try again.";
   } finally {
@@ -94,17 +93,13 @@ async function resetPassword() {
           >
         </div>
         <p v-if="errorMessage" class="text-sm text-red-700" role="alert">{{ errorMessage }}</p>
-        <p v-if="successMessage" class="text-sm text-green-700" role="status">{{ successMessage }}</p>
         <button
           type="submit"
-          :disabled="pending || Boolean(successMessage)"
+          :disabled="pending"
           class="w-full rounded-lg bg-[#064784] px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-[#053765] disabled:cursor-wait disabled:opacity-60"
         >
           {{ pending ? "Updating password..." : "Reset password" }}
         </button>
-        <NuxtLink v-if="successMessage" to="/login" class="block text-center text-sm font-medium text-[#064784] hover:underline">
-          Return to sign in
-        </NuxtLink>
       </form>
     </section>
   </main>
