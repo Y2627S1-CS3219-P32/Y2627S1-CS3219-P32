@@ -32,6 +32,9 @@ PROJECT_ID="${PROJECT_ID:-$(gcloud config get-value project 2>/dev/null)}"
 REGION="${REGION:-asia-southeast1}"
 REPOSITORY="${REPOSITORY:-foc}"
 TAG="${TAG:-latest}"
+AGENT_REDIS_INSTANCE="${AGENT_REDIS_INSTANCE:-agent-redis}"
+AGENT_ROUTER="${AGENT_ROUTER:-agent-router}"
+AGENT_NAT="${AGENT_NAT:-agent-nat}"
 SQL_INSTANCE="${SQL_INSTANCE:-foc-db}"
 SQL_TIER="${SQL_TIER:-db-f1-micro}"
 NETWORK="${NETWORK:-default}"
@@ -64,14 +67,61 @@ run() { gcloud --project "$PROJECT_ID" "$@"; }
 secret_exists() { run secrets describe "$1" >/dev/null 2>&1; }
 
 require_agent_secrets() {
-  for secret in agent-chat-database-url agent-execution-database-url mandate-database-url \
-    agent-chat-runtime-database-url agent-execution-runtime-database-url mandate-runtime-database-url \
-    agent-redis-url soclaas-api-key soclaas-model; do
+  local secret
+  for secret in soclaas-api-key soclaas-model; do
     if ! secret_exists "$secret"; then
-      echo "Missing Secret Manager secret: $secret (required for Agent/Mandate deployment)." >&2
+      echo "Missing $secret. Run './deploy.sh soclass' first." >&2
       return 1
     fi
   done
+}
+
+# Runtime logins are created after migrations define their restricted roles.
+create_runtime_database_url() {
+  local user="$1" database="$2" secret="$3"
+  if ! secret_exists "$secret"; then
+    database_url socket "$user" "$(openssl rand -hex 24)" "$database" |
+      run secrets create "$secret" --replication-policy automatic --data-file -
+  fi
+}
+
+ensure_agent_resources() {
+  create_database socket conversation_owner conversations agent-chat-database-url
+  create_database socket mandate_owner mandates mandate-database-url
+  create_runtime_database_url agent_chat_login conversations agent-chat-runtime-database-url
+  create_runtime_database_url agent_execution_login conversations agent-execution-runtime-database-url
+  create_runtime_database_url mandate_login mandates mandate-runtime-database-url
+
+  run services enable redis.googleapis.com
+  if ! run redis instances describe "$AGENT_REDIS_INSTANCE" --region "$REGION" >/dev/null 2>&1; then
+    run redis instances create "$AGENT_REDIS_INSTANCE" --region "$REGION" \
+      --size 1 --network "$NETWORK" --connect-mode private-service-access \
+      --enable-auth --transit-encryption-mode server-authentication
+  fi
+  if [ "$(run redis instances describe "$AGENT_REDIS_INSTANCE" --region "$REGION" --format 'value(transitEncryptionMode)')" != SERVER_AUTHENTICATION ]; then
+    echo "Agent Redis must have TLS enabled." >&2
+    return 1
+  fi
+  local host port password ca
+  host="$(run redis instances describe "$AGENT_REDIS_INSTANCE" --region "$REGION" --format 'value(host)')"
+  port="$(run redis instances describe "$AGENT_REDIS_INSTANCE" --region "$REGION" --format 'value(port)')"
+  password="$(run redis instances get-auth-string "$AGENT_REDIS_INSTANCE" --region "$REGION" --format 'value(authString)')"
+  ca="$(run redis instances describe "$AGENT_REDIS_INSTANCE" --region "$REGION" --flatten serverCaCerts --format 'value(serverCaCerts.cert)')"
+  if [ -z "$password" ] || [ -z "$ca" ]; then
+    echo "Agent Redis must provide AUTH credentials and a TLS CA certificate." >&2
+    return 1
+  fi
+  store_secret agent-redis-url "rediss://:${password}@${host}:${port}"
+  store_secret agent-redis-ca "$ca"
+
+  # Orchestrator routes internal Cloud Run calls through the VPC; NAT lets it also reach the model API.
+  if ! run compute routers describe "$AGENT_ROUTER" --region "$REGION" >/dev/null 2>&1; then
+    run compute routers create "$AGENT_ROUTER" --region "$REGION" --network "$NETWORK"
+  fi
+  if ! run compute routers nats describe "$AGENT_NAT" --router "$AGENT_ROUTER" --region "$REGION" >/dev/null 2>&1; then
+    run compute routers nats create "$AGENT_NAT" --router "$AGENT_ROUTER" --region "$REGION" \
+      --nat-custom-subnet-ip-ranges "$SUBNET" --auto-allocate-nat-external-ips
+  fi
 }
 
 ensure_pubsub() {
@@ -184,6 +234,8 @@ setup() {
   # Lets services with VPC egress reach internal-ingress *.run.app URLs.
   run compute networks subnets update "$SUBNET" --region "$REGION" --enable-private-ip-google-access
 
+  ensure_agent_resources
+
   echo "Setup complete. To enable first-administrator setup, create a bootstrap-secret"
   echo "(at least 32 bytes) and re-run ./deploy.sh; delete it after the admin exists."
 }
@@ -271,7 +323,7 @@ ensure_service_resources() {
 
 deploy_event_services() {
   ensure_service_resources
-  local invokers="${PUBSUB_PUSH_SERVICE_ACCOUNT},${SCHEDULER_SERVICE_ACCOUNT},${PROJECT_ID}-compute@developer.gserviceaccount.com"
+  local invokers="${PUBSUB_PUSH_SERVICE_ACCOUNT},${SCHEDULER_SERVICE_ACCOUNT},$(project_number)-compute@developer.gserviceaccount.com"
 
   run_job order-migrate "${REGISTRY}/order-service-tooling:${TAG}" order-database-url \
     "${SOCKET_DB_FLAGS[@]}" --command npm --args run,db:migrate
@@ -311,7 +363,7 @@ deploy_event_services() {
   credit_url="$(run_url credit-service)"
   credit_invokers="${CREDIT_INTERNAL_INVOKER_EMAILS:-}"
   [ -n "$credit_invokers" ] && credit_invokers="${credit_invokers},"
-  credit_invokers="${credit_invokers}${PROJECT_ID}-compute@developer.gserviceaccount.com"
+  credit_invokers="${credit_invokers}$(project_number)-compute@developer.gserviceaccount.com"
   credit_env="^|^PUBSUB_PROJECT_ID=${PROJECT_ID}|INTERNAL_AUDIENCE=${credit_url}"
   credit_env="${credit_env}|PUBSUB_PUSH_SERVICE_ACCOUNT=${PUBSUB_PUSH_SERVICE_ACCOUNT}|PUBSUB_PUSH_BASE_URL=${credit_url}|INITIAL_CREDITS=${INITIAL_CREDITS}"
   credit_env="${credit_env}|INTERNAL_INVOKER_EMAILS=${credit_invokers}"
@@ -364,8 +416,19 @@ deploy_event_services() {
   ensure_scheduler_job saga-outbox-publish "${saga_url}/internal/outbox/publish" "$saga_url"
 }
 
+provision_runtime_login() {
+  local name="$1" owner_secret="$2" runtime_secret="$3" role="$4"
+  run run jobs deploy "${name}-runtime-login" --region "$REGION" \
+    --image "${REGISTRY}/agent-chat-tooling:${TAG}" --max-retries 0 --execute-now --wait \
+    "${SOCKET_DB_FLAGS[@]}" \
+    --set-secrets "DATABASE_URL=${owner_secret}:latest,RUNTIME_DATABASE_URL=${runtime_secret}:latest" \
+    --set-env-vars "RUNTIME_ROLE=${role}" \
+    --command node --args agent-service/scripts/provision-runtime-login.mjs
+}
+
 deploy_agent_services() {
-  local invoker="${PROJECT_ID}-compute@developer.gserviceaccount.com"
+  ensure_agent_resources
+  local invoker="$(project_number)-compute@developer.gserviceaccount.com"
   local chat_url mandate_url order_url supplier_url credit_url
   chat_url="$(run_url agent-chat-service)"
   mandate_url="$(run_url mandate-service)"
@@ -402,11 +465,13 @@ deploy_agent_services() {
   done
 
   run_job agent-chat-migrate "${REGISTRY}/agent-chat-tooling:${TAG}" agent-chat-database-url \
-    --command npm --args run,db:migrate,--workspace,@campus/agent-contracts
-  run_job agent-execution-migrate "${REGISTRY}/agent-chat-tooling:${TAG}" agent-execution-database-url \
-    --command npm --args run,db:migrate,--workspace,@campus/agent-contracts
+    "${SOCKET_DB_FLAGS[@]}" --command npm --args run,db:migrate,--workspace,@campus/agent-contracts
   run_job mandate-migrate "${REGISTRY}/mandate-service-tooling:${TAG}" mandate-database-url \
-    --command npm --args run,db:migrate,--workspace,mandate-service
+    "${SOCKET_DB_FLAGS[@]}" --command npm --args run,db:migrate,--workspace,mandate-service
+
+  provision_runtime_login agent-chat agent-chat-database-url agent-chat-runtime-database-url agent_chat
+  provision_runtime_login agent-execution agent-chat-database-url agent-execution-runtime-database-url agent_execution
+  provision_runtime_login mandate mandate-database-url mandate-runtime-database-url mandate_runtime
 
   local agent_invokers="${PUBSUB_PUSH_SERVICE_ACCOUNT},${SCHEDULER_SERVICE_ACCOUNT},${invoker}"
   run run deploy mandate-service --region "$REGION" --image "${REGISTRY}/mandate-service:${TAG}" \
@@ -423,11 +488,11 @@ deploy_agent_services() {
     --min-instances 1 --no-cpu-throttling --timeout 3600 \
     --add-cloudsql-instances "$SQL_CONNECTION" \
     --network "$NETWORK" --subnet "$SUBNET" --vpc-egress private-ranges-only \
-    --set-env-vars "PUBSUB_PROJECT_ID=${PROJECT_ID},TURN_TOPIC=${AGENT_TURN_TOPIC},APPROVAL_SUBSCRIPTION=${AGENT_APPROVAL_SUBSCRIPTION}" \
-    --set-secrets "DATABASE_URL=agent-chat-runtime-database-url:latest,JWT_SECRET=jwt-secret:latest,REDIS_URL=agent-redis-url:latest"
+    --set-env-vars "PUBSUB_PROJECT_ID=${PROJECT_ID},TURN_TOPIC=${AGENT_TURN_TOPIC},APPROVAL_SUBSCRIPTION=${AGENT_APPROVAL_SUBSCRIPTION},NODE_EXTRA_CA_CERTS=/secrets/redis/ca.pem" \
+    --set-secrets "DATABASE_URL=agent-chat-runtime-database-url:latest,JWT_SECRET=jwt-secret:latest,REDIS_URL=agent-redis-url:latest,/secrets/redis/ca.pem=agent-redis-ca:latest"
 
-  local agent_env="^|^SERVICE_AUTH_MODE=google|PUBSUB_PROJECT_ID=${PROJECT_ID}|TURN_SUBSCRIPTION=${AGENT_TURN_SUBSCRIPTION}|MANDATE_SERVICE_URL=${mandate_url}|MANDATE_SERVICE_AUDIENCE=${mandate_url}|ORDER_SERVICE_URL=${order_url}|ORDER_SERVICE_AUDIENCE=${order_url}|SUPPLIER_SERVICE_URL=${supplier_url}|SUPPLIER_SERVICE_AUDIENCE=${supplier_url}|CREDIT_SERVICE_URL=${credit_url}|CREDIT_SERVICE_AUDIENCE=${credit_url}"
-  local agent_secrets="DATABASE_URL=agent-execution-runtime-database-url:latest,REDIS_URL=agent-redis-url:latest,SOCLAAS_API_KEY=soclaas-api-key:latest,SOCLAAS_MODEL=soclaas-model:latest"
+  local agent_env="^|^NODE_EXTRA_CA_CERTS=/secrets/redis/ca.pem|SERVICE_AUTH_MODE=google|PUBSUB_PROJECT_ID=${PROJECT_ID}|TURN_SUBSCRIPTION=${AGENT_TURN_SUBSCRIPTION}|MANDATE_SERVICE_URL=${mandate_url}|MANDATE_SERVICE_AUDIENCE=${mandate_url}|ORDER_SERVICE_URL=${order_url}|ORDER_SERVICE_AUDIENCE=${order_url}|SUPPLIER_SERVICE_URL=${supplier_url}|SUPPLIER_SERVICE_AUDIENCE=${supplier_url}|CREDIT_SERVICE_URL=${credit_url}|CREDIT_SERVICE_AUDIENCE=${credit_url}"
+  local agent_secrets="DATABASE_URL=agent-execution-runtime-database-url:latest,REDIS_URL=agent-redis-url:latest,SOCLAAS_API_KEY=soclaas-api-key:latest,SOCLAAS_MODEL=soclaas-model:latest,/secrets/redis/ca.pem=agent-redis-ca:latest"
   if secret_exists soclaas-base-url; then
     agent_secrets="${agent_secrets},SOCLAAS_BASE_URL=soclaas-base-url:latest"
   fi
@@ -435,7 +500,7 @@ deploy_agent_services() {
     --port 3000 --ingress internal --allow-unauthenticated \
     --min-instances 1 --no-cpu-throttling \
     --add-cloudsql-instances "$SQL_CONNECTION" \
-    --network "$NETWORK" --subnet "$SUBNET" --vpc-egress private-ranges-only \
+    --network "$NETWORK" --subnet "$SUBNET" --vpc-egress all-traffic \
     --set-env-vars "$agent_env" \
     --set-secrets "$agent_secrets"
   for service in agent-chat-service agent-orchestrator-service; do
@@ -540,7 +605,7 @@ deploy() {
     --port 3000 --ingress internal --allow-unauthenticated \
     --clear-cloudsql-instances \
     --network "$NETWORK" --subnet "$SUBNET" --vpc-egress all-traffic \
-    --set-env-vars "^|^PUBSUB_PROJECT_ID=${PROJECT_ID}|SUPPLIER_EVENTS_TOPIC=${SUPPLIER_EVENTS_TOPIC}|SERVICE_AUTH_MODE=google|SERVICE_READ_AUDIENCE=$(run_url supplier-service)|SERVICE_READ_INVOKERS=${PROJECT_ID}-compute@developer.gserviceaccount.com" \
+    --set-env-vars "^|^PUBSUB_PROJECT_ID=${PROJECT_ID}|SUPPLIER_EVENTS_TOPIC=${SUPPLIER_EVENTS_TOPIC}|SERVICE_AUTH_MODE=google|SERVICE_READ_AUDIENCE=$(run_url supplier-service)|SERVICE_READ_INVOKERS=$(project_number)-compute@developer.gserviceaccount.com" \
     --set-secrets "DATABASE_URL=supplier-database-url:latest,JWT_SECRET=jwt-secret:latest"
   local supplier_url
   supplier_url="$(service_url supplier-service)"
@@ -584,8 +649,8 @@ github_ci() {
   # deploy.sh creates databases, secrets, topics, service accounts and IAM bindings as it goes.
   for role in roles/viewer roles/cloudbuild.builds.editor roles/storage.admin roles/run.admin \
     roles/iam.serviceAccountUser roles/iam.serviceAccountAdmin roles/resourcemanager.projectIamAdmin \
-    roles/secretmanager.admin roles/cloudsql.admin roles/pubsub.admin roles/cloudscheduler.admin \
-    roles/serviceusage.serviceUsageAdmin roles/compute.networkUser; do
+    roles/secretmanager.admin roles/cloudsql.admin roles/pubsub.admin roles/cloudscheduler.admin roles/redis.admin \
+    roles/serviceusage.serviceUsageAdmin roles/compute.networkAdmin; do
     run projects add-iam-policy-binding "$PROJECT_ID" \
       --member "serviceAccount:${deployer}" --role "$role" --condition None >/dev/null
   done

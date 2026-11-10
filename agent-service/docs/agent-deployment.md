@@ -27,14 +27,13 @@ To verify the actual configured SoC LLaaS model, run `node agent-service/scripts
 
 ## Prepare production
 
-`deploy.sh` deploys Agent Chat, Orchestrator, and Mandate, runs their migrations, creates the Pub/Sub topics/subscriptions, and wires the frontend URLs. Before the first deploy, provision Conversation and Mandate databases, restricted runtime logins, and private authenticated Redis. Create these Secret Manager secrets:
+`./deploy.sh setup` automatically creates the Conversation and Mandate databases, generates their owner/runtime connection secrets, and provisions private Memorystore Redis with AUTH and TLS. It also creates a Cloud Router and NAT so Orchestrator can reach both internal services and the external model API. If the subnet already has Cloud NAT, set `AGENT_ROUTER` and `AGENT_NAT` to its existing router and NAT names.
 
-- `agent-chat-database-url`, `agent-execution-database-url`, and `mandate-database-url`: migration-owner connection URLs.
-- `agent-chat-runtime-database-url`, `agent-execution-runtime-database-url`, and `mandate-runtime-database-url`: restricted runtime connection URLs. The first two logins must be members of `agent_chat` and `agent_execution`; the Mandate login must be a member of `mandate_runtime`.
-- `agent-redis-url`: private `rediss://` connection URL.
-- Configure `soclaas-api-key` and `soclaas-model` with `./deploy.sh soclass`. The model defaults to `default`; the optional HTTPS base URL is saved as `soclaas-base-url` when provided.
+Run `./deploy.sh soclass` once to configure the SoC LLaaS key, model, and optional base URL. Then build with `cloudbuild.yaml` and run `./deploy.sh`. Deployment also ensures these resources exist, applies one migration per database, provisions restricted runtime logins, creates Pub/Sub resources, and wires the frontend URLs. Database and Redis secrets require no manual entry. Existing database secrets are reused; Redis connection and CA secrets are refreshed from the instance.
 
-Also provision the existing project-level `jwt-secret`. Run `./deploy.sh` after the Cloud Build submit so the `*-tooling` migration images are available. The script does not create the databases, runtime logins, or Redis instance.
+Chat and Orchestrator share the Conversation database and use separate logins bound to `agent_chat` and `agent_execution`. Mandate uses its own database and the `mandate_runtime` role. Migration owner credentials are only supplied to migration/provisioning jobs. The project-level `jwt-secret` is created by the existing setup flow.
+
+The Redis instance defaults to `agent-redis` (1 GiB, Basic tier); set `AGENT_REDIS_INSTANCE` to override the name. Setup creates billable Memorystore and Cloud NAT resources. For GitHub Actions, re-run `./deploy.sh github` once to grant the deployer Redis and network administration permissions.
 
 Give Chat turn-topic publication and approval-subscription consumption. Give Orchestrator turn-subscription consumption and model-secret access. Give Mandate approval-topic publication. Permit metadata reads for readiness on those same topics/subscriptions. Configure the turn subscription to forward to a dead-letter topic after approximately five delivery attempts, and grant the Pub/Sub service agent subscriber access on the source and publisher access on that topic. The local provisioning script sets the same policy. Inspect and resolve dead-lettered turns before allowing later work in that conversation.
 

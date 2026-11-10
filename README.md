@@ -198,6 +198,10 @@ gcloud builds submit --config cloudbuild.yaml --region asia-southeast1  # build 
 ./deploy.sh seed    # load supplier seed data (safe to repeat)
 ```
 
+Agent/Mandate database credentials and private Redis are provisioned automatically.
+Run `./deploy.sh soclass` before deploying the agent services to configure the model credentials.
+See [agent deployment](agent-service/docs/agent-deployment.md#prepare-production) for provisioning details and network overrides.
+
 ### Automatic deployment (GitHub Actions)
 
 <!-- AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-10-18.

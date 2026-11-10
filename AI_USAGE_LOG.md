@@ -2205,3 +2205,10 @@ in agent common connections, do they need to be so many separate files?”
 - Code change: user-service/drizzle.config.ts excludes the obsolete agent_token_issuances table from schema management so subsequent deployments preserve it.
 - Verification: Compose up --wait succeeded; Agent Chat, Orchestrator and Mandate readiness returned HTTP 200; homepage/login returned HTTP 200; agent/mandates routes redirected unauthenticated requests to login. Signed-in product testing remains for the user.
 
+
+### 2026-11-11 — Automatic Agent and Mandate provisioning
+
+- Tool/mode: Codex (GPT-6.1), deployment configuration and PostgreSQL verification. Author review: Pending.
+- Exact user prompt: “can u extend the automatic setup and follow the convention for the others”.
+- Changes: reuse database creation helpers, generate restricted runtime connection secrets, provision logins after migrations, remove the duplicate Conversation migration, provision TLS/AUTH Memorystore and its CA secret, and configure Cloud NAT for Orchestrator egress. Correct default service account emails to use the project number; extend GitHub deployer permissions and deployment documentation.
+- Verification: shell and JavaScript syntax checks; git diff whitespace check; isolated PostgreSQL 17 verification of all three runtime logins, restricted permissions, password escaping, and repeated provisioning. Temporary container removed. No GCP deployment performed.
