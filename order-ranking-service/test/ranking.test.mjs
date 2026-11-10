@@ -5,6 +5,8 @@
  * and edits), ranked results with reasons, and preferences. Author review: Pending.
  * Claude Code (Opus 5.5), 2026-11-01. Scope: Supplier arrival, renames and in-flight
  * embeddings; teardown waits for connections to close. Author review: Pending.
+ * Claude Code (Opus 5.5), 2026-11-11: the stand-in is any OpenAI-compatible API, so the model
+ * is set explicitly, as it must be away from OpenAI. Author review: Pending.
  */
 import assert from "node:assert/strict";
 import { createHmac, randomBytes, randomUUID } from "node:crypto";
@@ -171,6 +173,7 @@ before(async () => {
   process.env.EMBEDDING_PROVIDER = "openai";
   process.env.OPENAI_API_KEY = OPENAI_KEY;
   process.env.OPENAI_BASE_URL = `http://127.0.0.1:${openai.address().port}/v1`;
+  process.env.EMBEDDING_MODEL = "test-embedding-model";
   process.env.EMBEDDING_MAX_ATTEMPTS = "2";
   process.env.RANK_THRESHOLD_SEMANTIC = "0.3";
   delete process.env.PUBSUB_EMULATOR_HOST;
@@ -231,7 +234,8 @@ test("order events are copied, only newer sequences apply, and each order is emb
   assert.deepEqual(await row(created.id), { state: "OPEN", sequence: 2, title: "Bubble tea", embedded: true, embedding_attempts: 0 });
   assert.equal(openaiCalls.length, 1);
   assert.equal(openaiCalls[0].auth, `Bearer ${OPENAI_KEY}`);
-  assert.equal(openaiCalls[0].body.model, "text-embedding-3-small");
+  assert.equal(openaiCalls[0].body.model, "test-embedding-model");
+  assert.equal(openaiCalls[0].body.dimensions, 1536);
   // The pickup place is part of the embedded text.
   assert.deepEqual(openaiCalls[0].body.input, ["Bubble tea\nOne brown sugar milk tea\nPickup: Gong Cha (Food/Coffee)"]);
 });

@@ -1,6 +1,7 @@
 <!-- AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-10-31.
 Scope: Order-ranking-service design, setup, endpoint and event documentation. Author review: Pending.
-Claude Code (Opus 5.5), 2026-11-01. Scope: Delivered history, supplier re-embedding and the time reason. Author review: Pending. -->
+Claude Code (Opus 5.5), 2026-11-01. Scope: Delivered history, supplier re-embedding and the time reason. Author review: Pending.
+Claude Code (Opus 5.5), 2026-11-11. Scope: OpenAI-compatible embeddings (SoCLaaS in production), the embeddings check and the Cloud deployment. Author review: Pending. -->
 # Order Ranking Service
 
 Smart request-to-courier matching (nice-to-have). Ranks open orders for each courier
@@ -19,8 +20,9 @@ npm run dev
    service's copy of the order (only a newer `sequence` applies). `supplier-events` give
    each supplier's pickup coordinates, type and building (latest version only).
 2. **Embedding.** Each order's title, description and pickup place are embedded as 1536
-   numbers (OpenAI `text-embedding-3-small`). This runs in the background, never inside
-   the event handler, so an OpenAI outage cannot hold up order events. Failures back off
+   numbers through an OpenAI-compatible `POST /embeddings` API: SoCLaaS in production,
+   OpenAI `text-embedding-3-small` by default locally. This runs in the background, never
+   inside the event handler, so a provider outage cannot hold up order events. Failures back off
    1, 2, 4… minutes, up to `EMBEDDING_MAX_ATTEMPTS`. The order is embedded again when
    its title, description or supplier changes, and when its supplier arrives later or
    changes name or type; an embedding of the old text still in flight is not stored. A
@@ -83,9 +85,11 @@ The frontend joins each `orderId` with the order from order-service.
 | `DATABASE_URL` | Ranking database with pgvector (Compose: `postgres://ranking:ranking@localhost:5441/rankings`) |
 | `JWT_SECRET` | Same secret as user-service; tokens are verified locally |
 | `PORT` | Defaults to `3000` (Compose publishes it on host port `3007`) |
-| `OPENAI_API_KEY` | Enables OpenAI embeddings. Without it, a keyless hashing embedder is used, which only matches shared words |
-| `EMBEDDING_PROVIDER` | `openai` or `hashing`; defaults to `openai` when a key is set |
-| `EMBEDDING_MODEL`, `OPENAI_BASE_URL` | Default `text-embedding-3-small` and `https://api.openai.com/v1` |
+| `OPENAI_API_KEY` | Key for the embeddings API (in production, the SoCLaaS key). Without it, a keyless hashing embedder is used, which only matches shared words |
+| `EMBEDDING_PROVIDER` | `openai` (any OpenAI-compatible API) or `hashing`; defaults to `openai` when a key is set. deploy.sh sets `openai`, so a missing key fails at startup instead of falling back to hashing |
+| `OPENAI_BASE_URL` | Default `https://api.openai.com/v1`; SoCLaaS is `https://soclaas-api.comp.nus.edu.sg/v1` |
+| `EMBEDDING_MODEL` | Default `text-embedding-3-small`, but required with any other `OPENAI_BASE_URL`: an embeddings-capable model ID from `GET <base URL>/models` |
+| `EMBEDDING_SEND_DIMENSIONS` | Default `true`: requests ask for `dimensions: 1536`. Set `false` for a model that returns 1536 numbers itself but rejects the parameter |
 | `EMBEDDING_MAX_ATTEMPTS`, `EMBEDDING_BATCH_SIZE` | Default `5` and `50` |
 | `RANK_WEIGHT_SEMANTIC`, `_DISTANCE`, `_TIME`, `_PREFERENCE`, `_REWARD` | Part weights; default `0.4`, `0.25`, `0.15`, `0.15`, `0.05` |
 | `RANK_THRESHOLD_SEMANTIC`, `_DISTANCE`, `_TIME`, `_REWARD` | Reason thresholds; default `0.5` (`0.3` with hashing), `0.5`, `0.6`, `0.75` |
@@ -94,8 +98,31 @@ The frontend joins each `orderId` with the order from order-service.
 | `INTERNAL_AUDIENCE`, `INTERNAL_INVOKER_EMAILS` | Cloud: accepted audience and service accounts for Google OIDC tokens |
 | `PUBSUB_EMULATOR_HOST`, `PUBSUB_PROJECT_ID`, `PUBSUB_PUSH_BASE_URL` | Local emulator; push subscriptions are created at startup |
 
-Tests need a PostgreSQL server with pgvector that can create a disposable database. OpenAI
-is replaced by a local stand-in server, so no key is needed:
+Vectors must have 1536 numbers (the `vector(1536)` columns). A model returning another length
+fails each embedding with both lengths in the error; using it needs a migration of the columns.
+`npm run embeddings:check` (built image: `node dist/check-embeddings.js`) makes one embedding
+request with the current settings and exits non-zero on any of these problems; deploy.sh runs
+it before deploying the service.
+
+## Cloud deployment
+
+`./deploy.sh` creates the `rankings` database (`order-ranking-database-url` secret), runs the
+migrations (which create the pgvector extension), checks the embeddings, then deploys
+`order-ranking-service` with internal ingress, Google OIDC for its internal routes, push
+subscriptions on `order-events` and `supplier-events`, and a Cloud Scheduler job calling
+`/internal/embeddings/process` every minute. The frontend gets its URL as
+`NUXT_ORDER_RANKING_SERVICE_BASE_URL`. The embeddings use the agent's `soclaas-api-key` (and
+`soclaas-base-url` if set) and their own model, in the `soclaas-embedding-model` secret:
+`./deploy.sh soclaas-embedding` stores it.
+
+The service learns orders and suppliers only from events published after its subscriptions
+exist; Pub/Sub does not replay older ones. On a system that already has data, orders and
+suppliers appear here when they next change (an order's next state change; a supplier's next
+edit), and new orders appear straight away. Couriers' past deliveries before the first deploy
+do not count towards personalisation.
+
+Tests need a PostgreSQL server with pgvector that can create a disposable database. The
+embeddings API is replaced by a local stand-in server, so no key is needed:
 
 ```sh
 docker run -d --name ranking-test-db -e POSTGRES_PASSWORD=test -p 127.0.0.1:5499:5432 pgvector/pgvector:pg17

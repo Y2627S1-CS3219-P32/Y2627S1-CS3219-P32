@@ -1,5 +1,5 @@
 {
-  "//": "AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-10-31. Scope: Order-ranking-service dependencies and scripts, mirroring order-service; package-lock.json is npm-generated. Author review: Pending. Claude Code (Opus 5.5), 2026-11-10: pino (and pino-pretty for development) for the shared logger, and the OpenTelemetry SDK and instrumentations loaded by the start script through shared/telemetry.mts. Author review: Pending.",
+  "//": "AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-10-31. Scope: Order-ranking-service dependencies and scripts, mirroring order-service; package-lock.json is npm-generated. Author review: Pending. Claude Code (Opus 5.5), 2026-11-10: pino (and pino-pretty for development) for the shared logger, and the OpenTelemetry SDK and instrumentations loaded by the start script through shared/telemetry.mts. Author review: Pending. Claude Code (Opus 5.5), 2026-11-11: embeddings:check, which deploy.sh runs before the service. Author review: Pending.",
   "name": "order-ranking-service",
   "version": "1.0.0",
   "description": "Order Ranking Service",
@@ -9,6 +9,7 @@
     "build": "tsc -p tsconfig.build.json",
     "dev": "tsx watch src/index.ts",
     "start": "node --import ./dist/shared/telemetry.mjs dist/index.js",
+    "embeddings:check": "node dist/check-embeddings.js",
     "typecheck": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",

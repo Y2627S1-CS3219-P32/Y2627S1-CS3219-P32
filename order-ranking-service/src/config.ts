@@ -3,6 +3,9 @@
  * Scope: Order-ranking-service environment configuration: auth and Pub/Sub as in
  * order-service, the embedding provider, and the ranking weights and reason thresholds.
  * Author review: Pending.
+ * Claude Code (Opus 5.5), 2026-11-11: any OpenAI-compatible embeddings API (SoCLaaS in
+ * production): EMBEDDING_MODEL is required away from OpenAI's API, and sending `dimensions` can
+ * be turned off. Author review: Pending.
  */
 import "dotenv/config";
 
@@ -10,6 +13,13 @@ function positiveInteger(name: string, fallback: number): number {
   const value = Number(process.env[name] ?? fallback);
   if (!Number.isSafeInteger(value) || value <= 0) throw new Error(`${name} must be a positive integer`);
   return value;
+}
+
+function boolean(name: string, fallback: boolean): boolean {
+  const value = process.env[name];
+  if (value === undefined || value === "") return fallback;
+  if (value !== "true" && value !== "false") throw new Error(`${name} must be true or false`);
+  return value === "true";
 }
 
 function number(name: string, fallback: number, min = 0, max = Number.POSITIVE_INFINITY): number {
@@ -37,6 +47,15 @@ if (provider === "openai" && !openaiApiKey) {
   throw new Error("OPENAI_API_KEY is required when EMBEDDING_PROVIDER is openai");
 }
 
+// "openai" means any OpenAI-compatible POST /embeddings API, such as SoCLaaS.
+const OPENAI_BASE_URL = "https://api.openai.com/v1";
+const openaiBaseUrl = (process.env.OPENAI_BASE_URL || OPENAI_BASE_URL).replace(/\/+$/, "");
+const embeddingModel = process.env.EMBEDDING_MODEL || undefined;
+// Other APIs have their own model IDs, so OpenAI's default model name is not assumed there.
+if (provider === "openai" && !embeddingModel && openaiBaseUrl !== OPENAI_BASE_URL) {
+  throw new Error(`EMBEDDING_MODEL is required when OPENAI_BASE_URL is not ${OPENAI_BASE_URL}: use an embeddings-capable model ID from GET ${openaiBaseUrl}/models`);
+}
+
 export const config = {
   port: positiveInteger("PORT", 3000),
   jwtSecret,
@@ -58,8 +77,11 @@ export const config = {
     // "hashing" is a keyless local fallback (word overlap only) for development and tests.
     provider: provider as "openai" | "hashing",
     openaiApiKey,
-    openaiBaseUrl: (process.env.OPENAI_BASE_URL ?? "https://api.openai.com/v1").replace(/\/+$/, ""),
-    model: process.env.EMBEDDING_MODEL ?? "text-embedding-3-small",
+    openaiBaseUrl,
+    model: embeddingModel ?? "text-embedding-3-small",
+    // Asks for EMBEDDING_DIMENSIONS-long vectors (the pgvector column size). Set to false for a
+    // model that returns that length itself but rejects the `dimensions` parameter.
+    sendDimensions: boolean("EMBEDDING_SEND_DIMENSIONS", true),
     // Orders whose embedding failed are retried this many times before being left without one.
     maxAttempts: positiveInteger("EMBEDDING_MAX_ATTEMPTS", 5),
     batchSize: positiveInteger("EMBEDDING_BATCH_SIZE", 50),
