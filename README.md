@@ -245,6 +245,18 @@ token must be accepted, OTLP without it refused, and Grafana must answer. If not
 stops there, with the app services still on their current revisions, rather than pointing them
 at a stack that would drop their telemetry.
 
+To build and deploy only the observability stack, run the
+[Deploy Observability Stack workflow](.github/workflows/deploy-observability.yml) manually from
+the Actions tab. It builds only the stack images with
+[`cloudbuild-observability.yaml`](cloudbuild-observability.yaml) and deploys them using
+`OBSERVABILITY=on`; application services are not changed.
+From a configured local gcloud environment, the equivalent is:
+
+```sh
+gcloud builds submit --config cloudbuild-observability.yaml --region asia-southeast1
+OBSERVABILITY=on ./deploy.sh observability
+```
+
 The services only send telemetry while they have CPU: those that Cloud Run throttles between
 requests send theirs during their next request, so it can show up late. Data the stores held
 in memory when the service is deleted or redeployed may be lost.

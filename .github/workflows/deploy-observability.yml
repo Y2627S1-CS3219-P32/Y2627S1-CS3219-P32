@@ -36,6 +36,26 @@ jobs:
           project_id: ${{ vars.GCP_PROJECT_ID }}
           install_components: beta
 
+      - name: Build and push observability images
+        id: build
+        run: |
+          build_id="$(gcloud builds submit --config cloudbuild-observability.yaml --region "$REGION" --async --format 'value(id)')"
+          echo "Cloud Build: https://console.cloud.google.com/cloud-build/builds;region=${REGION}/${build_id}?project=${PROJECT_ID}"
+          while :; do
+            status="$(gcloud builds describe "$build_id" --region "$REGION" --format 'value(status)')"
+            case "$status" in
+              SUCCESS) break ;;
+              QUEUED|PENDING|WORKING) sleep 15 ;;
+              *)
+                gcloud builds log "$build_id" --region "$REGION" || true
+                echo "::error::Cloud Build $build_id finished with status $status"
+                exit 1
+                ;;
+            esac
+          done
+          echo "tag=$build_id" >> "$GITHUB_OUTPUT"
+
+
       - name: Deploy observability only
         run: ./deploy.sh observability
         env:
