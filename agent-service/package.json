@@ -1,4 +1,5 @@
 {
+  "//": "AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-11-10. Scope: pino and the OpenTelemetry SDK and instrumentations for the shared logger, telemetry and Pub/Sub messaging in common/shared/ (a copy of shared/src), exported to the chat and orchestrator services; pino-pretty for development. Author review: Pending.",
   "name": "@campus/agent-contracts",
   "version": "0.0.0",
   "private": true,
@@ -55,19 +56,38 @@
     "./db/client": {
       "types": "./dist/db/client.d.ts",
       "default": "./dist/db/client.js"
+    },
+    "./shared/logger": {
+      "types": "./dist/common/shared/logger.d.ts",
+      "default": "./dist/common/shared/logger.js"
+    },
+    "./shared/messaging": {
+      "types": "./dist/common/shared/messaging.d.ts",
+      "default": "./dist/common/shared/messaging.js"
     }
   },
   "dependencies": {
     "@google-cloud/pubsub": "^6.3.2",
+    "@opentelemetry/api": "^1.10.0",
+    "@opentelemetry/instrumentation-express": "^0.72.0",
+    "@opentelemetry/instrumentation-http": "^0.300.0",
+    "@opentelemetry/instrumentation-pg": "^0.77.0",
+    "@opentelemetry/instrumentation-pino": "^0.70.0",
+    "@opentelemetry/instrumentation-runtime-node": "^0.37.0",
+    "@opentelemetry/instrumentation-undici": "^0.34.0",
+    "@opentelemetry/sdk-node": "^0.300.0",
     "drizzle-orm": "^0.45.4",
     "google-auth-library": "^11.3.3",
+    "import-in-the-middle": "^3.5.3",
     "pg": "^8.23.1",
+    "pino": "^10.4.0",
     "redis": "^6.3.1",
     "zod": "^4.6.7"
   },
   "devDependencies": {
     "@types/pg": "^8.23.1",
-    "drizzle-kit": "^0.31.11"
+    "drizzle-kit": "^0.31.11",
+    "pino-pretty": "^13.2.0"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",

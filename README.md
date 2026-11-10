@@ -116,11 +116,16 @@ Editing a `package.json` rebuilds that service's image. Outside Docker, run
 <!-- AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-11-04.
 Scope: Local observability stack instructions. Author review: Pending.
 Claude Code (Opus 5.5), 2026-11-04: the services' own OpenTelemetry data. Author review: Pending.
-Claude Code (Opus 5.5), 2026-11-05: Pub/Sub messages in logs and traces. Author review: Pending. -->
+Claude Code (Opus 5.5), 2026-11-05: Pub/Sub messages in logs and traces. Author review: Pending.
+Claude Code (Opus 5.5), 2026-11-10: Mimir in place of Prometheus; the stack on Cloud Run.
+Author review: Pending.
+Claude Code (Opus 5.5), 2026-11-10: the agent and mandate services. Author review: Pending. -->
 
 [`compose.observability.yaml`](compose.observability.yaml) adds an OpenTelemetry
-Collector, Prometheus, Loki, Tempo and Grafana, configured in
+Collector, Grafana Mimir (for metrics), Loki, Tempo and Grafana, built from
+[`observability/Dockerfile`](observability/Dockerfile) with the configuration in
 [`observability/`](observability/), and turns on OpenTelemetry in every app service.
+After changing a file in `observability/`, rebuild with `up -d --build`.
 Add it after `compose.yaml` in any Compose command (after `compose.dev.yaml` too, for
 hot reloading):
 
@@ -129,16 +134,16 @@ docker compose -f compose.yaml -f compose.observability.yaml up -d --build
 ```
 
 To run only the stack, for services started on the host, name its services:
-`docker compose -f compose.yaml -f compose.observability.yaml up -d otel-collector prometheus loki tempo grafana`.
+`docker compose -f compose.yaml -f compose.observability.yaml up -d otel-collector mimir loki tempo grafana`.
 
 | What | Where |
 | --- | --- |
 | Grafana (log in as `admin` / `admin`) | http://127.0.0.1:3030 |
-| Prometheus | http://127.0.0.1:9090 |
+| Mimir (Prometheus API under `/prometheus`) | http://127.0.0.1:9009 |
 | OTLP from containers | `http://otel-collector:4318` (HTTP), `otel-collector:4317` (gRPC) |
 | OTLP from the host | `http://127.0.0.1:4318`, `127.0.0.1:4317` |
 
-The collector sends traces to Tempo, metrics to Prometheus and logs to Loki, and
+The collector sends traces to Tempo, metrics to Mimir and logs to Loki, and
 reports CPU, memory and network use for every container, labelled `compose_service`.
 Grafana links traces, logs and metrics to one another by trace ID.
 
@@ -150,8 +155,16 @@ events and commands reach. Every Pub/Sub message is logged when published and wh
 (with or without this file), with the same `messageId` on both sides; see
 [`shared/README.md`](shared/README.md#pubsub-messages). In Grafana, open **Explore → Tempo → Search**
 or **Service Graph**, or **Explore → Loki** with `{service_name="order-service"}`. Without
-`compose.observability.yaml`, and on Cloud Run, telemetry is off. See
+`compose.observability.yaml` telemetry is off, and on Cloud Run unless the observability stack
+is deployed ([below](#observability-on-cloud-run)). See
 [`shared/README.md`](shared/README.md#telemetry) for what is recorded and the settings.
+
+The agent-chat, agent-orchestrator and mandate services are instrumented the same way, and
+start only with Compose's `agent-skeleton` profile:
+`docker compose -f compose.yaml -f compose.observability.yaml --profile agent-skeleton up -d --build`.
+A chat message's trace runs from frontend-service through agent-chat-service, Pub/Sub and
+agent-orchestrator-service into the services its tools call; a mandate approval's runs from
+mandate-service through agent-chat-service into the turn it resumes.
 
 ## Logging
 
@@ -202,15 +215,53 @@ Agent/Mandate database credentials and private Redis are provisioned automatical
 Run `./deploy.sh soclass` before deploying the agent services to configure the model credentials.
 See [agent deployment](agent-service/docs/agent-deployment.md#prepare-production) for provisioning details and network overrides.
 
+### Observability on Cloud Run
+
+<!-- AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-11-10.
+Scope: Deploying the observability stack to Cloud Run. Author review: Pending.
+Claude Code (Opus 5.5), 2026-11-11: the readiness check. Author review: Pending. -->
+
+`OBSERVABILITY=on ./deploy.sh` also deploys the observability stack, and turns on every
+service's telemetry. It is one Cloud Run service, `observability`, whose containers are the same
+images as in Docker Compose (built by `cloudbuild.yaml`), sharing the instance's `localhost`:
+
+- **nginx** (the entry point) sends OTLP (`/v1/traces`, `/v1/metrics`, `/v1/logs`) to the
+  collector when it carries the `x-otlp-token` the services send (from the `otlp-exporter-headers`
+  secret), and everything else to Grafana.
+- **Grafana** is public, behind its login: user `admin`, password in Secret Manager:
+  `gcloud secrets versions access latest --secret grafana-admin-password`. `deploy.sh` prints the
+  URL.
+- **Mimir, Loki and Tempo** keep their data in the GCS buckets `<project>-observability-mimir`,
+  `-loki` and `-tempo`, which outlive the service.
+
+It runs as exactly one instance with CPU always allocated (6 vCPU, 6 GiB in all): about
+US$0.50 an hour, or US$12 a day, while deployed. With `OBSERVABILITY=off`, the default,
+`./deploy.sh` turns the services' telemetry off and deletes the service; `./deploy.sh
+observability-down` deletes it straight away. The GitHub workflow takes the setting from the
+`OBSERVABILITY` repository variable.
+
+The stack is deployed before any app service, and `deploy.sh` then checks it: OTLP with the
+token must be accepted, OTLP without it refused, and Grafana must answer. If not, the deploy
+stops there, with the app services still on their current revisions, rather than pointing them
+at a stack that would drop their telemetry.
+
+The services only send telemetry while they have CPU: those that Cloud Run throttles between
+requests send theirs during their next request, so it can show up late. Data the stores held
+in memory when the service is deleted or redeployed may be lost.
+
 ### Automatic deployment (GitHub Actions)
 
 <!-- AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-10-18.
-Scope: GitHub Actions deployment instructions. Author review: Pending. -->
+Scope: GitHub Actions deployment instructions. Author review: Pending.
+Claude Code (Opus 5.5), 2026-11-11: the checks job. Author review: Pending. -->
 
 [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) builds the images and runs
 `./deploy.sh` on every push to `main` (it can also be run manually from the Actions tab, with an
 option to seed). It signs in through Workload Identity Federation, so no service account key is
-stored in GitHub. One-time setup, after `./deploy.sh setup`:
+stored in GitHub. A `checks` job runs first, in about 3 minutes: `deploy.sh`'s syntax, the
+agent and mandate builds, and the tests that need no database, including the shared Pub/Sub
+messaging test (`npm run test:messaging`). The image build only starts once it passes, and is
+stopped after 30 minutes (`timeout` in `cloudbuild.yaml`). One-time setup, after `./deploy.sh setup`:
 
 ```sh
 ./deploy.sh github  # deployer service account, identity pool restricted to this repo's main branch
@@ -218,6 +269,8 @@ stored in GitHub. One-time setup, after `./deploy.sh setup`:
 
 Then add the three printed values (`GCP_PROJECT_ID`, `GCP_WORKLOAD_IDENTITY_PROVIDER`,
 `GCP_SERVICE_ACCOUNT`) as repository variables under Settings > Secrets and variables > Actions.
+Add `OBSERVABILITY` = `on` there too to deploy the [observability stack](#observability-on-cloud-run)
+with every deployment; set it to `off` (or delete it) and run the workflow again to remove it.
 
 To redeploy images that have already been built, run
 [`.github/workflows/deploy-existing.yml`](.github/workflows/deploy-existing.yml) manually from the

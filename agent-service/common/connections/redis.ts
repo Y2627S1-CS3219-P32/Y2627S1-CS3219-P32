@@ -2,6 +2,7 @@ import { within } from '../deadline.js';
 import { createClient, type RedisClientOptions } from 'redis';
 import type { StreamEvent } from '../../contracts/events.js';
 import { parseBounded, streamSchema } from '../../contracts/events.js';
+import { logger } from '../shared/logger.js';
 
 export function createStreams(url: string, onError: (error: unknown) => void) {
   if (!['redis:', 'rediss:'].includes(new URL(url).protocol)) throw new Error('Invalid Redis URL');
@@ -138,11 +139,12 @@ let connection: ReturnType<typeof createStreams> | undefined;
 export function streamConnection() {
   const url = process.env.REDIS_URL;
   if (!url) throw new Error('Missing REDIS_URL');
+  // Claude Code (Opus 5.5), 2026-11-10: through the shared logger. Author review: Pending.
   return (connection ??= createStreams(url, (error) =>
-    console.error({
-      code: 'REDIS_CONNECTION_ERROR',
-      message: error instanceof Error ? error.message : 'Unknown Redis error',
-    }),
+    logger.error(
+      { code: 'REDIS_CONNECTION_ERROR', err: error },
+      error instanceof Error ? error.message : 'Unknown Redis error',
+    ),
   ));
 }
 export async function closeStreamConnection() {

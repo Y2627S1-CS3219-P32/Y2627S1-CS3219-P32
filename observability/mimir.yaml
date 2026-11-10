@@ -1,0 +1,99 @@
+# AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-11-10.
+# Scope: Single-process Grafana Mimir (in place of Prometheus): OTLP and remote-write
+# ingestion, blocks on the filesystem locally and in a GCS bucket on Cloud Run.
+# Author review: Pending.
+#
+# The variables come from the environment (-config.expand-env); observability/Dockerfile sets the
+# local defaults, and deploy.sh the Cloud Run values.
+multitenancy_enabled: false
+
+server:
+  # Not Mimir's default 8080/9095: on Cloud Run every component of the stack shares one
+  # network namespace, and Tempo listens on 9095.
+  http_listen_port: 9009
+  grpc_listen_port: 9097
+  log_level: warn
+
+common:
+  storage:
+    backend: ${MIMIR_STORAGE_BACKEND}
+    filesystem:
+      dir: /data/mimir/objects
+    gcs:
+      bucket_name: ${MIMIR_GCS_BUCKET}
+
+# One bucket for all three, each under its own prefix.
+blocks_storage:
+  storage_prefix: blocks
+  tsdb:
+    dir: /data/mimir/tsdb
+    # On Cloud Run, where the disk is memory and does not outlive the instance; otherwise
+    # the open block is kept on disk and reused after a restart.
+    flush_blocks_on_shutdown: ${MIMIR_FLUSH_ON_SHUTDOWN}
+  bucket_store:
+    sync_dir: /data/mimir/tsdb-sync
+
+ruler_storage:
+  storage_prefix: ruler
+
+alertmanager_storage:
+  storage_prefix: alertmanager
+
+# One instance, so every hash ring is kept in memory instead of gossiped.
+distributor:
+  ring:
+    instance_addr: 127.0.0.1
+    kvstore:
+      store: inmemory
+
+ingester:
+  ring:
+    instance_addr: 127.0.0.1
+    kvstore:
+      store: inmemory
+    replication_factor: 1
+    # Mimir's default waits before accepting writes, for rolling updates of many ingesters.
+    min_ready_duration: 0s
+    final_sleep: 0s
+
+store_gateway:
+  sharding_ring:
+    instance_addr: 127.0.0.1
+    kvstore:
+      store: inmemory
+    replication_factor: 1
+
+compactor:
+  data_dir: /data/mimir/compactor
+  sharding_ring:
+    instance_addr: 127.0.0.1
+    kvstore:
+      store: inmemory
+
+ruler:
+  rule_path: /data/mimir/ruler
+  ring:
+    instance_addr: 127.0.0.1
+    kvstore:
+      store: inmemory
+
+alertmanager:
+  data_dir: /data/mimir/alertmanager
+  sharding_ring:
+    instance_addr: 127.0.0.1
+    kvstore:
+      store: inmemory
+    replication_factor: 1
+
+limits:
+  # Metrics arrive late and out of order through the collector's batches.
+  out_of_order_time_window: 30m
+  # Tempo's span metrics carry exemplars that link to traces.
+  max_global_exemplars_per_user: 100000
+  # Copy these OTLP resource attributes onto every series as labels, as Prometheus did.
+  promote_otel_resource_attributes: >-
+    service.name,service.namespace,service.instance.id,service.version,deployment.environment.name,container.name,compose_service,compose_project
+  compactor_blocks_retention_period: 7d
+
+usage_stats:
+  enabled: false

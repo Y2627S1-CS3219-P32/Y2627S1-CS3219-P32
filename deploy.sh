@@ -16,6 +16,11 @@
 # Author review: Pending.
 # Claude Code (Opus 5.5), 2026-10-18: `github` command setting up Workload Identity Federation
 # for the GitHub Actions deploy workflow. Author review: Pending.
+# Claude Code (Opus 5.5), 2026-11-10: the observability stack (OBSERVABILITY=on) as one
+# multi-container service, `observability`, and the app services' telemetry pointed at it.
+# Author review: Pending.
+# Claude Code (Opus 5.5), 2026-11-11: check_observability, which stops the deploy before the
+# app services if the observability service does not take OTLP. Author review: Pending.
 #
 # Usage (from the repository root, after `gcloud builds submit --config cloudbuild.yaml`):
 #   ./deploy.sh setup   # one-time: Cloud SQL, databases, secrets, IAM, networking
@@ -24,6 +29,13 @@
 #   ./deploy.sh github  # one-time: let .github/workflows/deploy.yml deploy from main
 #   ./deploy.sh mailjet # securely add/update Mailjet secrets for mail-service
 #   ./deploy.sh soclass # securely configure SoC LLaaS credentials for agent-service
+#   ./deploy.sh observability-down  # delete the observability service now (stops its cost)
+#
+# OBSERVABILITY=on ./deploy.sh also deploys the observability stack (Grafana, the
+# OpenTelemetry Collector, Mimir, Loki and Tempo) and turns on the services' telemetry.
+# With OBSERVABILITY=off (the default) the services' telemetry is off, and an
+# observability service left from an earlier deploy is deleted; its data stays in its
+# buckets for the next time. It costs roughly US$0.50 an hour while deployed.
 #
 # Override any setting below with an environment variable, e.g. TAG=<build id> ./deploy.sh
 set -euo pipefail
@@ -58,6 +70,10 @@ RESERVE_TIMEOUT_SECONDS="${RESERVE_TIMEOUT_SECONDS:-60}"
 # Custom domains the frontend is served on, allowed to open notification WebSockets.
 # (Claude Code (Opus 5.5), 2026-10-18; author review: Pending.)
 PUBLIC_ORIGINS="${PUBLIC_ORIGINS:-https://nusfoc.com}"
+# The observability stack: on or off. (Claude Code (Opus 5.5), 2026-11-10; author review: Pending.)
+OBSERVABILITY="${OBSERVABILITY:-off}"
+# Its buckets are <prefix>-mimir, <prefix>-loki and <prefix>-tempo (bucket names are global).
+OBSERVABILITY_BUCKET_PREFIX="${OBSERVABILITY_BUCKET_PREFIX:-${PROJECT_ID}-observability}"
 
 REGISTRY="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPOSITORY}"
 SQL_CONNECTION="${PROJECT_ID}:${REGION}:${SQL_INSTANCE}"
@@ -310,6 +326,128 @@ ensure_scheduler_job() {
     --oidc-service-account-email "$SCHEDULER_SERVICE_ACCOUNT" --oidc-token-audience "$audience" >/dev/null
 }
 
+# Creates the secret, or adds a version to it, from standard input.
+put_secret() {
+  if secret_exists "$1"; then
+    run secrets versions add "$1" --data-file - >/dev/null
+  else
+    run secrets create "$1" --replication-policy automatic --data-file - >/dev/null
+  fi
+}
+
+# Set by deploy() when OBSERVABILITY=on: where the app services send their telemetry.
+OTEL_ENDPOINT=""
+
+# Telemetry settings for an app service while the observability service is deployed, and
+# nothing otherwise: appended to its --set-env-vars ($1 is that list's separator) and its
+# --set-secrets. always_on: Cloud Run's front end adds an unsampled traceparent to most
+# requests, which the default sampler would follow and record nothing.
+otel_env() {
+  if [ -n "$OTEL_ENDPOINT" ]; then
+    printf '%sOTEL_EXPORTER_OTLP_ENDPOINT=%s%sOTEL_TRACES_SAMPLER=always_on' "$1" "$OTEL_ENDPOINT" "$1"
+  fi
+}
+otel_secrets() {
+  if [ -n "$OTEL_ENDPOINT" ]; then
+    printf ',OTEL_EXPORTER_OTLP_HEADERS=otlp-exporter-headers:latest'
+  fi
+}
+
+# Secrets and buckets for the observability service. Safe to repeat.
+ensure_observability_resources() {
+  # The token the services send (x-otlp-token) and the proxy checks, kept as the proxy
+  # needs it and as an OTEL_EXPORTER_OTLP_HEADERS value; made together, so they match.
+  if ! secret_exists otlp-token || ! secret_exists otlp-exporter-headers; then
+    local token
+    token="$(openssl rand -hex 32)"
+    printf '%s' "$token" | put_secret otlp-token
+    printf 'x-otlp-token=%s' "$token" | put_secret otlp-exporter-headers
+    unset token
+  fi
+  if ! secret_exists grafana-admin-password; then
+    openssl rand -hex 16 | tr -d '\n' | put_secret grafana-admin-password
+  fi
+
+  local service_account bucket kind
+  service_account="$(project_number)-compute@developer.gserviceaccount.com"
+  for kind in mimir loki tempo; do
+    bucket="gs://${OBSERVABILITY_BUCKET_PREFIX}-${kind}"
+    if ! run storage buckets describe "$bucket" >/dev/null 2>&1; then
+      run storage buckets create "$bucket" --location "$REGION" \
+        --uniform-bucket-level-access --public-access-prevention
+    fi
+    for role in roles/storage.objectAdmin roles/storage.legacyBucketReader; do
+      run storage buckets add-iam-policy-binding "$bucket" \
+        --member "serviceAccount:${service_account}" --role "$role" >/dev/null
+    done
+  done
+}
+
+# The observability stack as one service: its containers share the instance's localhost,
+# and nginx (the ingress container) sends OTLP to the collector and the rest to Grafana.
+# Exactly one instance, CPU always on: the stores keep recent data in memory and write it to
+# their buckets in the background. Images: observability/Dockerfile, through cloudbuild.yaml.
+deploy_observability() {
+  ensure_observability_resources
+  local image="${REGISTRY}/observability" hosts="MIMIR_HOST=localhost,LOKI_HOST=localhost,TEMPO_HOST=localhost"
+  local probe="periodSeconds=5,timeoutSeconds=3,failureThreshold=60"
+  run run deploy observability --region "$REGION" \
+    --ingress all --allow-unauthenticated \
+    --min-instances 1 --max-instances 1 --no-cpu-throttling --timeout 3600 \
+    --container proxy --image "${image}-proxy:${TAG}" --port 8080 --cpu 1 --memory 512Mi \
+    --depends-on grafana,otel-collector \
+    --set-secrets "OTLP_TOKEN=otlp-token:latest" \
+    --container grafana --image "${image}-grafana:${TAG}" --cpu 1 --memory 1Gi \
+    --set-env-vars "${hosts},GF_SERVER_ROOT_URL=$(run_url observability),GF_SECURITY_COOKIE_SECURE=true" \
+    --set-secrets "GF_SECURITY_ADMIN_PASSWORD=grafana-admin-password:latest" \
+    --startup-probe "httpGet.path=/api/health,httpGet.port=3000,${probe}" \
+    --container otel-collector --image "${image}-otel-collector:${TAG}" --cpu 1 --memory 512Mi \
+    --set-env-vars "${hosts},DEPLOYMENT_ENVIRONMENT=cloud" \
+    --startup-probe "httpGet.path=/,httpGet.port=13133,${probe}" \
+    --container mimir --image "${image}-mimir:${TAG}" --cpu 1 --memory 2Gi \
+    --set-env-vars "MIMIR_STORAGE_BACKEND=gcs,MIMIR_GCS_BUCKET=${OBSERVABILITY_BUCKET_PREFIX}-mimir,MIMIR_FLUSH_ON_SHUTDOWN=true" \
+    --container loki --image "${image}-loki:${TAG}" --cpu 1 --memory 1Gi \
+    --set-env-vars "LOKI_OBJECT_STORE=gcs,LOKI_GCS_BUCKET=${OBSERVABILITY_BUCKET_PREFIX}-loki,LOKI_FLUSH_ON_SHUTDOWN=true" \
+    --container tempo --image "${image}-tempo:${TAG}" --cpu 1 --memory 1Gi \
+    --set-env-vars "MIMIR_HOST=localhost,TEMPO_STORAGE_BACKEND=gcs,TEMPO_GCS_BUCKET=${OBSERVABILITY_BUCKET_PREFIX}-tempo"
+}
+
+# Stops the deploy, before any app service is pointed at it, unless the observability service
+# takes OTLP with the token (proxy, then collector), refuses it without, and Grafana answers.
+# Otherwise every service would send its telemetry nowhere, silently. Retries for about a
+# minute. (Claude Code (Opus 5.5), 2026-11-11; author review: Pending.)
+check_observability() {
+  local endpoint="$1" token otlp unauthenticated grafana attempt
+  token="$(run secrets versions access latest --secret otlp-token)"
+  for attempt in $(seq 1 12); do
+    # The token goes to curl on standard input, not on its command line.
+    otlp="$(printf 'x-otlp-token: %s\n' "$token" | curl -sS -o /dev/null -w '%{http_code}' --max-time 10 \
+      -H @- -H 'Content-Type: application/json' --data '{"resourceSpans":[]}' "${endpoint}/v1/traces" || true)"
+    unauthenticated="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 \
+      -H 'Content-Type: application/json' --data '{"resourceSpans":[]}' "${endpoint}/v1/traces" || true)"
+    grafana="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 "${endpoint}/api/health" || true)"
+    if [ "$otlp" = 200 ] && [ "$unauthenticated" = 401 ] && [ "$grafana" = 200 ]; then
+      unset token
+      echo "Observability service is ready: OTLP accepted with the token, refused without; Grafana answers."
+      return 0
+    fi
+    [ "$attempt" -lt 12 ] && sleep 5
+  done
+  unset token
+  echo "The observability service at ${endpoint} is not ready (OTLP with the token: HTTP ${otlp}," \
+    "without: HTTP ${unauthenticated}, expected 401; Grafana: HTTP ${grafana}). Stopping before" \
+    "the app services are deployed; they keep their current revisions." >&2
+  return 1
+}
+
+# Deletes the observability service; its buckets and secrets are kept.
+remove_observability() {
+  if run run services describe observability --region "$REGION" >/dev/null 2>&1; then
+    run run services delete observability --region "$REGION" --quiet
+    echo "Deleted the observability service; its data stays in the ${OBSERVABILITY_BUCKET_PREFIX}-* buckets."
+  fi
+}
+
 # Everything the order, notification, credit and saga services need. Safe to repeat.
 ensure_service_resources() {
   create_database socket order_service orders order-database-url
@@ -363,16 +501,16 @@ deploy_event_services() {
     --min-instances 1 --no-cpu-throttling \
     --startup-probe=httpGet.path=/health,httpGet.port=3000,periodSeconds=2,timeoutSeconds=1,failureThreshold=30 \
     --add-cloudsql-instances "$SQL_CONNECTION" \
-    --set-env-vars "PUBSUB_PROJECT_ID=${PROJECT_ID}" \
-    --set-secrets "DATABASE_URL=chat-database-url:latest,JWT_SECRET=jwt-secret:latest"
+    --set-env-vars "PUBSUB_PROJECT_ID=${PROJECT_ID}$(otel_env ,)" \
+    --set-secrets "DATABASE_URL=chat-database-url:latest,JWT_SECRET=jwt-secret:latest$(otel_secrets)"
 
   local order_url
   order_url="$(run_url order-service)"
   run run deploy order-service --region "$REGION" --image "${REGISTRY}/order-service:${TAG}" \
     --port 3000 --ingress internal --allow-unauthenticated \
     --add-cloudsql-instances "$SQL_CONNECTION" \
-    --set-env-vars "^|^PUBSUB_PROJECT_ID=${PROJECT_ID}|INTERNAL_AUDIENCE=${order_url}|INTERNAL_INVOKER_EMAILS=${invokers}" \
-    --set-secrets "DATABASE_URL=order-database-url:latest,JWT_SECRET=jwt-secret:latest"
+    --set-env-vars "^|^PUBSUB_PROJECT_ID=${PROJECT_ID}|INTERNAL_AUDIENCE=${order_url}|INTERNAL_INVOKER_EMAILS=${invokers}$(otel_env '|')" \
+    --set-secrets "DATABASE_URL=order-database-url:latest,JWT_SECRET=jwt-secret:latest$(otel_secrets)"
   ensure_push_subscription order-service-user-events user-events "${order_url}/internal/pubsub/user-events" "$order_url" --enable-message-ordering
   ensure_push_subscription order-service-supplier-events supplier-events "${order_url}/internal/pubsub/supplier-events" "$order_url" --enable-message-ordering
   ensure_push_subscription order-service-order-commands order-commands "${order_url}/internal/pubsub/order-commands" "$order_url" --enable-message-ordering
@@ -389,8 +527,8 @@ deploy_event_services() {
   run run deploy credit-service --region "$REGION" --image "${REGISTRY}/credit-service:${TAG}" \
     --port 3000 --ingress internal --allow-unauthenticated \
     --add-cloudsql-instances "$SQL_CONNECTION" \
-    --set-env-vars "$credit_env" \
-    --set-secrets "DATABASE_URL=credit-database-url:latest,JWT_SECRET=jwt-secret:latest"
+    --set-env-vars "${credit_env}$(otel_env '|')" \
+    --set-secrets "DATABASE_URL=credit-database-url:latest,JWT_SECRET=jwt-secret:latest$(otel_secrets)"
   run_job credit-provision "${REGISTRY}/credit-service:${TAG}" credit-database-url \
     "${SOCKET_DB_FLAGS[@]}" --set-env-vars "$credit_env" --command npm --args run,pubsub:provision
   # The outbox publisher loops in the background: exactly one instance, CPU always on.
@@ -399,16 +537,16 @@ deploy_event_services() {
     --port 3000 --ingress internal --no-allow-unauthenticated \
     --min-instances 1 --max-instances 1 --no-cpu-throttling \
     --add-cloudsql-instances "$SQL_CONNECTION" \
-    --set-env-vars "$credit_env" \
-    --set-secrets "DATABASE_URL=credit-database-url:latest,JWT_SECRET=jwt-secret:latest"
+    --set-env-vars "${credit_env}$(otel_env '|')" \
+    --set-secrets "DATABASE_URL=credit-database-url:latest,JWT_SECRET=jwt-secret:latest$(otel_secrets)"
 
   local saga_url
   saga_url="$(run_url saga-orchestrator)"
   run run deploy saga-orchestrator --region "$REGION" --image "${REGISTRY}/saga-orchestrator:${TAG}" \
     --port 3000 --ingress internal --allow-unauthenticated \
     --add-cloudsql-instances "$SQL_CONNECTION" \
-    --set-env-vars "^|^PUBSUB_PROJECT_ID=${PROJECT_ID}|INTERNAL_AUDIENCE=${saga_url}|INTERNAL_INVOKER_EMAILS=${invokers}|RESERVE_TIMEOUT_SECONDS=${RESERVE_TIMEOUT_SECONDS}" \
-    --set-secrets "DATABASE_URL=saga-database-url:latest"
+    --set-env-vars "^|^PUBSUB_PROJECT_ID=${PROJECT_ID}|INTERNAL_AUDIENCE=${saga_url}|INTERNAL_INVOKER_EMAILS=${invokers}|RESERVE_TIMEOUT_SECONDS=${RESERVE_TIMEOUT_SECONDS}$(otel_env '|')" \
+    --set-secrets "DATABASE_URL=saga-database-url:latest$(otel_secrets)"
   ensure_push_subscription saga-orchestrator-order-events order-events "${saga_url}/internal/pubsub/order-events" "$saga_url" \
     --enable-message-ordering \
     --message-filter 'attributes.type = "order.created" OR attributes.type = "order.cancelled" OR attributes.type = "order.expired" OR attributes.type = "order.completed"'
@@ -426,8 +564,8 @@ deploy_event_services() {
     --port 3000 --ingress all --allow-unauthenticated \
     --min-instances 1 --no-cpu-throttling --timeout 3600 \
     --add-cloudsql-instances "$SQL_CONNECTION" \
-    --set-env-vars "^|^PUBSUB_PROJECT_ID=${PROJECT_ID}|ALLOWED_ORIGINS=${origins}" \
-    --set-secrets "DATABASE_URL=notification-database-url:latest,JWT_SECRET=jwt-secret:latest,NOTIFICATION_TICKET_SECRET=notification-ticket-secret:latest"
+    --set-env-vars "^|^PUBSUB_PROJECT_ID=${PROJECT_ID}|ALLOWED_ORIGINS=${origins}$(otel_env '|')" \
+    --set-secrets "DATABASE_URL=notification-database-url:latest,JWT_SECRET=jwt-secret:latest,NOTIFICATION_TICKET_SECRET=notification-ticket-secret:latest$(otel_secrets)"
 
   ensure_scheduler_job order-expire-overdue "${order_url}/internal/orders/expire-overdue" "$order_url"
   ensure_scheduler_job order-outbox-publish "${order_url}/internal/outbox/publish" "$order_url"
@@ -548,13 +686,21 @@ deploy() {
   require_agent_secrets
   ensure_pubsub
 
+  # First, so its URL answers by the time the services start sending to it, and so a broken
+  # stack stops the deploy before any app service changes.
+  if [ "$OBSERVABILITY" = on ]; then
+    deploy_observability
+    OTEL_ENDPOINT="$(run_url observability)"
+    check_observability "$OTEL_ENDPOINT"
+  fi
+
   if secret_exists mailjet-api-key && secret_exists mailjet-secret-key && secret_exists mailjet-from; then
     local mail_service_url
     mail_service_url="$(run_url mail-service)"
     run run deploy mail-service --region "$REGION" --image "${REGISTRY}/mail-service:${TAG}" \
       --port 3335 --no-allow-unauthenticated \
-      --set-env-vars "PUBSUB_PROJECT_ID=${PROJECT_ID},PUBSUB_TOPIC=${PUBSUB_TOPIC},PUBSUB_SUBSCRIPTION=${MAIL_SERVICE_SUBSCRIPTION},PASSWORD_RESET_TOPIC=${PASSWORD_RESET_TOPIC},PASSWORD_RESET_SUBSCRIPTION=${PASSWORD_RESET_SUBSCRIPTION},FRONTEND_BASE_URL=${PUBLIC_ORIGINS%%,*}" \
-      --set-secrets "MAILJET_API_KEY=mailjet-api-key:latest,MAILJET_SECRET_KEY=mailjet-secret-key:latest,MAILJET_FROM=mailjet-from:latest"
+      --set-env-vars "PUBSUB_PROJECT_ID=${PROJECT_ID},PUBSUB_TOPIC=${PUBSUB_TOPIC},PUBSUB_SUBSCRIPTION=${MAIL_SERVICE_SUBSCRIPTION},PASSWORD_RESET_TOPIC=${PASSWORD_RESET_TOPIC},PASSWORD_RESET_SUBSCRIPTION=${PASSWORD_RESET_SUBSCRIPTION},FRONTEND_BASE_URL=${PUBLIC_ORIGINS%%,*}$(otel_env ,)" \
+      --set-secrets "MAILJET_API_KEY=mailjet-api-key:latest,MAILJET_SECRET_KEY=mailjet-secret-key:latest,MAILJET_FROM=mailjet-from:latest$(otel_secrets)"
     run run services add-iam-policy-binding mail-service --region "$REGION" \
       --member "serviceAccount:${PUBSUB_PUSH_SERVICE_ACCOUNT}" --role roles/run.invoker >/dev/null
     ensure_push_subscription "$MAIL_SERVICE_SUBSCRIPTION" "$PUBSUB_TOPIC" \
@@ -579,8 +725,8 @@ deploy() {
   run run deploy user-service --region "$REGION" --image "${REGISTRY}/user-service:${TAG}" \
     --port 3333 --ingress internal --allow-unauthenticated \
     --add-cloudsql-instances "$SQL_CONNECTION" \
-    --set-env-vars "JWT_ACCESS_TOKEN_TTL=900,PUBSUB_PROJECT_ID=${PROJECT_ID},PUBSUB_TOPIC=${PUBSUB_TOPIC},PASSWORD_RESET_TOPIC=${PASSWORD_RESET_TOPIC}" \
-    --set-secrets "$user_secrets"
+    --set-env-vars "JWT_ACCESS_TOKEN_TTL=900,PUBSUB_PROJECT_ID=${PROJECT_ID},PUBSUB_TOPIC=${PUBSUB_TOPIC},PASSWORD_RESET_TOPIC=${PASSWORD_RESET_TOPIC}$(otel_env ,)" \
+    --set-secrets "${user_secrets}$(otel_secrets)"
   local user_url
   user_url="$(service_url user-service)"
 
@@ -588,8 +734,8 @@ deploy() {
     --command npm --args run,worker \
     --port 3334 --no-allow-unauthenticated \
     --add-cloudsql-instances "$SQL_CONNECTION" \
-    --set-env-vars "PUBSUB_PROJECT_ID=${PROJECT_ID},PUBSUB_TOPIC=${PUBSUB_TOPIC},PUBSUB_SUBSCRIPTION=${PUBSUB_SUBSCRIPTION}" \
-    --set-secrets "DATABASE_URL=user-database-url:latest"
+    --set-env-vars "PUBSUB_PROJECT_ID=${PROJECT_ID},PUBSUB_TOPIC=${PUBSUB_TOPIC},PUBSUB_SUBSCRIPTION=${PUBSUB_SUBSCRIPTION}$(otel_env ,)" \
+    --set-secrets "DATABASE_URL=user-database-url:latest$(otel_secrets)"
   local worker_url
   worker_url="$(service_url user-event-worker)"
   run run services add-iam-policy-binding user-event-worker --region "$REGION" \
@@ -610,14 +756,14 @@ deploy() {
 
   # Copies user-events into the supplier database, which supplier-service reads to authorize callers.
   # (Claude Code (Opus 5.5), 2026-11-04: `npm run worker` loads OpenTelemetry first, which stays
-  # off without OTEL_EXPORTER_OTLP_ENDPOINT; author review: Pending.)
+  # off without OTEL_EXPORTER_OTLP_ENDPOINT, set with OBSERVABILITY=on; author review: Pending.)
   run run deploy supplier-event-worker --region "$REGION" --image "${REGISTRY}/supplier-service:${TAG}" \
     --command npm --args run,worker \
     --port 3004 --no-allow-unauthenticated \
     --clear-cloudsql-instances \
     --network "$NETWORK" --subnet "$SUBNET" --vpc-egress private-ranges-only \
-    --set-env-vars "PUBSUB_PROJECT_ID=${PROJECT_ID},USER_EVENTS_TOPIC=${PUBSUB_TOPIC},PUBSUB_SUBSCRIPTION=${SUPPLIER_USER_EVENTS_SUBSCRIPTION},SUPPLIER_EVENTS_TOPIC=${SUPPLIER_EVENTS_TOPIC}" \
-    --set-secrets "DATABASE_URL=supplier-database-url:latest"
+    --set-env-vars "PUBSUB_PROJECT_ID=${PROJECT_ID},USER_EVENTS_TOPIC=${PUBSUB_TOPIC},PUBSUB_SUBSCRIPTION=${SUPPLIER_USER_EVENTS_SUBSCRIPTION},SUPPLIER_EVENTS_TOPIC=${SUPPLIER_EVENTS_TOPIC}$(otel_env ,)" \
+    --set-secrets "DATABASE_URL=supplier-database-url:latest$(otel_secrets)"
   local supplier_worker_url
   supplier_worker_url="$(service_url supplier-event-worker)"
   run run services add-iam-policy-binding supplier-event-worker --region "$REGION" \
@@ -640,8 +786,8 @@ deploy() {
     --port 3000 --ingress internal --allow-unauthenticated \
     --clear-cloudsql-instances \
     --network "$NETWORK" --subnet "$SUBNET" --vpc-egress all-traffic \
-    --set-env-vars "^|^PUBSUB_PROJECT_ID=${PROJECT_ID}|SUPPLIER_EVENTS_TOPIC=${SUPPLIER_EVENTS_TOPIC}|SERVICE_AUTH_MODE=google|SERVICE_READ_AUDIENCE=$(run_url supplier-service)|SERVICE_READ_INVOKERS=$(project_number)-compute@developer.gserviceaccount.com" \
-    --set-secrets "DATABASE_URL=supplier-database-url:latest,JWT_SECRET=jwt-secret:latest"
+    --set-env-vars "^|^PUBSUB_PROJECT_ID=${PROJECT_ID}|SUPPLIER_EVENTS_TOPIC=${SUPPLIER_EVENTS_TOPIC}$(otel_env ,)|SERVICE_AUTH_MODE=google|SERVICE_READ_AUDIENCE=$(run_url supplier-service)|SERVICE_READ_INVOKERS=$(project_number)-compute@developer.gserviceaccount.com" \
+    --set-secrets "DATABASE_URL=supplier-database-url:latest,JWT_SECRET=jwt-secret:latest$(otel_secrets)"
   local supplier_url
   supplier_url="$(service_url supplier-service)"
 
@@ -661,12 +807,21 @@ deploy() {
   local notification_url
   notification_url="$(service_url notification-service)"
 
+  local frontend_secret_flags=(--clear-secrets)
+  [ -n "$OTEL_ENDPOINT" ] && frontend_secret_flags=(--set-secrets "$(otel_secrets | cut -c2-)")
+
   run run deploy frontend-service --region "$REGION" --image "${REGISTRY}/frontend-service:${TAG}" \
     --port 3000 --ingress all --allow-unauthenticated \
     --network "$NETWORK" --subnet "$SUBNET" --vpc-egress all-traffic \
-    --set-env-vars "NUXT_USER_SERVICE_BASE_URL=${user_url},NUXT_SUPPLIER_SERVICE_BASE_URL=${supplier_url},NUXT_ORDER_SERVICE_BASE_URL=$(service_url order-service),NUXT_CHAT_SERVICE_BASE_URL=$(service_url chat-service),NUXT_CREDIT_SERVICE_BASE_URL=$(service_url credit-service),NUXT_NOTIFICATION_SERVICE_BASE_URL=${notification_url},NUXT_AGENT_SERVICE_BASE_URL=$(service_url agent-chat-service),NUXT_MANDATE_SERVICE_BASE_URL=$(service_url mandate-service),NUXT_PUBLIC_NOTIFICATION_SERVICE_URL=${notification_url/https:/wss:}"
+    --set-env-vars "NUXT_USER_SERVICE_BASE_URL=${user_url},NUXT_SUPPLIER_SERVICE_BASE_URL=${supplier_url},NUXT_ORDER_SERVICE_BASE_URL=$(service_url order-service),NUXT_CHAT_SERVICE_BASE_URL=$(service_url chat-service),NUXT_CREDIT_SERVICE_BASE_URL=$(service_url credit-service),NUXT_NOTIFICATION_SERVICE_BASE_URL=${notification_url},NUXT_AGENT_SERVICE_BASE_URL=$(service_url agent-chat-service),NUXT_MANDATE_SERVICE_BASE_URL=$(service_url mandate-service),NUXT_PUBLIC_NOTIFICATION_SERVICE_URL=${notification_url/https:/wss:}$(otel_env ,)" \
+    "${frontend_secret_flags[@]}"
 
   echo "Frontend: $(service_url frontend-service)"
+  if [ "$OBSERVABILITY" = on ]; then
+    echo "Grafana: ${OTEL_ENDPOINT} (user admin; password: gcloud secrets versions access latest --secret grafana-admin-password)"
+  else
+    remove_observability
+  fi
 }
 
 # One-time: lets GitHub Actions in GITHUB_REPOSITORY deploy from main through Workload
@@ -807,5 +962,6 @@ case "${1:-deploy}" in
   github) github_ci ;;
   mailjet) configure_mailjet ;;
   soclass) configure_soclass ;;
-  *) echo "Usage: $0 [setup|deploy|agent-services|seed|github|mailjet|soclass]" >&2; exit 1 ;;
+  observability-down) remove_observability ;;
+  *) echo "Usage: $0 [setup|deploy|agent-services|seed|github|mailjet|soclass|observability-down]" >&2; exit 1 ;;
 esac

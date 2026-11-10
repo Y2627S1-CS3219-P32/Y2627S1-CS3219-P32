@@ -1,29 +1,35 @@
 # AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-11-04.
 # Scope: Local observability stack: OpenTelemetry Collector, Prometheus, Loki, Tempo and
 # Grafana. Author review: Pending.
+# Claude Code (Opus 5.5), 2026-11-10: Mimir in place of Prometheus; the stack's images are
+# built from observability/Dockerfile, as for Cloud Run. Author review: Pending.
 #
 # Usage, with the app:  docker compose -f compose.yaml -f compose.observability.yaml up -d --build
 #        stack only (services run on the host), naming its services:
 #          docker compose -f compose.yaml -f compose.observability.yaml up -d \
-#            otel-collector prometheus loki tempo grafana
+#            otel-collector mimir loki tempo grafana
 #
 # Claude Code (Opus 5.5), 2026-11-04: the app services below get an OTLP endpoint, which turns
 # on shared/src/telemetry.mts in each. The file now needs compose.yaml alongside it, as it
 # names the app's services. Author review: Pending.
 # Claude Code (Opus 5.5), 2026-11-10: the chat, mail, order-ranking and sync services too.
 # Author review: Pending.
+# Claude Code (Opus 5.5), 2026-11-10: the agent-skeleton profile's agent-chat, agent-orchestrator
+# and mandate services, which still start only with `--profile agent-skeleton`.
+# Author review: Pending.
 #
 # Host ports avoid the app's 3000-3004, 3333 and 543x. All bind to 127.0.0.1:
 #   Grafana        http://127.0.0.1:3030   (admin / admin unless GRAFANA_ADMIN_* is set)
-#   Prometheus     http://127.0.0.1:9090
+#   Mimir          http://127.0.0.1:9009   (Prometheus API under /prometheus)
 #   OTLP gRPC      127.0.0.1:4317          (for services run on the host)
 #   OTLP HTTP      127.0.0.1:4318
 # Containers send OTLP to http://otel-collector:4318 (or otel-collector:4317 for gRPC).
-# Loki and Tempo are reached only through Grafana, so they publish no host ports; Tempo's
-# own 4317/4318 stay inside the Compose network and do not clash with the collector's.
+# Loki and Tempo are reached only through Grafana, so they publish no host ports.
+# Configuration is built into the images (observability/Dockerfile): after changing a file
+# in observability/, rebuild with `up -d --build`.
 x-otel-environment: &otel-environment
   OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
-  # Every 15 s, as Prometheus scrapes; the SDK's default is 60 s.
+  # Every 15 s; the SDK's default is 60 s.
   OTEL_METRIC_EXPORT_INTERVAL: "15000"
 
 x-otel-depends-on: &otel-depends-on
@@ -72,6 +78,16 @@ services:
   sync-service:
     environment: *otel-environment
     depends_on: *otel-depends-on
+  # In the agent-skeleton profile; their images set OTEL_SERVICE_NAME.
+  agent-chat-service:
+    environment: *otel-environment
+    depends_on: *otel-depends-on
+  agent-orchestrator-service:
+    environment: *otel-environment
+    depends_on: *otel-depends-on
+  mandate-service:
+    environment: *otel-environment
+    depends_on: *otel-depends-on
   frontend-service:
     environment:
       <<: *otel-environment
@@ -80,75 +96,72 @@ services:
     depends_on: *otel-depends-on
 
   otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.164.0
-    command: ["--config=/etc/otelcol/config.yaml"]
+    build:
+      context: ./observability
+      target: otel-collector
+    # With the Docker container metrics, which Cloud Run does not have.
+    command: ["--config=/etc/otelcol/config.yaml", "--config=/etc/otelcol/local.yaml"]
     # Root only to read the Docker socket for container metrics.
     user: "0:0"
     volumes:
-      - ./observability/otel-collector.yaml:/etc/otelcol/config.yaml:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
     ports:
       - "127.0.0.1:4317:4317"
       - "127.0.0.1:4318:4318"
     restart: unless-stopped
     depends_on:
-      - prometheus
+      - mimir
       - loki
       - tempo
 
-  prometheus:
-    image: prom/prometheus:v3.15.1
-    command:
-      - --config.file=/etc/prometheus/prometheus.yaml
-      - --storage.tsdb.path=/prometheus
-      - --storage.tsdb.retention.time=7d
-      - --web.enable-otlp-receiver
-      - --web.enable-remote-write-receiver
-      - --enable-feature=exemplar-storage
+  mimir:
+    build:
+      context: ./observability
+      target: mimir
     volumes:
-      - ./observability/prometheus.yaml:/etc/prometheus/prometheus.yaml:ro
-      - prometheus-data:/prometheus
+      - mimir-data:/data/mimir
     ports:
-      - "127.0.0.1:9090:9090"
+      - "127.0.0.1:9009:9009"
     restart: unless-stopped
 
   loki:
-    image: grafana/loki:3.7.9
-    command: ["-config.file=/etc/loki/config.yaml"]
+    build:
+      context: ./observability
+      target: loki
     volumes:
-      - ./observability/loki.yaml:/etc/loki/config.yaml:ro
       - loki-data:/loki
     restart: unless-stopped
 
   tempo:
-    image: grafana/tempo:2.10.10
-    command: ["-config.file=/etc/tempo/config.yaml"]
+    build:
+      context: ./observability
+      target: tempo
     volumes:
-      - ./observability/tempo.yaml:/etc/tempo/config.yaml:ro
       - tempo-data:/var/tempo
     restart: unless-stopped
+    depends_on:
+      - mimir
 
   grafana:
-    image: grafana/grafana:13.2.5
+    build:
+      context: ./observability
+      target: grafana
     environment:
       # Grafana 13 limits anonymous users to Viewer, which cannot use Explore, so log in.
       GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
-      GF_ANALYTICS_REPORTING_ENABLED: "false"
-      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
     volumes:
-      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
       - grafana-data:/var/lib/grafana
     ports:
       - "127.0.0.1:3030:3000"
     restart: unless-stopped
     depends_on:
-      - prometheus
+      - mimir
       - loki
       - tempo
 
 volumes:
-  prometheus-data:
+  mimir-data:
   loki-data:
   tempo-data:
   grafana-data:

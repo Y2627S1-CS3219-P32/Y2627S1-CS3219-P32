@@ -1,0 +1,41 @@
+# AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-11-10.
+# Scope: Entry point of the Cloud Run `observability` service: OTLP from the app services
+# to the collector, everything else to Grafana. Author review: Pending.
+#
+# Cloud Run sends all of the service's traffic to this container (port 8080); Grafana and
+# the collector are containers of the same instance, on localhost. When it starts, the nginx
+# image substitutes the OTLP_TOKEN environment variable (from Secret Manager) below; nginx's
+# own variables are left as they are. Without OTLP_TOKEN, nginx does not start.
+
+map $http_upgrade $connection_upgrade {
+  default upgrade;
+  "" close;
+}
+
+server {
+  listen 8080;
+  server_tokens off;
+  client_max_body_size 32m;
+
+  # OTLP/HTTP. The app services send the shared token as x-otlp-token
+  # (OTEL_EXPORTER_OTLP_HEADERS, from the otlp-exporter-headers secret).
+  location ~ ^/v1/(traces|metrics|logs)$ {
+    if ($http_x_otlp_token = "") {
+      return 401;
+    }
+    if ($http_x_otlp_token != "${OTLP_TOKEN}") {
+      return 401;
+    }
+    proxy_pass http://127.0.0.1:4318;
+  }
+
+  # Grafana, which asks for its own login. Upgrade headers for Grafana Live (WebSocket).
+  location / {
+    proxy_pass http://127.0.0.1:3000;
+    proxy_set_header Host $host;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection $connection_upgrade;
+    proxy_read_timeout 3600s;
+  }
+}

@@ -1,6 +1,10 @@
 # AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-11-04.
 # Scope: Single-process local Tempo on the filesystem, with service-graph and span metrics
 # written to Prometheus. Author review: Pending.
+# Claude Code (Opus 5.5), 2026-11-10: metrics written to Mimir; blocks in a GCS bucket on
+# Cloud Run; OTLP gRPC only, on 4417. The variables come from the environment:
+# observability/Dockerfile sets the local defaults, deploy.sh the Cloud Run values.
+# Author review: Pending.
 stream_over_http_enabled: true
 
 server:
@@ -11,11 +15,11 @@ distributor:
   receivers:
     otlp:
       protocols:
-        # Tempo binds to localhost unless told otherwise.
+        # Only the collector sends here. Not 4317: on Cloud Run the whole stack shares one
+        # network namespace, and the collector listens on 4317. (Tempo binds to localhost
+        # unless told otherwise.)
         grpc:
-          endpoint: 0.0.0.0:4317
-        http:
-          endpoint: 0.0.0.0:4318
+          endpoint: 0.0.0.0:4417
 
 ingester:
   max_block_duration: 5m
@@ -31,18 +35,20 @@ metrics_generator:
   storage:
     path: /var/tempo/generator/wal
     remote_write:
-      - url: http://prometheus:9090/api/v1/write
+      - url: http://${MIMIR_HOST}:9009/api/v1/push
         send_exemplars: true
   traces_storage:
     path: /var/tempo/generator/traces
 
 storage:
   trace:
-    backend: local
+    backend: ${TEMPO_STORAGE_BACKEND}
     wal:
       path: /var/tempo/wal
     local:
       path: /var/tempo/blocks
+    gcs:
+      bucket_name: ${TEMPO_GCS_BUCKET}
 
 overrides:
   defaults:

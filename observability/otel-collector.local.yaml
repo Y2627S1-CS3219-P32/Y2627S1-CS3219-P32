@@ -1,0 +1,20 @@
+# AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-11-10.
+# Scope: Additions to otel-collector.yaml for Docker Compose only: container metrics from
+# the Docker socket, which Cloud Run does not have. compose.observability.yaml passes both
+# files (--config twice); lists here replace those in otel-collector.yaml.
+# Author review: Pending.
+receivers:
+  # CPU, memory, network and block I/O per container, labelled by Compose service, so
+  # there is something to look at before any service is instrumented.
+  docker_stats:
+    endpoint: unix:///var/run/docker.sock
+    collection_interval: 15s
+    api_version: "1.44"
+    container_labels_to_metric_labels:
+      com.docker.compose.service: compose_service
+      com.docker.compose.project: compose_project
+
+service:
+  pipelines:
+    metrics:
+      receivers: [otlp, prometheus/stack, docker_stats]

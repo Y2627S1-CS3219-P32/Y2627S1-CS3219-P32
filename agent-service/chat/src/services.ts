@@ -3,6 +3,7 @@ import { transaction } from '@campus/agent-contracts/db/client';
 import { HttpError } from '@campus/agent-contracts/errors';
 import { conversationId, messageId, turnId } from '@campus/agent-contracts/ids';
 import { turnSchema } from '@campus/agent-contracts/events';
+import { currentTraceparent } from '@campus/agent-contracts/shared/messaging';
 import type { UserId, Conversation, ConversationId, AcceptMessage, AcceptedTurn, Page, History, TurnId } from '@campus/agent-contracts/conversation';
 import * as repository from './repository.js';
 
@@ -58,10 +59,19 @@ export function submitTurn(owner: UserId, conversationId: ConversationId, input:
 
     const turn = turnId.parse(randomUUID());
     const trigger = messageId.parse(randomUUID());
+    // Claude Code (Opus 5.5), 2026-11-10: the trace this turn was requested in (the HTTP
+    // request, or the mandate approval that resumed it), kept in the outbox row so the relay
+    // publishes it in that trace. Null with telemetry off. Author review: Pending.
+    const traceparent = currentTraceparent();
     const event = turnSchema.parse({
       data: { conversation_id: conversation.id, message_id: trigger },
       ordering_key: conversation.id,
-      attributes: { schema_version: '1', event_type: 'agent.turn.requested', event_id: randomUUID() },
+      attributes: {
+        schema_version: '1',
+        event_type: 'agent.turn.requested',
+        event_id: randomUUID(),
+        ...(traceparent ? { traceparent } : {}),
+      },
     });
     await repository.createTurn({
       id: turn,

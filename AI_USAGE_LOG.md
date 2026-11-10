@@ -236,6 +236,65 @@ Author review: Checked for correctness. -->
   chat-service. Not run on Cloud Build or Cloud Run.
 - Author review: Pending.
 
+## 2026-11-10: sync-service and order-ranking-service in Cloud Build
+
+- Tool: Claude Code (Opus 5.5). Mode: Implementation and verification.
+- Exact prompt: `add the telemetry stuff into cloudbuild too`
+- Key response: `cloudbuild.yaml` now builds and pushes sync-service and order-ranking-service and
+  their migration (`tooling`) images, with the `shared` build context like every other step, so
+  the images include the shared logger, telemetry and Pub/Sub messaging. `deploy.sh` does not
+  deploy these two services yet. Telemetry in the images stays off on Cloud Run, as for the
+  others, since no `OTEL_EXPORTER_OTLP_ENDPOINT` is set there.
+- Affected files: `cloudbuild.yaml`, this log.
+- Verification: the file parses; all 18 steps pass the `shared` context, and every tag a step
+  builds is in `images` (and the reverse). The four new `docker buildx build` commands build
+  locally. Not run on Cloud Build.
+- Author review: Pending.
+
+## 2026-11-10: Mimir, and the observability stack on Cloud Run
+
+- Tool: Claude Code (Opus 5.5). Mode: Implementation and verification.
+- Exact prompt: `swap prometheus for mimir. retain the consistency of deployment with the rest of
+  the services. use public url with login for grafana`
+- Key response:
+  - Grafana Mimir 3.2.4 (single process) replaces Prometheus, locally and on Cloud Run: OTLP
+    metrics from the collector, Tempo's span and service-graph metrics, and the stack's own
+    metrics, which the collector now scrapes. The Grafana data source is now `Mimir`, and the
+    old `Prometheus` one is deleted.
+  - `observability/Dockerfile` builds one image per component with its configuration inside.
+    Docker Compose builds the images, and so does Cloud Build (six new steps). Settings that
+    differ between the two come from environment variables.
+  - With `OBSERVABILITY=on`, `deploy.sh` deploys the stack as one Cloud Run service,
+    `observability`. nginx is the entry point: OTLP goes to the collector only with the
+    `x-otlp-token` from Secret Manager, and everything else goes to Grafana, which is public
+    and asks for its login (admin password in Secret Manager). Mimir, Loki and Tempo store
+    their data in three GCS buckets. Every app service gets the endpoint, the token header and
+    `OTEL_TRACES_SAMPLER=always_on`. With `OBSERVABILITY=off` (the default) their telemetry
+    is off and the service is deleted. `./deploy.sh observability-down` deletes it right away.
+    The workflow reads the `OBSERVABILITY` repository variable.
+  - `telemetry.mts` gives each process a random `service.instance.id`.
+- Affected files: `observability/` (new `Dockerfile`, `mimir.yaml`, `otel-collector.local.yaml`,
+  `proxy.conf.template`; `prometheus.yaml` removed), `compose.observability.yaml`,
+  `cloudbuild.yaml`, `deploy.sh`, `.github/workflows/deploy.yml`, `shared/src/telemetry.mts`
+  (and its copies), `README.md`, `shared/README.md`, this log.
+- Verification:
+  - **Local stack:** after a signup-to-group-order run, Mimir has metrics from every app
+    service, the stack and Docker; Loki has the Pub/Sub log lines; Tempo has the traces.
+  - **Cloud Run stand-in:** the six images ran locally sharing one network namespace, with
+    deploy.sh's settings and the filesystem in place of GCS. There were no port clashes. OTLP
+    without the token, or with a wrong one, got 401. Grafana asked for login, and all three
+    data sources passed their health checks. A Node process using `telemetry.mts` sent its
+    traces and metrics through the proxy, each instance with its own `service.instance.id`.
+  - **GCS mode:** each store parses its GCS configuration and stops only at missing Google
+    credentials.
+  - **deploy.sh:** a dry run against a stub `gcloud` recorded the expected commands for both
+    settings. Not run on Cloud Build or Cloud Run.
+  - **Incident:** the first dry run picked up the real `gcloud` (the stub's directory was not
+    on `PATH`). In the local default project, `cs3219-512013`, it created the
+    `password-reset-requests` topic and re-applied existing Pub/Sub IAM bindings, then stopped
+    at Secret Manager (billing disabled). Nothing was deployed.
+- Author review: Pending.
+
 
 # AI usage log (User Service)
 
@@ -2212,3 +2271,18 @@ in agent common connections, do they need to be so many separate files?”
 - Exact user prompt: “can u extend the automatic setup and follow the convention for the others”.
 - Changes: reuse database creation helpers, generate restricted runtime connection secrets, provision logins after migrations, remove the duplicate Conversation migration, provision TLS/AUTH Memorystore and its CA secret, and configure Cloud NAT for Orchestrator egress. Correct default service account emails to use the project number; extend GitHub deployer permissions and deployment documentation.
 - Verification: shell and JavaScript syntax checks; git diff whitespace check; isolated PostgreSQL 17 verification of all three runtime logins, restricted permissions, password escaping, and repeated provisioning. Temporary container removed. No GCP deployment performed.
+### 2026-11-10 — Merge main's agent services into observability-v2 and instrument them
+
+- Tool/mode: Claude Code (Opus 5.5), merge conflict resolution, implementation and verification. Author review: Pending.
+- Exact prompt: “resolve the merge conflict and setup observability for the merged services”
+- Key response: the only conflict, `cloudbuild.yaml`, keeps both sides (this branch's sync, order-ranking and observability images; main's agent-chat, agent-orchestrator and mandate images). The three merged services get the same observability as the others: the shared pino logger (`report()` and Redis errors go through it, with `err`), `telemetry.mts` loaded first by the images and start scripts, `OTEL_SERVICE_NAME` set in the images, and every Pub/Sub message logged and traced through `shared/src/messaging.ts`. The trace is kept in agent-service's turn outbox (`attributes.traceparent`, already in the contract) and in a new `mandate_outbox.traceparent` column, so a chat message and a mandate approval are each one trace across the services.
+- Changes: `shared/src/messaging.ts` gains `processDelivery` (for agent-service's own pull loop, which renews leases and acknowledges itself; `processMessage` now uses it), reads the event type from an `event_type` attribute or JSON field, and summarises `conversation_id`, `message_id`, `mandate_id` and `user_id`. `shared/sync.mjs` also copies into `mandate-service/src/shared/` and `agent-service/common/shared/` (git-ignored); `@campus/agent-contracts` exports the latter. Drizzle-generated migration `0001_mandate_outbox_traceparent.sql`. `compose.observability.yaml` adds the three services (still in the `agent-skeleton` profile). The Dockerfiles copy `shared/src` from the root build context, and their runtime stages now also copy the workspaces' own `node_modules`, where npm keeps the OpenTelemetry packages it cannot hoist to the root. deploy.sh does not deploy these services, so it is unchanged.
+- Verification: workspace build (strict agent/mandate compiler settings); Agent 14/14 and Mandate 14/14 unit tests, boundary and contract tests; typecheck of every other service that compiles the shared code; a scratch smoke test with telemetry on (publish adds traceparent, the handler runs in the publisher's trace, `processMessage` ack/nack unchanged, `consume()` logs a handler failure once); merged Compose configuration with and without the profile; Docker builds of the three images, and in each image telemetry loading at startup with the right service name and `trace_id` on log lines (the first builds failed this check, missing `@opentelemetry/sdk-node`, which led to the `node_modules` copy).
+
+### 2026-11-11 — Make the deploy fail fast on its riskiest parts
+
+- Tool/mode: Claude Code (Opus 5.5), implementation and verification. Author review: Pending.
+- Exact prompts: “if this were pushed into main, would it successfully deploy?”; “could you get it to fail fast on the riskiest parts? flip the deploy order or something along those lines”
+- Key response: reordering deploy.sh's services would not help: the observability service already deploys first, Cloud Run keeps a service's current revision when a new one fails to start, and the shared messaging change runs only when messages arrive, which no deploy exercises. Instead, check the risky paths earlier: a test of the shared messaging, run with the other database-free checks before Cloud Build; a readiness check of the observability service before any app service is pointed at it; a Cloud Build timeout.
+- Changes: `test/shared-messaging.test.mjs` (`npm run test:messaging`), with telemetry on: trace propagation through attributes and outbox rows, the agent turn schema accepting the added `traceparent`, `processDelivery`, `processMessage` acknowledgement, and `consume()`. `.github/workflows/deploy.yml`: a `checks` job (deploy.sh syntax, agent/mandate builds, tests) that the deploy job needs. `deploy.sh`: `check_observability` after `deploy_observability`: OTLP with the token accepted (200), without it refused (401), Grafana healthy, retried for about a minute, otherwise the deploy stops. `cloudbuild.yaml`: `timeout: 1800s`. README.
+- Verification: the new test passes (6/6) and fails when `processMessage`'s acknowledgement is inverted; all checks-job steps pass from a clean copy of the tracked files (6, 14, 14, 1 and 4 tests); `check_observability` against the real proxy, collector and Grafana images in one network namespace: passes with the right token, fails with a wrong token (401) and with Grafana stopped (502); workflow and Cloud Build YAML parse. Not run in GitHub Actions or Cloud Build.

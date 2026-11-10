@@ -9,6 +9,9 @@
  * Claude Code (Opus 5.5), 2026-11-10: a `level` option for frequent messages (sync-service's
  * live edits), and attributes as a source of the summary for messages that are not JSON.
  * Author review: Pending.
+ * Claude Code (Opus 5.5), 2026-11-10: processDelivery, for pull loops that acknowledge
+ * messages themselves (agent-service); the event type from an `event_type` attribute or JSON
+ * field, and the agent and mandate ids in the summary. Author review: Pending.
  *
  * Publishing, with a topic from @google-cloud/pubsub:
  *
@@ -25,6 +28,7 @@
  *   router.post("/pubsub/order-events", receivePush(async (req, res) => { ... }));   // push
  *   subscription.on("message", (message) =>
  *     processMessage(name, message, async () => "ack"));                             // pull
+ *   await processDelivery(delivery, async () => { ...; await ack(); return "ack"; }); // own loop
  *
  * Push takes a wrapped route handler rather than a middleware: the Express
  * instrumentation puts the HTTP request's span back as the current one at each next(), so
@@ -61,9 +65,9 @@ import { logger } from "./logger.js";
 
 const tracer = trace.getTracer("pubsub-messaging");
 
-// The trace context travels in these attributes. They are left out of the logs, as is
-// `type`, which is logged as eventType.
-const unloggedAttributes = new Set(["traceparent", "tracestate", "baggage", "type"]);
+// The trace context travels in these attributes. They are left out of the logs, as are
+// `type` and `event_type` (agent-service's name for it), which are logged as eventType.
+const unloggedAttributes = new Set(["traceparent", "tracestate", "baggage", "type", "event_type"]);
 
 // The last part of projects/<project>/topics/<name> or .../subscriptions/<name>.
 function shortName(name: string): string {
@@ -105,6 +109,11 @@ const SUMMARY_FIELDS = [
   "applied",
   "sequence",
   "version",
+  // agent-service and mandate-service, whose messages use snake_case.
+  "conversation_id",
+  "message_id",
+  "mandate_id",
+  "user_id",
 ] as const;
 
 type Scalar = string | number | boolean;
@@ -167,6 +176,15 @@ function decode(data: unknown): unknown {
   return undefined;
 }
 
+// The `type` attribute; agent-service names it `event_type`, and mandate-service has it only
+// in the JSON.
+function eventTypeOf(attributes: Record<string, string> | undefined, payload: unknown): string | undefined {
+  const fromJson = isPlainObject(payload) ? payload.event_type : undefined;
+  return (
+    attributes?.type || attributes?.event_type || (typeof fromJson === "string" && fromJson ? fromJson : undefined)
+  );
+}
+
 // ": <summary> (message <id>, attempt <n>)", leaving out what is unknown.
 function details(summary: Summary, messageId: string | undefined, deliveryAttempt?: number) {
   const ids = [
@@ -213,7 +231,8 @@ export async function publishMessage(
   options: LogOptions = {},
 ): Promise<string> {
   const topicName = shortName(topic.name);
-  const eventType = message.attributes?.type;
+  const payload = message.json !== undefined ? message.json : decode(message.data);
+  const eventType = eventTypeOf(message.attributes, payload);
   const span = tracer.startSpan(`send ${topicName}`, {
     kind: SpanKind.PRODUCER,
     attributes: {
@@ -233,7 +252,7 @@ export async function publishMessage(
     try {
       const messageId = await topic.publishMessage({ ...message, attributes });
       span.setAttribute("messaging.message.id", messageId);
-      const summary = summarize(message.json !== undefined ? message.json : decode(message.data), message.attributes);
+      const summary = summarize(payload, message.attributes);
       logger[options.level ?? "info"](
         {
           ...summary.fields,
@@ -257,7 +276,8 @@ export async function publishMessage(
   });
 }
 
-type Delivery = {
+/** A received message, as processDelivery takes it. */
+export type Delivery = {
   subscription: string;
   messageId?: string | undefined;
   attributes?: Record<string, string> | undefined;
@@ -272,7 +292,8 @@ type Level = "debug" | "info" | "warn" | "error";
 // A span for handling one message, in the trace that published it, and the log line that
 // ends it.
 function startProcessing(delivery: Delivery) {
-  const eventType = delivery.attributes?.type;
+  const payload = decode(delivery.data);
+  const eventType = eventTypeOf(delivery.attributes, payload);
   const attributes: Attributes = {
     "messaging.system": "gcp_pubsub",
     "messaging.operation.name": "process",
@@ -298,7 +319,7 @@ function startProcessing(delivery: Delivery) {
   const processing = trace.setSpan(parent, span);
 
   const started = performance.now();
-  const summary = summarize(decode(delivery.data), delivery.attributes);
+  const summary = summarize(payload, delivery.attributes);
   const subject = `${eventType ?? "a message"} from ${delivery.subscription}`;
   const fields = {
     ...summary.fields,
@@ -432,6 +453,42 @@ type PulledMessage = {
 type Outcome = "ack" | "nack";
 
 /**
+ * For a pull loop that acknowledges messages itself: runs handle in the message's trace and
+ * logs the outcome it returns, "ack" once the message is acknowledged or "nack" if it was
+ * left for Pub/Sub to redeliver. If handle throws, the failure is logged (with `err`) and
+ * the error rethrown, for the caller to leave the message unacknowledged.
+ */
+export async function processDelivery(
+  delivery: Delivery,
+  handle: () => Outcome | Promise<Outcome>,
+  options: LogOptions = {},
+): Promise<Outcome> {
+  const processing = startProcessing(delivery);
+  let outcome: Outcome;
+  try {
+    outcome = await context.with(processing.context, handle);
+  } catch (error) {
+    processing.finish(
+      "error",
+      { outcome: "nack" },
+      (subject, took) => `Failed to process ${subject} after ${took}, so Pub/Sub will redeliver it`,
+      error,
+    );
+    throw error;
+  }
+  if (outcome === "ack") {
+    processing.finish(options.level ?? "info", { outcome }, (subject, took) => `Processed ${subject} in ${took}`);
+  } else {
+    processing.finish(
+      "warn",
+      { outcome },
+      (subject, took) => `Did not acknowledge ${subject} after ${took}, so Pub/Sub will redeliver it`,
+    );
+  }
+  return outcome;
+}
+
+/**
  * Handles a message from a pull subscription in the message's trace, then acknowledges it
  * or not as handle returns, and logs the outcome. If handle throws, the message is not
  * acknowledged, so Pub/Sub redelivers it. Never rejects.
@@ -442,7 +499,7 @@ export async function processMessage(
   handle: () => Outcome | Promise<Outcome>,
   options: LogOptions = {},
 ): Promise<void> {
-  const processing = startProcessing({
+  const delivery: Delivery = {
     subscription,
     messageId: message.id,
     attributes: message.attributes,
@@ -450,29 +507,15 @@ export async function processMessage(
     deliveryAttempt: message.deliveryAttempt,
     publishTime: message.publishTime,
     data: message.data,
-  });
+  };
   let outcome: Outcome;
   try {
-    outcome = await context.with(processing.context, handle);
-  } catch (error) {
+    outcome = await processDelivery(delivery, handle, options);
+  } catch {
+    // Logged by processDelivery.
     message.nack();
-    processing.finish(
-      "error",
-      { outcome: "nack" },
-      (subject, took) => `Failed to process ${subject} after ${took}, so Pub/Sub will redeliver it`,
-      error,
-    );
     return;
   }
-  if (outcome === "ack") {
-    message.ack();
-    processing.finish(options.level ?? "info", { outcome }, (subject, took) => `Processed ${subject} in ${took}`);
-  } else {
-    message.nack();
-    processing.finish(
-      "warn",
-      { outcome },
-      (subject, took) => `Did not acknowledge ${subject} after ${took}, so Pub/Sub will redeliver it`,
-    );
-  }
+  if (outcome === "ack") message.ack();
+  else message.nack();
 }

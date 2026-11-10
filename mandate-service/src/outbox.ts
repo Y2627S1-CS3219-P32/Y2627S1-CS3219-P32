@@ -1,5 +1,10 @@
+// AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-11-10.
+// Scope: approvals published through the shared Pub/Sub messaging (src/shared/), which logs
+// each one and, with telemetry on, publishes it in the trace its outbox row was written in.
+// Author review: Pending.
 import { PubSub } from '@google-cloud/pubsub';
 import { approvalSchema } from './common/validation.js';
+import { publishMessage, withTraceparent } from './shared/messaging.js';
 import * as repository from './repository.js';
 
 let connection: PubSub | undefined;
@@ -25,12 +30,12 @@ export async function closeBrokerConnection() {
 }
 export async function publishPendingApprovals(signal: AbortSignal) {
   const publisher = getApprovalTopic();
-  for (const { payload } of await repository.listPendingApprovalEvents()) {
+  for (const { payload, traceparent } of await repository.listPendingApprovalEvents()) {
     signal.throwIfAborted();
     const event = approvalSchema.parse(payload);
     const data = Buffer.from(JSON.stringify(event));
     if (data.length > 65_536) throw new Error('Event exceeds size limit');
-    await publisher.publishMessage({ data });
+    await withTraceparent(traceparent, () => publishMessage(publisher, { data }));
     signal.throwIfAborted();
     await repository.markApprovalPublished(event.event_id);
   }
