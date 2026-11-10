@@ -1,0 +1,80 @@
+{
+  "name": "@campus/agent-contracts",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./conversation": {
+      "types": "./dist/contracts/conversation.d.ts",
+      "default": "./dist/contracts/conversation.js"
+    },
+    "./events": {
+      "types": "./dist/contracts/events.d.ts",
+      "default": "./dist/contracts/events.js"
+    },
+    "./tools": {
+      "types": "./dist/contracts/tools.d.ts",
+      "default": "./dist/contracts/tools.js"
+    },
+    "./mandates": {
+      "types": "./dist/contracts/mandates.d.ts",
+      "default": "./dist/contracts/mandates.js"
+    },
+    "./db/schema": {
+      "types": "./dist/db/schema.d.ts",
+      "default": "./dist/db/schema.js"
+    },
+    "./connections/http": {
+      "types": "./dist/common/connections/http.d.ts",
+      "default": "./dist/common/connections/http.js"
+    },
+    "./connections/pubsub": {
+      "types": "./dist/common/connections/pubsub.d.ts",
+      "default": "./dist/common/connections/pubsub.js"
+    },
+    "./connections/redis": {
+      "types": "./dist/common/connections/redis.d.ts",
+      "default": "./dist/common/connections/redis.js"
+    },
+    "./http": {
+      "types": "./dist/common/http.d.ts",
+      "default": "./dist/common/http.js"
+    },
+    "./logging": {
+      "types": "./dist/common/logging.d.ts",
+      "default": "./dist/common/logging.js"
+    },
+    "./ids": {
+      "types": "./dist/contracts/ids.d.ts",
+      "default": "./dist/contracts/ids.js"
+    },
+    "./errors": {
+      "types": "./dist/common/errors.d.ts",
+      "default": "./dist/common/errors.js"
+    },
+    "./db/client": {
+      "types": "./dist/db/client.d.ts",
+      "default": "./dist/db/client.js"
+    }
+  },
+  "dependencies": {
+    "@google-cloud/pubsub": "^6.3.2",
+    "drizzle-orm": "^0.45.4",
+    "google-auth-library": "^11.3.3",
+    "pg": "^8.23.1",
+    "redis": "^6.3.1",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.23.1",
+    "drizzle-kit": "^0.31.11"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "db:generate": "drizzle-kit generate --config db/drizzle.config.ts",
+    "db:migrate": "drizzle-kit migrate --config db/drizzle.config.ts",
+    "db:studio": "drizzle-kit studio --config db/drizzle.config.ts",
+    "test": "npm run build && node --test test/*.test.mjs"
+  }
+}

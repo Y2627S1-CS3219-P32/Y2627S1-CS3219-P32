@@ -2031,3 +2031,168 @@ for context, frontend-service is being set up. The frontend’s supplier screen 
 - Affected files: `.github/workflows/deploy.yml`, `deploy.sh`, `README.md`, and this log.
 - Verification: `bash -n deploy.sh` and workflow YAML parsing. Not yet run against GCP or GitHub.
 - Author review: Pending.
+
+## 2026-11-04: Personal errand agent
+
+- Tool: Codex, GPT-6. Mode: Design and implementation.
+- Prompt summary: Implement the agreed agentic errand model with Gemini, signed mandates, a per-errand credit budget, and cancel-and-repost escalation. Minimize changes to other services and omit preferred couriers.
+- Affected files: `agent-service/`, Agent frontend page and proxy, Order delegation and migration, Compose, Cloud Build, deployment script, environment example, and technical design.
+- Verification: Agent signing and planning tests plus PostgreSQL-backed HTTP recovery and acceptance-race tests passed. All 22 Order tests passed. Frontend production build and typecheck passed with the locked dependencies. Compose configuration, deployment shell syntax, and whitespace checks passed.
+- Limits: Full live Compose and Cloud deployment were not run. Gemini model listing succeeded, but generation with `gemini-3.8-flash` returned temporary 503 responses. The provided credential is stored only in the ignored local environment file and is omitted from this log.
+- Author review: Pending.
+
+## 2026-11-04: Drizzle for Agent persistence
+
+- Tool: Codex, GPT-6. Prompt: `also use drizzle`.
+- Changes: Seven typed table definitions, schema-derived row types, Drizzle queries and transactions, generated migrations with metadata, container migration assets, and updated design documentation.
+- Verification: Build, typecheck, unchanged schema generation, and PostgreSQL-backed Agent tests. Migration checks cover fresh setup, adoption of populated tables, preservation of signed mandates and attempts, and repeat execution.
+- Author review: Pending.
+
+## 2026-11-04: Organize Agent like Credit
+
+- Tool: Codex, GPT-6. Request: Organize Agent into logical subfolders like Credit for easier review.
+- Changes: Thin app wiring, separate HTTP and Pub/Sub handlers, shared types and validation, services for business decisions, repositories for Drizzle queries, outbound clients, database modules, and provisioning scripts. Updated migration entry points, tests, container inputs, and review documentation.
+- Verification: Clean build, strict typecheck including unused-symbol checks, PostgreSQL-backed integration suite, unchanged Drizzle schema generation, Compose validation, and deployment shell syntax. The integration suite also exercises draft creation and clarification with mocked external services.
+- Limits: No live Gemini, Pub/Sub emulator, Docker stack, or Cloud deployment run for this structural refactor.
+- Author review: Pending.
+
+## 2026-11-05: Existing public APIs and session-bound execution
+
+- Tool: Codex, GPT-6. Request: Keep other microservices unchanged, use the existing order list for reconciliation, and pause when authentication or creation results are uncertain.
+- Changes: Removed the experimental Order routes, metadata schema, migration, and tests. Agent now forwards the requester JWT only during authenticated frontend ticks, stores no bearer tokens, and uses existing public Order APIs. Added paginated candidate lookup, explicit association, and resume controls. Unknown creation attempts retain commitments and are never automatically reposted. Updated Agent migrations, infrastructure, and design documentation.
+- Verification: Database-backed tests cover user isolation, expiry, downstream 401, renewed-session resume, lost replies, paginated ambiguous matches, invalid association, early events, duplicate financial results, acceptance races, and migration of old in-flight intents. Verified other backend service files have no diff from HEAD.
+- Limits: The application stack remains stopped. No live Cloud deployment or Gemini request was run for this change. Existing listings cannot be cancelled by Agent without a valid user session.
+- Author review: Pending.
+
+## 2026-11-05: Gemini tool-calling errand agent
+
+- Tool: Codex, GPT-6. Request: Replace the fixed planner and execution workflow with supplier search and action tools under the user's bounded mandate.
+- Changes: Official `@google/genai` Interactions client, bounded multi-turn tool execution, planning discovery and proposal tools, runtime state/search/place/cancel/schedule/clarification tools, deterministic action authorization, and an activity trace. Version 2 mandates authorize supplier alternatives, reward ranges, and independent task order. Existing version 1 signatures retain their narrower scope. No other backend service changed.
+- Verification: Eight tests pass, including PostgreSQL and public-API integration with scripted model calls. Tests prove alternative selection without renewed approval, correction after unauthorized supplier and reward proposals, revocation, legacy permission preservation, loop limits, and stopping after a terminal tool. Existing session-expiry, uncertain-create, release, reconciliation, and acceptance-race checks remain covered. Typechecks and frontend build pass; Drizzle reports no schema change.
+- Limits: A minimal live SDK request returned provider HTTP 503. No successful live model planning or full-stack deployment is claimed. The application stack remains stopped.
+- Author review: Pending.
+
+
+## 2026-11-09: TD backend skeleton
+
+Tool: ChatGPT (GPT-6) via Codex. Mode: refactor, scaffolding, and verification. Author review: pending.
+
+Prompt:
+
+> follow the [agent-orchestrator-redesign-td.md](/Users/luciusyeojunjie/Desktop/Y2627S1-CS3219-P32/docs/agent-orchestrator-redesign-td.md). the goal is to rework the current implementation done over the base master.
+>
+> 1. Keep the frontend ui as it is currently but replace with dummy api endpoints. we will focus on refactoring thebackend since this is the crux.
+> 2. Remove all the internal logic and rebuild the skeleton. Start with the broad high level features and micrservices from the TD to maintain clean abstraction layers. Have clear responsibility ownerships and reusable interface design, esp for helper functions and shared code - dont implement many duplicate methods, combine if necessary so theres single points of change. ensure loose coupling and high cohesion.
+> 3. you can write out the configs, deployment stuff, sql tables etc. in this iteration, i dont care about backward compatibility for the services ive alr introduced in this branch. so keep the code clean.
+> after you build the skeelton, then just fill in with concise comments describing the flow (Writing a structured plan for the implementation), like how a developer goes from top down in planning their implementation. dont let the tests or current tests constrict your development of the skeleton.
+
+Key response: Replaced legacy Agent and Mandate internals with the supplied TD service boundaries, shared contracts, SQL schemas, and module flow comments. Preserved Vue UI and replaced its Agent/Mandate proxy handlers with isolated demo endpoints. Removed obsolete Agent token exchange, scheduler/deployment wiring, and notification consumers. The backend returns explicit unimplemented responses pending implementation. See `docs/agent-skeleton-implementation.md` for implementation order.
+
+## 2026-11-09 — Agent service connections and authenticated internal reads
+
+- Tool and mode: Codex (GPT-6), implementation, configuration, test generation, explanation.
+- Author review: Pending; no human review claimed.
+- Earlier exact prompts: “have we alr setup the ability for the agentservice to communicate with other services?”, “can we define these connection logic first”, “also this will configure order and supplier to be able to receive the calls from agent or mandate etc without the jwt right”, “ok implement”.
+- User decisions: working connection layer; all agent connections; transport layer first; local + Cloud Run.
+- Key response: implement transport adapters and dedicated service-authenticated read routes; public JWT authentication remains unchanged; unfinished workflows stay disabled. Initial scope was expanded by the user to receiving routes before implementation.
+- Exact implementation request follows:
+
+```text
+PLEASE IMPLEMENT THIS PLAN:
+# Implement service connections and authenticated internal reads
+
+## Summary
+
+Implement HTTP, Pub/Sub, and Redis connections, including receiving routes in Order and Supplier that accept service credentials without a user JWT. Support local Docker and Cloud Run.
+
+Business workflows remain separate: this phase enables internal reads and transport infrastructure, while order mutations and mandate workflows remain unavailable.
+
+## HTTP connections and receiving routes
+
+- Implement the orchestrator’s fixed-destination HTTP transport with cancellation, a 10-second timeout, bounded JSON responses, tracing, and idempotency-key forwarding. Reject redirects and arbitrary destinations; do not retry HTTP requests automatically.
+- Authenticate locally with explicit destination-specific internal secrets. In production, use audience-bound Google identity tokens and caller allowlists. Never forward interactive user JWTs or silently fall back to local authentication.
+- Add `POST /internal/suppliers/search` for Agent and Mandate, supporting bounded name searches and exact supplier-ID filters. Reuse existing catalog queries and return active suppliers only.
+- Add `POST /internal/orders/get` for Agent and Mandate, accepting `user_id` and `order_id`. Validate the requester against the local user copy and require requester ownership before returning an order.
+- Authorize these capabilities separately from existing scheduler and Pub/Sub routes. Authenticating Agent must not grant access to Order’s administrative internal endpoints.
+- Update Agent clients to validate the real receiving-route responses. Mandate can use the same authenticated capabilities when its workflows are implemented.
+- Leave public JWT-protected APIs unchanged. Do not enable internal order creation, cancellation, or operation lookup until mandate enforcement and durable idempotency are implemented.
+- Support transport calls to Mandate’s existing proposed routes, but preserve explicit unavailability while its business handlers remain unfinished.
+
+## Event and streaming connections
+
+- Implement Chat turn publication, Orchestrator turn consumption, Mandate approval publication, and Chat approval consumption using Pub/Sub and the current event contracts.
+- Validate envelopes, preserve event identities, order turn publication by conversation, and bound outstanding deliveries. Expose acknowledgement, renewal, and redelivery; acknowledge only after an injected handler succeeds.
+- Implement Redis Stream publication and independent cursor-based readers. Use conversation-scoped keys, approximate retention of 1,000 entries, bounded reads, cancellation cleanup, and explicit resync signals.
+- Preserve the existing two-retry Redis publication limit; notification failure must not change committed business outcomes.
+- Keep database outbox claims/checkpoints, business deduplication, conversation execution, and authenticated browser SSE outside this phase.
+
+## Configuration and verification
+
+- Add required Pub/Sub, Google authentication, and Redis dependencies. Validate configuration at adapter construction.
+- Extend local Compose configuration with explicit service credentials and idempotent broker provisioning. Provide one repeatable integration-test command.
+- Keep unfinished production consumers disabled and application readiness at 503; tests start adapters explicitly with test handlers.
+- Test real internal Supplier and Order routes without user JWTs: authorized callers succeed; missing credentials, unauthorized callers, invalid requesters, and cross-owner order access fail.
+- Test HTTP timeout/cancellation, invalid responses, destination restrictions, and uncertain writes without retries.
+- Test Pub/Sub publication, ordering, acknowledgement timing, failure/redelivery, and shutdown against the emulator. Test Redis replay, independent readers, trimming/resync, outages, and cleanup against Redis.
+- Run relevant service tests and workspace builds/typechecks. Document Cloud Run IAM configuration and the later deployed authentication smoke test.
+- Follow Order and Supplier’s required AI attribution headers, README disclosure, and usage log.
+
+## Defaults and limits
+
+- “Without JWT” means without a **user JWT**; production service authentication still uses Google identity tokens.
+- Only Agent and Mandate receive the new read capabilities. No blanket access for other services.
+- No database migrations, production deployment, frontend changes, or completed agent/mandate business workflows are included.
+```
+
+- Implementation: fixed-destination HTTP adapter and typed errors; response validation; isolated Order/Supplier internal-read authentication and routes; shared Pub/Sub and Redis adapters; local provisioning and repeatable disposable-container tests; Docker/configuration and deployment instructions.
+- Validation: full connection suite, Order and Supplier PostgreSQL suites; build/typecheck. Actual Cloud Run IAM verification remains a later deployed smoke test. No production resources or existing database volumes changed.
+
+### 2026-11-09 — General service-read naming and connection consolidation
+
+- Tool/mode: Codex (GPT-6), refactoring and verification. Author review: Pending.
+- Exact prompt: “for the supplier and order, must they be named so specifically as Agent read? could it be just general service service endpoints opened up and agent service is just now one that uses it?
+
+in agent common connections, do they need to be so many separate files?”
+- Key response: internal read APIs authenticate configurable service callers; Agent/Mandate names do not belong in receiving middleware. Keep only HTTP, Pub/Sub and Redis protocol modules in connections; move event validation to event contracts, response parsing to destination clients and the shared deadline helper to common.
+- Changes: requireServiceRead; SERVICE_READ_SECRETS/AUDIENCE/INVOKERS configuration; migrated imports, package exports, docs and test fixtures; retained administrative permission isolation.
+
+### 2026-11-09 — Reuse existing internal authentication/router
+
+- Tool/mode: Codex (GPT-6), refactoring and verification. Author review: Pending.
+- Exact prompt: “yeah reuse, then also check if supplier alr has internal routes then also reuse”
+- Key response: Order reuses its existing internal router and requireInternal authentication with separate read/admin scopes. Supplier has no pre-existing internal API router; its worker is a separate process. Move its service authentication into existing auth.ts and group internal API reads in a router.
+- Changes: Removed both internal-auth.ts files; kept existing public authentication, read credential allowlists, ownership checks and administrative isolation.
+- Verification for internal-auth reuse: Order 22/22 tests, Supplier 51/51 tests, both typechecks and diff whitespace checks passed.
+
+### 2026-11-09 — Preserve existing middleware signature
+
+- Tool/mode: Codex (GPT-6), correction and verification. Author review: Pending.
+- Exact prompt: “ok do the correction” (following the request to preserve requireInternal's existing method signature).
+- Key response: restore requireInternal(req, res, next) and internal.use(requireInternal); authenticate once and enforce read/admin permissions with separate route guards. Internal order creation remains deferred.
+- Changes: corrected Order authentication and router callers; expanded tests to reject read credentials on scheduler, publisher and command routes; Supplier's existing middleware signature remains unchanged.
+- Verification: Order 22/22 integration tests and typecheck passed; read credentials rejected by scheduler, publisher and command endpoints.
+
+### 2026-11-09 — Add read authentication without rewriting existing middleware
+
+- Tool/mode: Codex (GPT-6), extension and verification. Author review: Pending.
+- Exact prompts: “are you able to extend rahter than modify”, “ok do it”.
+- Key response: restore Order's original requireInternal implementation verbatim and add requireServiceRead in the existing auth.ts; no additional authentication files or permission framework.
+- Changes: removed policy collection and read/admin permission guards. The new read route authenticates separately before the existing internal.use(requireInternal); existing administrative routes keep their original authentication. Supplier remains unchanged.
+- Verification: original Order auth.ts preserved verbatim beneath attribution and additive middleware (28 additions, zero deletions); all 22 Order tests, typecheck and whitespace checks passed.
+
+### 2026-11-09 — Use existing Order internal trust boundary
+
+- Tool/mode: Codex (GPT-6), simplification and verification. Author review: Pending.
+- Exact user annotation: “its ok, just no need to make it so complicated. if order alr grants everything to other services, then agenet service can too”.
+- Key response: remove the separate Order read authentication and reuse requireInternal unchanged for all internal routes; configure Agent and Mandate with the existing internal credentials.
+- Changes: original Order auth.ts restored verbatim; read route moved behind existing router authentication; removed Order-only read credential configuration and isolation tests, retained owner checks; updated caller credentials and documentation. Supplier unchanged because no older internal API authentication existed there.
+- Verification: original auth.ts exact-match check; Compose caller/receiver credential match; all 22 Order tests, typecheck and whitespace checks passed.
+### 2026-11-10 — Rebase agent services onto updated main
+
+- Tool/mode: Codex (GPT-6.1), Git integration, configuration merging, debugging and verification. Author review: Pending.
+- Exact user prompts: “check actual remote, and plan the rebase for me”; “ok help me execute this plan. make no mistakes”.
+- Key response: preserve the original commits on a backup branch, squash the final local changes, rebase on remote main on a feature branch, merge both service configurations, resolve host-port collisions, then run builds and tests.
+- Target: origin/main at 4843184. Backup: backup/pre-rebase-main-20261110 at 7f5fee5 (12 local commits).
+- Changes: combined environment/ignore entries, Compose services and volumes, Nuxt URLs, supplier authentication and observability dependencies, and credit balance documentation with verified-user provisioning. Agent/mandate host ports are 3008/3009. Regenerated supplier lockfile. Updated stale balance-tool assertion and credit verification fixtures without changing service behavior.
+- Verification: workspace build/typecheck; frontend typecheck and production build; Agent and Mandate unit tests; isolated Docker connection/flow, boundary and contract suite plus Order/Supplier tests; all 43 credit tests on isolated PostgreSQL; both Compose configurations; deployment shell syntax; generated frontend contract consistency. Test Docker resources removed afterward. Nuxt dependencies warn that local Node 22.17 is below their declared supported version, although typecheck/build pass. Existing generated frontend types retain their generator's trailing blank line.
+

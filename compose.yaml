@@ -1,4 +1,5 @@
 # AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-30.
+# Codex (GPT-6.1), 2026-11-10: merge services and volumes; move agent ports to 3008/3009. Author review: Pending.
 # Scope: User PostgreSQL wiring and optional bootstrap secret. Author review: Done.
 # Claude Code (Opus 5.5), 2026-11-04: backend images also get shared/src (the shared logger) as the `shared`
 # build context; see shared/README.md. Author review: Pending.
@@ -243,6 +244,8 @@ services:
       NUXT_SUPPLIER_SERVICE_BASE_URL: http://supplier-service:3000
       NUXT_CREDIT_SERVICE_BASE_URL: http://credit-service:3000
       # Claude Code (Opus 5.5), 2026-10-17. Author review: Pending.
+      NUXT_AGENT_SERVICE_BASE_URL: http://agent-chat-service:3000
+      NUXT_MANDATE_SERVICE_BASE_URL: http://mandate-service:3000
       NUXT_ORDER_SERVICE_BASE_URL: http://order-service:3000
       NUXT_CHAT_SERVICE_BASE_URL: http://chat-service:3000
       # Claude Code (Opus 5.5), 2026-10-17. Author review: Pending.
@@ -299,6 +302,8 @@ services:
     ports:
       - "3000:3000"
     environment:
+      SERVICE_AUTH_MODE: local
+      SERVICE_READ_SECRETS: ${SUPPLIER_SERVICE_READ_SECRETS:-${SUPPLIER_AGENT_READ_SECRET:-local-only-supplier-agent-read-secret-0000},${SUPPLIER_MANDATE_READ_SECRET:-local-only-supplier-mandate-read-secret-0000}}
       DATABASE_URL: postgres://supplier:supplier@supplier-db:5432/suppliers
       # Claude Code (Opus 5.5), 2026-10-18: tokens are verified locally and callers are
       # looked up in the local user copy, in place of user-service GET /me. Author review: Pending.
@@ -844,6 +849,153 @@ services:
       order-ranking-service:
         condition: service_healthy
 
+  # Optional Agent skeleton: docker compose --profile agent-skeleton up --build
+  conversation-db:
+    profiles: [agent-skeleton]
+    image: postgres:17-alpine
+    environment: { POSTGRES_USER: migration_owner, POSTGRES_PASSWORD: local-only, POSTGRES_DB: conversations }
+    volumes:
+      - conversation-v2-data:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U migration_owner -d conversations']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+  mandate-db:
+    profiles: [agent-skeleton]
+    image: postgres:17-alpine
+    environment: { POSTGRES_USER: mandate_owner, POSTGRES_PASSWORD: local-only, POSTGRES_DB: mandates }
+    volumes:
+      - mandate-v2-data:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U mandate_owner -d mandates']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+  conversation-db-migrate:
+    profiles: [agent-skeleton]
+    build: { context: ., dockerfile: agent-service/chat/Dockerfile, target: tooling }
+    command: [npm, run, 'db:migrate', --workspace, '@campus/agent-contracts']
+    environment:
+      DATABASE_URL: postgres://migration_owner:local-only@conversation-db:5432/conversations
+    depends_on:
+      conversation-db:
+        condition: service_healthy
+  mandate-db-migrate:
+    profiles: [agent-skeleton]
+    build: { context: ., dockerfile: mandate-service/Dockerfile, target: tooling }
+    command: [npm, run, 'db:migrate', --workspace, mandate-service]
+    environment:
+      DATABASE_URL: postgres://mandate_owner:local-only@mandate-db:5432/mandates
+    depends_on:
+      mandate-db:
+        condition: service_healthy
+  conversation-db-logins:
+    profiles: [agent-skeleton]
+    build: { context: ., dockerfile: agent-service/chat/Dockerfile, target: tooling }
+    command: [node, agent-service/scripts/runtime-logins.mjs]
+    environment:
+      DATABASE_URL: postgres://migration_owner:local-only@conversation-db:5432/conversations
+      RUNTIME_DOMAIN: conversation
+    depends_on:
+      conversation-db-migrate: { condition: service_completed_successfully }
+  mandate-db-logins:
+    profiles: [agent-skeleton]
+    build: { context: ., dockerfile: agent-service/chat/Dockerfile, target: tooling }
+    command: [node, agent-service/scripts/runtime-logins.mjs]
+    environment:
+      DATABASE_URL: postgres://mandate_owner:local-only@mandate-db:5432/mandates
+      RUNTIME_DOMAIN: mandate
+    depends_on:
+      mandate-db-migrate: { condition: service_completed_successfully }
+  agent-redis:
+    profiles: [agent-skeleton]
+    image: redis:7-alpine
+    command: [redis-server, --appendonly, 'no', --maxmemory, 128mb, --maxmemory-policy, allkeys-lru]
+  agent-broker-init:
+    profiles: [agent-skeleton]
+    build: { context: ., dockerfile: agent-service/chat/Dockerfile, target: tooling }
+    command: [node, agent-service/scripts/provision.mjs]
+    environment:
+      PUBSUB_EMULATOR_HOST: pubsub-emulator:8085
+      PUBSUB_PROJECT_ID: foc-local
+    depends_on:
+      pubsub-emulator:
+        condition: service_healthy
+
+  agent-chat-service:
+    profiles: [agent-skeleton]
+    build: { context: ., dockerfile: agent-service/chat/Dockerfile }
+    ports: ['3008:3000']
+    environment:
+      PORT: '3000'
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      DATABASE_URL: postgres://chat_runtime:local-chat-only@conversation-db:5432/conversations
+      CONVERSATION_DB_ROLE: agent_chat
+      REDIS_URL: redis://agent-redis:6379
+      TURN_TOPIC: agent-turns
+      APPROVAL_SUBSCRIPTION: agent-chat-approvals
+      PUBSUB_EMULATOR_HOST: pubsub-emulator:8085
+      PUBSUB_PROJECT_ID: foc-local
+    depends_on:
+      agent-broker-init:
+        condition: service_completed_successfully
+      conversation-db-logins:
+        condition: service_completed_successfully
+
+  agent-orchestrator-service:
+    profiles: [agent-skeleton]
+    build: { context: ., dockerfile: agent-service/orchestrator/Dockerfile }
+    environment:
+      SERVICE_AUTH_MODE: local
+      ORDER_SERVICE_SECRET: ${ORDER_INTERNAL_SECRET:-local-only-order-internal-secret-0000}
+      SUPPLIER_SERVICE_SECRET: ${SUPPLIER_AGENT_READ_SECRET:-local-only-supplier-agent-read-secret-0000}
+      MANDATE_SERVICE_SECRET: ${MANDATE_AGENT_READ_SECRET:-local-only-mandate-agent-read-secret-0000}
+      CREDIT_SERVICE_SECRET: ${CREDIT_INTERNAL_SECRET:-local-only-credit-internal-secret-0000}
+      PORT: '3000'
+      DATABASE_URL: postgres://execution_runtime:local-execution-only@conversation-db:5432/conversations
+      SOCLAAS_BASE_URL: ${SOCLAAS_BASE_URL:-https://soclaas-api.comp.nus.edu.sg/v1}
+      SOCLAAS_API_KEY: ${SOCLAAS_API_KEY:-}
+      SOCLAAS_MODEL: ${SOCLAAS_MODEL:-default}
+      CONVERSATION_DB_ROLE: agent_execution
+      REDIS_URL: redis://agent-redis:6379
+      TURN_SUBSCRIPTION: agent-orchestrator-turns
+      PUBSUB_EMULATOR_HOST: pubsub-emulator:8085
+      PUBSUB_PROJECT_ID: foc-local
+      MANDATE_SERVICE_URL: http://mandate-service:3000
+      ORDER_SERVICE_URL: http://order-service:3000
+      SUPPLIER_SERVICE_URL: http://supplier-service:3000
+      CREDIT_SERVICE_URL: http://credit-service:3000
+    depends_on:
+      agent-broker-init:
+        condition: service_completed_successfully
+      conversation-db-logins:
+        condition: service_completed_successfully
+
+  mandate-service:
+    profiles: [agent-skeleton]
+    build: { context: ., dockerfile: mandate-service/Dockerfile }
+    ports: ['3009:3000']
+    environment:
+      DATABASE_URL: postgres://mandate_runtime_login:local-mandate-only@mandate-db:5432/mandates
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      SERVICE_AUTH_MODE: local
+      ORDER_SERVICE_URL: http://order-service:3000
+      SUPPLIER_SERVICE_URL: http://supplier-service:3000
+      MANDATE_SERVICE_URL: http://mandate-service:3000
+      ORDER_SERVICE_SECRET: ${ORDER_INTERNAL_SECRET:-local-only-order-internal-secret-0000}
+      SUPPLIER_SERVICE_SECRET: ${SUPPLIER_MANDATE_READ_SECRET:-local-only-supplier-mandate-read-secret-0000}
+      MANDATE_SERVICE_SECRET: ${MANDATE_AGENT_READ_SECRET:-local-only-mandate-agent-read-secret-0000}
+      PORT: '3000'
+      MANDATE_TOPIC: mandate-events
+      PUBSUB_EMULATOR_HOST: pubsub-emulator:8085
+      PUBSUB_PROJECT_ID: foc-local
+    depends_on:
+      agent-broker-init:
+        condition: service_completed_successfully
+      mandate-db-logins:
+        condition: service_completed_successfully
+
 volumes:
   supplier-db-data:
   user-db-data:
@@ -854,3 +1006,5 @@ volumes:
   saga-db-data:
   order-ranking-db-data:
   chat-db-data:
+  conversation-v2-data:
+  mandate-v2-data:

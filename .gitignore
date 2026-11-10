@@ -1,3 +1,4 @@
+# AI Assistance Disclosure: Codex (GPT-6.1), 2026-11-10: combine rebase ignore entries. Author review: Pending.
 # Build output
 dist/
 build/
@@ -16,3 +17,4 @@ Thumbs.db
 
 # Copies of shared/src made by `node shared/sync.mjs`; edit shared/src instead.
 /*/src/shared/
+node_modules/

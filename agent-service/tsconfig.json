@@ -1,0 +1,16 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "outDir": "dist",
+    "declaration": true
+  },
+  "include": [
+    "contracts/**/*.ts",
+    "db/**/*.ts",
+    "common/**/*.ts"
+  ],
+  "exclude": [
+    "db/drizzle.config.ts"
+  ]
+}
