@@ -1,3 +1,8 @@
+// AI Assistance Disclosure: Codex (GPT-6), 2026-11-09.
+// Scope: Service connection implementation and verification. Author review: Pending.
+import { db } from './db/index.js';
+import { users } from './db/schema.js';
+import { eq } from 'drizzle-orm';
 /**
  * AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-10-17.
  * Scope: Express routes for the student-defined order endpoints (POST /orders,
@@ -93,6 +98,58 @@ for (const action of Object.keys(USER_ACTIONS) as UserAction[]) {
 
 const internal = express.Router();
 internal.use(requireInternal);
+
+function requestBody(req: Request): Record<string, unknown> {
+  const value: unknown = req.body;
+  if (typeof value !== "object" || value === null || Array.isArray(value))
+    throw new HttpError(400, "Request body must be an object");
+  return value as Record<string, unknown>;
+}
+function commandId(value: unknown): string {
+  if (typeof value !== "string" || !UUID_PATTERN.test(value))
+    throw new HttpError(400, "A valid command_id is required");
+  return value.toLowerCase();
+}
+async function requester(value: unknown): Promise<number> {
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value <= 0)
+    throw new HttpError(400, "A valid user_id is required");
+  const [user] = await db.select({ deletedAt: users.deletedAt }).from(users).where(eq(users.id, value));
+  if (!user) throw new HttpError(503, "Requester is not available yet");
+  if (user.deletedAt) throw new HttpError(403, "Requester is unavailable");
+  return value;
+}
+internal.post('/orders/get', async (req, res) => {
+  const body: unknown = req.body;
+  if (typeof body !== 'object' || body === null || !('user_id' in body) ||
+      typeof body.user_id !== 'number' || !Number.isSafeInteger(body.user_id) || body.user_id <= 0 ||
+      !('order_id' in body) || typeof body.order_id !== 'string' ||
+      !UUID_PATTERN.test(body.order_id)) {
+    throw new HttpError(400, 'Valid user_id and order_id are required');
+  }
+  const [user] = await db.select({ deletedAt: users.deletedAt }).from(users).where(eq(users.id, body.user_id));
+  if (!user) throw new HttpError(503, 'Requester is not available yet');
+  if (user.deletedAt) throw new HttpError(403, 'Requester is unavailable');
+  const order = await getOrder(body.order_id);
+  if (!order || order.requester.id !== body.user_id) throw new HttpError(404, 'Order not found');
+  res.json(order);
+});
+internal.post("/orders/create", async (req, res) => {
+  const body = requestBody(req),
+    userId = await requester(body.user_id),
+    input = parseOrderInput(body);
+  if (input.isGroupOrder) throw new HttpError(400, "Agent group orders are unsupported");
+  const id = await createOrder(userId, input, commandId(body.command_id));
+  await sendOrder(res, id, 201);
+});
+internal.post("/orders/cancel", async (req, res) => {
+  const body = requestBody(req),
+    userId = await requester(body.user_id);
+  if (typeof body.order_id !== "string" || !UUID_PATTERN.test(body.order_id))
+    throw new HttpError(400, "A valid order_id is required");
+  const orderId = body.order_id.toLowerCase();
+  await performUserAction("cancel", orderId, userId, commandId(body.command_id));
+  await sendOrder(res, orderId);
+});
 
 // Pub/Sub push: 204 acknowledges; 5xx makes Pub/Sub redeliver. Malformed messages
 // are acknowledged (and logged) so they do not block their ordering key forever.

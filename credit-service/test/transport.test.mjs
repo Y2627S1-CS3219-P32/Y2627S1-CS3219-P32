@@ -1,3 +1,5 @@
+// AI Assistance Disclosure: Codex (GPT-6.1), 2026-11-10.
+// Scope: Align rebased credit fixtures with verified-user provisioning. Author review: Pending.
 import { test, before, beforeEach, after } from "node:test";
 import assert from "node:assert/strict";
 import { createHmac, randomUUID } from "node:crypto";
@@ -195,6 +197,63 @@ test("health endpoints use the database and only verified users are initialized"
   });
 });
 
+test("internal balance read authenticates services, validates the owner, and reports available credits", async () => {
+  await withCreditApi(async (base) => {
+    const read = (body, requestHeaders = headers) => fetch(base + '/internal/credits/balance', {
+      method: 'POST', headers: requestHeaders, body: JSON.stringify(body),
+    });
+    assert.equal((await read({ user_id: 1 }, { 'content-type': 'application/json' })).status, 401);
+    for (const user_id of [undefined, 0, -1, 1.5, '1', 2147483648])
+      assert.equal((await read({ user_id })).status, 400);
+    assert.equal((await read({ user_id: 1 })).status, 503);
+    assert.equal(await count('credit_accounts'), 0);
+    await verifyUser(base, 1);
+    await post(base, '/internal/pubsub/credit-commands', wire());
+    const response = await read({ user_id: 1 });
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), {
+      totalCredits: Number(config.initialCredits), reservedCredits: 120,
+      availableCredits: Number(config.initialCredits) - 120,
+    });
+    await post(base, '/internal/pubsub/user-events', { type: 'user.deleted', eventId: randomUUID(), userId: 1 });
+    assert.equal((await read({ user_id: 1 })).status, 401);
+  });
+});
+
+test("internal balance and Pub/Sub use separate Google caller allowlists", async () => {
+  const { OAuth2Client } = await import('google-auth-library');
+  const originalVerify = OAuth2Client.prototype.verifyIdToken;
+  const settings = {
+    internalAudience: config.internalAudience, internalInvokerEmails: config.internalInvokerEmails,
+    pushInvokerEmail: config.pushInvokerEmail, internalSharedSecret: config.internalSharedSecret,
+  };
+  Object.assign(config, {
+    internalAudience: 'credit-audience', internalInvokerEmails: ['agent@example.test'],
+    pushInvokerEmail: 'pubsub@example.test', internalSharedSecret: undefined,
+  });
+  OAuth2Client.prototype.verifyIdToken = async ({ idToken, audience }) => {
+    assert.equal(audience, 'credit-audience');
+    return { getPayload: () => ({ email: `${idToken}@example.test`, email_verified: true }) };
+  };
+  try {
+    await withServer(createApp(), async base => {
+      const send = (path, token, body) => fetch(base + path, {
+        method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+        body: JSON.stringify(body),
+      });
+      assert.equal((await send('/internal/credits/balance', 'pubsub', { user_id: 1 })).status, 401);
+      assert.equal((await send('/internal/credits/balance', 'agent', { user_id: 1 })).status, 503);
+      assert.equal((await send('/internal/pubsub/user-events', 'agent', envelope({
+        type: 'user.created', eventId: randomUUID(), user: { id: 1 },
+      }))).status, 401);
+      assert.equal(await count('credit_accounts'), 0);
+    });
+  } finally {
+    OAuth2Client.prototype.verifyIdToken = originalVerify;
+    Object.assign(config, settings);
+  }
+});
+
 test("Pub/Sub dispatches credit operations and acknowledges only persisted outcomes", async () => {
   await withCreditApi(async (base) => {
     const endpoint = "/internal/pubsub/credit-commands";
@@ -296,7 +355,7 @@ test("Pub/Sub push authentication rejects diagnostic identities on alternate URL
       },
       body: JSON.stringify(envelope(
         path.toLowerCase().includes("user-events")
-          ? { type: "user.created", eventId: randomUUID(), user: { id: 1 } }
+          ? { type: "user.verified", eventId: randomUUID(), user: { id: 1 }, verificationPurpose: "registration" }
           : wire(),
       )),
     });

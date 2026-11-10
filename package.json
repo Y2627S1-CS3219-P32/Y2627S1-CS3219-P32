@@ -1,0 +1,21 @@
+{
+  "name": "campus-agent-skeleton",
+  "private": true,
+  "workspaces": [
+    "agent-service",
+    "agent-service/chat",
+    "agent-service/orchestrator",
+    "mandate-service"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test:connections": "node agent-service/scripts/test-connections.mjs",
+    "test:boundaries": "node --test test/service-boundaries.test.mjs",
+    "test:contracts": "npm run build && node --test test/service-contracts.test.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "typescript": "^7.0.2"
+  }
+}

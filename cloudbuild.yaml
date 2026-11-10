@@ -207,6 +207,37 @@ steps:
           -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/saga-orchestrator-tooling:latest \
           saga-orchestrator
 
+  - id: agent-chat-service
+    name: gcr.io/cloud-builders/docker
+    waitFor: ["-"]
+    args:
+      - build
+      - -f=agent-service/chat/Dockerfile
+      - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/agent-chat-service:${BUILD_ID}
+      - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/agent-chat-service:latest
+      - .
+
+  - id: agent-orchestrator-service
+    name: gcr.io/cloud-builders/docker
+    waitFor: ["-"]
+    args:
+      - build
+      - -f=agent-service/orchestrator/Dockerfile
+      - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/agent-orchestrator-service:${BUILD_ID}
+      - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/agent-orchestrator-service:latest
+      - .
+
+  - id: mandate-service
+    name: gcr.io/cloud-builders/docker
+    waitFor: ["-"]
+    args:
+      - build
+      - -f=mandate-service/Dockerfile
+      - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/mandate-service:${BUILD_ID}
+      - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/mandate-service:latest
+      - .
+
+
 images:
   - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/frontend-service:${BUILD_ID}
   - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/frontend-service:latest
@@ -236,3 +267,9 @@ images:
   - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/saga-orchestrator:latest
   - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/saga-orchestrator-tooling:${BUILD_ID}
   - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/saga-orchestrator-tooling:latest
+  - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/mandate-service:${BUILD_ID}
+  - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/mandate-service:latest
+  - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/agent-chat-service:${BUILD_ID}
+  - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/agent-chat-service:latest
+  - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/agent-orchestrator-service:${BUILD_ID}
+  - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/agent-orchestrator-service:latest

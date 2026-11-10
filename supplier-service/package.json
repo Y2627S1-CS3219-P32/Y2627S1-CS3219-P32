@@ -1,4 +1,5 @@
 {
+  "// rebase": "AI Assistance Disclosure: Codex (GPT-6.1), 2026-11-10: retain observability dependencies and Google identity verification; regenerate lockfile. Author review: Pending.",
   "//": "AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-28. Scope: Drizzle dependencies and scripts; package-lock.json is npm-generated. Author review: Check for correctness. Claude Code (Opus 5.5), 2026-09-29. Scope: tsx watch dev script. Author review: Check for correctness. Claude Code (Opus 5.5), 2026-10-18. Scope: Pub/Sub dependency and event worker scripts. Author review: Pending. Claude Code (Opus 5.5), 2026-11-04: pino, and pino-pretty for development, for the shared logger. Author review: Pending. Claude Code (Opus 5.5), 2026-11-04: OpenTelemetry SDK and instrumentations, loaded by the start scripts through shared/telemetry.mts. Author review: Pending.",
   "name": "supplier-service",
   "version": "1.0.0",
@@ -48,6 +49,7 @@
     "dotenv": "^18.0.4",
     "drizzle-orm": "^0.45.3",
     "express": "^5.2.1",
+    "google-auth-library": "^11.3.3",
     "import-in-the-middle": "^3.5.3",
     "pg": "^8.23.0",
     "pino": "^10.4.0"

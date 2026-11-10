@@ -1,3 +1,4 @@
+// Codex (GPT-6), 2026-11-09: Generated internal service-read tests. Author review: Pending.
 /**
  * AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-10-17.
  * Scope: HTTP and PostgreSQL integration tests for the order service: local JWT
@@ -594,4 +595,76 @@ test("group joins and placing are published before the response is sent", async 
   assert.ok(published.some((item) => item.data.orderId === order.id && item.data.type === "order.member_joined"));
   await placed(order.id);
   assert.ok(published.some((item) => item.data.orderId === order.id && item.data.type === "order.created"));
+});
+
+test('internal order reads reuse existing service authentication and enforce requester ownership', async () => {
+  const order = await createOrder();
+  await push('user-events', userEvent(91));
+  await push('user-events', { type: 'user.deleted', eventId: randomUUID(), version: nextVersion(), userId: 91 });
+  const read = (secret, user = REQUESTER, id = order.id) => request('/internal/orders/get', {
+    method: 'POST', headers: secret ? { 'x-internal-secret': secret } : {}, body: { user_id: user, order_id: id },
+  });
+  assert.equal((await read()).status, 401);
+  assert.equal((await read('wrong-secret')).status, 401);
+  const secret = INTERNAL_SECRET;
+  const response = await read(secret);
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).id, order.id);
+  assert.equal((await read(secret, OTHER)).status, 404);
+  assert.equal((await read(secret, 999)).status, 503);
+  assert.equal((await read(secret, -1)).status, 400);
+  assert.equal((await read(secret, 91)).status, 403);
+  assert.equal((await read(secret, REQUESTER, 'bad')).status, 400);
+  assert.equal((await request('/internal/outbox/publish', { method: 'POST', headers: { 'x-internal-secret': secret } })).status, 200);
+});
+
+test("command IDs deduplicate writes without changing order event payloads", async () => {
+  const input = {
+    supplierId,
+    title: "Agent coffee",
+    description: "Latte",
+    deliveryLocation: "COM1",
+    creditReward: 5,
+    isGroupOrder: false,
+  };
+  const commandId = randomUUID();
+  const call = (path, body, user = REQUESTER) =>
+    request(`/internal/orders/${path}`, {
+      method: "POST",
+      headers: { "x-internal-secret": INTERNAL_SECRET },
+      body: { user_id: user, command_id: commandId, ...body },
+    });
+  const responses = await Promise.all([call("create", input), call("create", input)]);
+  assert.deepEqual(
+    responses.map((value) => value.status),
+    [201, 201],
+  );
+  const a = await responses[0].json(),
+    b = await responses[1].json();
+  assert.equal(a.id, b.id);
+  const saved = await events(a.id);
+  assert.equal(saved.length, 1);
+  assert.equal(saved[0].command_id, commandId);
+  const [event] = (await pool.query("SELECT payload FROM order_events WHERE command_id=$1", [commandId])).rows;
+  assert(!("agentOperation" in event.payload));
+  assert.equal((await call("create", { ...input, title: "Changed" })).status, 409);
+  assert.equal((await call("create", input, OTHER)).status, 409);
+  const found = await (await call("get", { order_id: a.id })).json();
+  assert.equal(found.id, a.id);
+  const cancelId = randomUUID();
+  const cancel = (user = REQUESTER, id = cancelId) => call("cancel", { order_id: a.id, command_id: id }, user);
+  assert.equal((await cancel(OTHER)).status, 403);
+  assert.equal((await cancel(REQUESTER, commandId)).status, 409);
+  assert.equal((await cancel()).status, 200);
+  assert.equal((await cancel()).status, 200);
+  assert.equal((await events(a.id)).filter((value) => value.type === "order.cancelled").length, 1);
+  assert.equal(
+    (
+      await request("/internal/orders/create", {
+        method: "POST",
+        body: { user_id: REQUESTER, command_id: randomUUID(), ...input },
+      })
+    ).status,
+    401,
+  );
 });

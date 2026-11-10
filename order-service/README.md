@@ -139,3 +139,19 @@ secret in `x-internal-secret` or `?token=` (local).
 
 Malformed push messages are logged and acknowledged; processing errors return `500` so
 Pub/Sub redelivers.
+
+
+## Internal service reads
+
+`POST /internal/orders/get` accepts `{user_id, order_id}` with service credentials, without a user JWT. Any service explicitly allowed by configuration
+can use this read capability; Agent and Mandate are the currently configured callers.
+Use the existing `INTERNAL_SHARED_SECRET` locally or configure the caller in
+`INTERNAL_INVOKER_EMAILS` with `INTERNAL_AUDIENCE` in Cloud Run, as described in the
+[connection setup](../agent-service/docs/agent-deployment.md#internal-http-configuration).
+Public APIs retain their existing authentication. Internal order mutations remain unavailable.
+
+## AI assistance disclosure — 2026-11-09
+
+Codex (GPT-6) generated the approved connection/read-route implementation and tests.
+Author review: Pending. Exact prompts, key responses and scope are recorded in the
+[repository usage log](../AI_USAGE_LOG.md). Link this README from the submission slide deck.

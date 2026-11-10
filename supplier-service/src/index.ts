@@ -1,3 +1,5 @@
+// AI Assistance Disclosure: Codex (GPT-6), 2026-11-09.
+// Scope: Service connection implementation and verification. Author review: Pending.
 /**AI Assistance Disclosure:
 Tool: ChatGPT(model: GPT6), date: 2026-09-28
 Scope: Express server and GET /suppliers happy-path implementation.
@@ -34,9 +36,9 @@ Author review: Pending. **/
 
 import "dotenv/config";
 import { pathToFileURL } from "node:url";
-import { and, asc, desc, eq, getTableColumns, ilike, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, getTableColumns, ilike, sql, type SQL } from "drizzle-orm";
 import express, { type ErrorRequestHandler, type Request } from "express";
-import { getAuthenticatedUser, requireAdministrator, requireAuthentication } from "./auth.js";
+import { getAuthenticatedUser, requireAdministrator, requireAuthentication, requireInternal } from "./auth.js";
 import { db } from "./db/index.js";
 import { openingHoursMatch } from "./db/opening-hours.js";
 import { buildings, operatingHours, suppliers, types } from "./db/schema.js";
@@ -109,6 +111,26 @@ async function toSupplierRow(tx: Transaction, input: SupplierInput) {
 
 app.use("/types", referenceRouter(types, "Supplier type"));
 app.use("/buildings", referenceRouter(buildings, "Building"));
+
+const internal = express.Router();
+internal.use(requireInternal);
+
+internal.post('/suppliers/search', async (req, res) => {
+  const body: unknown = req.body;
+  if (typeof body !== 'object' || body === null) throw new HttpError(400, 'Invalid search');
+  const query = 'query' in body ? body.query : '';
+  const ids = 'supplier_ids' in body ? body.supplier_ids : [];
+  const limit = 'limit' in body ? body.limit : 20;
+  if (typeof query !== 'string' || query.length > 200 || !Array.isArray(ids) || ids.length > 50 ||
+      !ids.every((id: unknown) => typeof id === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) ||
+      typeof limit !== 'number' || !Number.isInteger(limit) || limit < 1 || limit > 50) throw new HttpError(400, 'Invalid search filters');
+  const pattern = query.trim() ? `%${query.trim().replace(/[\\%_]/g, '\\$&')}%` : undefined;
+  res.json(await selectSuppliers(and(eq(suppliers.isActive, true),
+    pattern ? ilike(suppliers.name, pattern) : undefined,
+    ids.length ? inArray(suppliers.id, ids) : undefined)).limit(limit));
+});
+
+app.use("/internal", internal);
 
 app.get("/suppliers", requireAuthentication, async (req, res) => {
   const name = typeof req.query.name === "string" ? req.query.name.trim() : undefined;

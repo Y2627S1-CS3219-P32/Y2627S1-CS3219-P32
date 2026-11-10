@@ -19,6 +19,7 @@
     "@codemirror/commands": "^6.11.1",
     "@codemirror/state": "^6.7.6",
     "@codemirror/view": "^6.43.14",
+    "markdown-it": "^15.0.3",
     "nuxt": "^4.5.2",
     "vue": "^3.5.43",
     "vue-router": "^5.3.1",
@@ -28,6 +29,7 @@
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.3",
+    "@types/markdown-it": "^14.2.0",
     "@types/node": "^22.20.4",
     "tailwindcss": "^4.3.3",
     "typescript": "~5.9.3",

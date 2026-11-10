@@ -1,3 +1,5 @@
+// AI Assistance Disclosure: Codex (GPT-6), 2026-11-09.
+// Scope: Reused internal authentication and router structure. Author review: Pending.
 /**AI Assistance Disclosure:
 Tool: Claude Code (model: Opus 5.5), date: 2026-09-29
 Scope: Authentication and administrator middleware that resolves the caller through user-service GET /me.
@@ -8,6 +10,7 @@ lookup in the local user copy, replacing the user-service GET /me call.
 Author review: Pending. **/
 
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { OAuth2Client } from "google-auth-library";
 import { eq } from "drizzle-orm";
 import type { NextFunction, Request, Response } from "express";
 import { db } from "./db/index.js";
@@ -97,4 +100,31 @@ export function requireAdministrator(_req: Request, res: Response, next: NextFun
     throw new HttpError(403, "Administrator access is required");
   }
   next();
+}
+
+const google = new OAuth2Client();
+// Dedicated read credentials never authorize scheduler, publisher or command routes.
+export async function requireInternal(req: Request, _res: Response, next: NextFunction): Promise<void> {
+  const mode = process.env.SERVICE_AUTH_MODE;
+  if (mode === 'local') {
+    const supplied = req.header('x-internal-secret');
+    const secrets = (process.env.SERVICE_READ_SECRETS ?? '').split(',').map(value => value.trim()).filter(Boolean);
+    for (const secret of secrets) {
+      if (!secret || secret.length < 32 || !supplied) continue;
+      const a = Buffer.from(secret), b = Buffer.from(supplied);
+      if (a.length === b.length && timingSafeEqual(a, b)) { next(); return; }
+    }
+  } else if (mode === 'google') {
+    const token = req.header('authorization')?.match(/^Bearer (\S+)$/i)?.[1];
+    const audience = process.env.SERVICE_READ_AUDIENCE;
+    const callers = (process.env.SERVICE_READ_INVOKERS ?? '').split(',').map(value => value.trim()).filter(Boolean);
+    if (token && audience && callers.length) {
+      try {
+        const ticket = await google.verifyIdToken({ idToken: token, audience });
+        const payload = ticket.getPayload();
+        if (payload?.email_verified && payload.email && callers.includes(payload.email)) { next(); return; }
+      } catch { /* Fail closed. */ }
+    }
+  }
+  throw new HttpError(401, 'Authorized internal read credentials are required');
 }

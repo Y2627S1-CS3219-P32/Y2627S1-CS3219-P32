@@ -1,6 +1,8 @@
 # Credit Service
 
-Credit owns four PostgreSQL tables. Commands commit the saved JSON result, movement, balances, and outcome together. Balance reads require a user JWT. Reserve, release, and transfer arrive through authenticated Pub/Sub push delivery. Accounts are provisioned once on authenticated `user.verified` events. No request creates an account.
+<!-- AI Assistance Disclosure: Codex (GPT-6.1), 2026-11-10: merge internal balance documentation with verified-user provisioning. Author review: Pending. -->
+
+Credit owns four PostgreSQL tables. Commands commit the saved JSON result, movement, balances, and outcome together. Public balance reads require a user JWT. `POST /internal/credits/balance` accepts `{ "user_id": 1 }` from authenticated services and returns `totalCredits`, `reservedCredits`, and `availableCredits`. It accepts the local emulator shared secret, or Google OIDC with `INTERNAL_AUDIENCE` and an email in `INTERNAL_INVOKER_EMAILS`; this allowlist does not authorize Pub/Sub deliveries. Reserve, release, and transfer arrive through authenticated Pub/Sub push delivery. Accounts are provisioned once on authenticated `user.verified` events. No request creates an account.
 
 ## Source layout
 

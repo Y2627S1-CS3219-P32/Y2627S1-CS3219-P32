@@ -1,3 +1,4 @@
+// Codex (GPT-6), 2026-11-09: Generated internal service-read tests. Author review: Pending.
 /**
  * AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-28.
  * Scope: HTTP and PostgreSQL integration checks for GET /suppliers.
@@ -49,6 +50,8 @@ let foodId, coffeeId, shoppingId;
 
 const jwtSecret = "test-jwt-secret-that-is-at-least-32-bytes";
 process.env.JWT_SECRET = jwtSecret;
+process.env.SERVICE_AUTH_MODE = 'local';
+process.env.SERVICE_READ_SECRETS = ['first-caller-'.padEnd(40, 'a'), 'second-caller-'.padEnd(40, 'b')].join(',');
 
 // Same format as user-service createAccessToken.
 function accessToken(userId, { secret = jwtSecret, exp = Math.floor(Date.now() / 1000) + 900 } = {}) {
@@ -675,4 +678,22 @@ test("PUT replaces operating hours when sent, and an empty list clears them", as
 
   const unknown = await request("/suppliers/00000000-0000-4000-8000-000000000000", { method: "PUT", token: "admin-token", body: { ...body, operatingHours: always } });
   assert.equal(unknown.status, 404);
+});
+
+test('internal catalog accepts only dedicated service credentials and bounded active searches', async () => {
+  const search = (secret, body = {}) => fetch(`${baseUrl}/internal/suppliers/search`, { method: 'POST',
+    headers: { 'content-type': 'application/json', ...(secret ? { 'x-internal-secret': secret } : {}) }, body: JSON.stringify(body) });
+  assert.equal((await search()).status, 401);
+  assert.equal((await search('wrong')).status, 401);
+  for (const secret of process.env.SERVICE_READ_SECRETS.split(',')) {
+    const response = await search(secret, { query: 'Cafe', limit: 1 });
+    assert.equal(response.status, 200);
+    const rows = await response.json();
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].isActive, true);
+    const exact = await search(secret, { supplier_ids: [rows[0].id] });
+    assert.equal((await exact.json())[0].id, rows[0].id);
+    assert.equal((await search(secret, { limit: 51 })).status, 400);
+    assert.equal((await search(secret, { supplier_ids: ['bad'] })).status, 400);
+  }
 });

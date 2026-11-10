@@ -425,3 +425,18 @@ Logs:
 - Key response: Implemented the documented four-table schema with the user's
   confirmed defaults and generated its initial migration. See the usage log for
   migration and validation results. These changes await student review.
+
+
+## Internal service reads
+
+`POST /internal/suppliers/search` accepts `{query?, supplier_ids?, limit?}` with service credentials, without a user JWT. Any service explicitly allowed by configuration
+can use this read capability; Agent and Mandate are the currently configured callers.
+Configure dedicated read credentials and caller permissions as described in the
+[connection setup](../agent-service/docs/agent-deployment.md#internal-http-configuration).
+Public APIs retain their existing authentication. Internal order mutations remain unavailable.
+
+## AI assistance disclosure — 2026-11-09
+
+Codex (GPT-6) generated the approved connection/read-route implementation and tests.
+Author review: Pending. Exact prompts, key responses and scope are recorded in the
+[repository usage log](../AI_USAGE_LOG.md). Link this README from the submission slide deck.
