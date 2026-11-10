@@ -219,6 +219,11 @@ stored in GitHub. One-time setup, after `./deploy.sh setup`:
 Then add the three printed values (`GCP_PROJECT_ID`, `GCP_WORKLOAD_IDENTITY_PROVIDER`,
 `GCP_SERVICE_ACCOUNT`) as repository variables under Settings > Secrets and variables > Actions.
 
+To redeploy images that have already been built, run
+[`.github/workflows/deploy-existing.yml`](.github/workflows/deploy-existing.yml) manually from the
+Actions tab and enter the image tag (defaults to `latest`). This workflow only runs `./deploy.sh`;
+it does not build or seed images.
+
 The user service publishes state-change events to the `user-events` topic. The
 authenticated `user-event-worker` Cloud Run service consumes its push
 subscription and updates the PostgreSQL read model. Events contain password
