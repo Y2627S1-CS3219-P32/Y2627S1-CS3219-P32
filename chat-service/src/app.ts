@@ -10,7 +10,23 @@ import { isValidOrderId, publishChatMessage } from "./events.js";
 export const app = express();
 app.use(express.json({ limit: "10kb" }));
 
-app.get("/health", (_req, res) => res.json({ status: "ok" }));
+let initialized = false;
+
+export function markInitialized(): void {
+  initialized = true;
+}
+
+app.get("/health", (_req, res) => {
+  res.status(initialized ? 200 : 503).json({ status: initialized ? "ok" : "starting" });
+});
+
+app.use((_req, res, next) => {
+  if (!initialized) {
+    res.status(503).json({ error: "Chat service is starting" });
+    return;
+  }
+  next();
+});
 
 function orderIdParam(req: Request): string {
   const id = req.params.orderId;
