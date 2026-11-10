@@ -23,7 +23,7 @@ export function decodeMessage(body: unknown): unknown {
 }
 
 type UserEvent = {
-  type: 'user.created' | 'user.deleted' | 'user.updated';
+  type: 'user.created' | 'user.verified' | 'user.deleted' | 'user.updated';
   eventId: string;
   userId: number;
 };
@@ -34,6 +34,7 @@ export function parseUserEvent(value: unknown): UserEvent {
     value === null ||
     !('type' in value) ||
     (value.type !== 'user.created' &&
+      value.type !== 'user.verified' &&
       value.type !== 'user.deleted' &&
       value.type !== 'user.updated') ||
     !('eventId' in value)

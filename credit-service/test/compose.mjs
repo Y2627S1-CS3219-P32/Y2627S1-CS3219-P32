@@ -28,8 +28,9 @@ try {
       .publishMessage({
         json: {
           eventId: randomUUID(),
-          type: "user.created",
+          type: "user.verified",
           user: { id: userId },
+          verificationPurpose: "registration",
         },
       });
     let ready = false;
