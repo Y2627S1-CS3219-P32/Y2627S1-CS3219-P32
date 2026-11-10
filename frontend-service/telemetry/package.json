@@ -1,0 +1,18 @@
+{
+  "//": "AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-11-04. Scope: OpenTelemetry packages for the frontend server, installed in their own image stage because the Nuxt runtime image keeps only .output; package-lock.json is npm-generated. Author review: Pending.",
+  "name": "frontend-service-telemetry",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@opentelemetry/api": "^1.10.0",
+    "@opentelemetry/instrumentation-express": "^0.72.0",
+    "@opentelemetry/instrumentation-http": "^0.300.0",
+    "@opentelemetry/instrumentation-pg": "^0.77.0",
+    "@opentelemetry/instrumentation-pino": "^0.70.0",
+    "@opentelemetry/instrumentation-runtime-node": "^0.37.0",
+    "@opentelemetry/instrumentation-undici": "^0.34.0",
+    "@opentelemetry/sdk-node": "^0.300.0",
+    "import-in-the-middle": "^3.5.3"
+  }
+}

@@ -1,5 +1,6 @@
 <!-- AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-10-17.
 Scope: Order card after the student's mockups, with the viewer's action and status. Author review: Pending.
+Claude Code (Opus 5.5), 2026-10-17. Scope: Group order members. Author review: Pending.
 Claude Code (Opus 5.5), 2026-10-31: optional reasons from order-ranking-service. Author review: Pending. -->
 <script setup lang="ts">
 import type { Order, OrderAction } from "#shared/services/order-service/types";
@@ -11,6 +12,8 @@ const props = defineProps<{
   // The details page shows every action and links to editing; the list only offers Accept.
   detailed?: boolean;
   busy?: boolean;
+  // The group editor shows the live description instead.
+  hideDescription?: boolean;
   // Why order-ranking-service suggested this order (For You tab only).
   reasons?: string[];
 }>();
@@ -46,7 +49,7 @@ const supplierName = computed(() => props.order.supplier.name || "Unknown suppli
         <span class="shrink-0" aria-hidden="true">⟶</span>
         <span class="wrap-anywhere"><span class="sr-only">to</span>{{ order.deliveryLocation }}</span>
       </p>
-      <p class="wrap-anywhere whitespace-pre-line">{{ order.description }}</p>
+      <p v-if="!hideDescription" class="wrap-anywhere whitespace-pre-line">{{ order.description }}</p>
       <div v-if="reasons?.length" class="mt-3 rounded-md bg-[#fdf3ea] px-3 py-2 text-sm text-[#7a4a1d]">
         <p class="font-semibold">Why this order</p>
         <ul class="mt-1 list-disc space-y-0.5 pl-4">

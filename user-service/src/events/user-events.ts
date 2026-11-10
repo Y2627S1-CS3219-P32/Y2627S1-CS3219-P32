@@ -3,6 +3,9 @@
     Tool: Copilot SDK in VS Code, 2026-10-15
     Scope: User state-change event contract and Pub/Sub publisher
     Author review: Pending
+    Tool: ChatGPT (GPT-6), 2026-11-04
+    Scope: Include account verification fields in user event snapshots
+    Author review: Pending
 **/
 import { randomUUID } from "node:crypto";
 
@@ -10,6 +13,7 @@ import { PubSub } from "@google-cloud/pubsub";
 
 import type { User } from "../db/schema";
 import { reserveUserEventVersion } from "../repositories/users.repository";
+import { publishMessage } from "../shared/messaging";
 
 export const userEventsTopicName = process.env.PUBSUB_TOPIC ?? "user-events";
 const projectId = process.env.PUBSUB_PROJECT_ID
@@ -18,11 +22,18 @@ const projectId = process.env.PUBSUB_PROJECT_ID
 
 export type UserSnapshot = Pick<
   User,
-  "id" | "name" | "displayName" | "email" | "role" | "passwordHash"
+  | "id"
+  | "name"
+  | "displayName"
+  | "email"
+  | "role"
+  | "passwordHash"
+  | "verificationStatus"
+  | "verificationCode"
 >;
 
 export type UserEventPayload =
-  | { type: "user.created" | "user.updated"; user: UserSnapshot }
+  | { type: "user.created" | "user.updated" | "user.verified"; user: UserSnapshot }
   | { type: "user.deleted"; userId: number };
 
 export type UserEvent = UserEventPayload & { eventId: string; version: number };
@@ -67,9 +78,13 @@ export async function publishUserEvent(
   const key = String(orderingKey);
   const version = await reserveUserEventVersion();
   try {
-    await userEventsTopic.publishMessage({
+    // Claude Code (Opus 5.5), 2026-11-05: logged and traced by the shared helper; the type
+    // attribute, as on the other topics, names the event in subscribers' logs.
+    // Author review: Pending.
+    await publishMessage(userEventsTopic, {
       json: { ...event, eventId: randomUUID(), version },
       orderingKey: key,
+      attributes: { type: event.type },
     });
   } catch (error) {
     userEventsTopic.resumePublishing(key);
@@ -85,5 +100,7 @@ export function userSnapshot(user: User): UserSnapshot {
     email: user.email,
     role: user.role,
     passwordHash: user.passwordHash,
+    verificationStatus: user.verificationStatus,
+    verificationCode: user.verificationCode,
   };
 }

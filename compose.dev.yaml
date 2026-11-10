@@ -1,18 +1,31 @@
 # AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-09-29.
 # Scope: Development override with hot reloading via Compose watch.
 # Author review: Check for correctness.
+# ChatGPT (GPT-6), 2026-11-04: add mail-service source watching. Author review: Pending.
 #
 # Usage: docker compose -f compose.yaml -f compose.dev.yaml up --build --watch
+#
+# Claude Code (Opus 5.5), 2026-11-04: backend services sync shared/src into src/shared and log through
+# pino-pretty (LOG_PRETTY). Author review: Pending.
+# Claude Code (Opus 5.5), 2026-11-04: tsx loads the OpenTelemetry bootstrap first; it stays off
+# unless compose.observability.yaml is added too. Author review: Pending.
 services:
   supplier-service:
     build:
       target: tooling
-    command: ["npx", "tsx", "watch", "src/index.ts"]
+    command: ["npx", "tsx", "watch", "--import", "./src/shared/telemetry.mts", "src/index.ts"]
+    environment:
+      LOG_PRETTY: "true"
     develop:
       watch:
         - action: sync
           path: ./supplier-service/src
           target: /app/src
+          ignore:
+            - shared/
+        - action: sync
+          path: ./shared/src
+          target: /app/src/shared
         - action: rebuild
           path: ./supplier-service/package.json
 
@@ -20,34 +33,65 @@ services:
   supplier-event-worker:
     build:
       target: tooling
-    command: ["npx", "tsx", "watch", "src/worker.ts"]
+    command: ["npx", "tsx", "watch", "--import", "./src/shared/telemetry.mts", "src/worker.ts"]
+    environment:
+      LOG_PRETTY: "true"
     develop:
       watch:
         - action: sync
           path: ./supplier-service/src
           target: /app/src
+          ignore:
+            - shared/
+        - action: sync
+          path: ./shared/src
+          target: /app/src/shared
         - action: rebuild
           path: ./supplier-service/package.json
 
   user-service:
-    command: ["npx", "tsx", "watch", "src/index.ts"]
+    command: ["npx", "tsx", "watch", "--import", "./src/shared/telemetry.mts", "src/index.ts"]
+    environment:
+      LOG_PRETTY: "true"
     develop:
       watch:
         - action: sync
           path: ./user-service/src
           target: /app/src
+          ignore:
+            - shared/
+        - action: sync
+          path: ./shared/src
+          target: /app/src/shared
         - action: rebuild
           path: ./user-service/package.json
 
   user-event-worker:
-    command: ["npx", "tsx", "watch", "src/worker.ts"]
+    command: ["npx", "tsx", "watch", "--import", "./src/shared/telemetry.mts", "src/worker.ts"]
+    environment:
+      LOG_PRETTY: "true"
     develop:
       watch:
         - action: sync
           path: ./user-service/src
           target: /app/src
+          ignore:
+            - shared/
+        - action: sync
+          path: ./shared/src
+          target: /app/src/shared
         - action: rebuild
           path: ./user-service/package.json
+
+  mail-service:
+    command: ["npx", "tsx", "watch", "src/index.ts"]
+    develop:
+      watch:
+        - action: sync
+          path: ./mail-service/src
+          target: /app/src
+        - action: rebuild
+          path: ./mail-service/package.json
 
   frontend-service:
     build:
@@ -72,12 +116,19 @@ services:
   order-service:
     build:
       target: tooling
-    command: ["npx", "tsx", "watch", "src/index.ts"]
+    command: ["npx", "tsx", "watch", "--import", "./src/shared/telemetry.mts", "src/index.ts"]
+    environment:
+      LOG_PRETTY: "true"
     develop:
       watch:
         - action: sync
           path: ./order-service/src
           target: /app/src
+          ignore:
+            - shared/
+        - action: sync
+          path: ./shared/src
+          target: /app/src/shared
         - action: rebuild
           path: ./order-service/package.json
 
@@ -85,36 +136,70 @@ services:
   notification-service:
     build:
       target: tooling
-    command: ["npx", "tsx", "watch", "src/index.ts"]
+    command: ["npx", "tsx", "watch", "--import", "./src/shared/telemetry.mts", "src/index.ts"]
+    environment:
+      LOG_PRETTY: "true"
     develop:
       watch:
         - action: sync
           path: ./notification-service/src
           target: /app/src
+          ignore:
+            - shared/
+        - action: sync
+          path: ./shared/src
+          target: /app/src/shared
         - action: rebuild
           path: ./notification-service/package.json
 
-  credit-service:
+  # Claude Code (Opus 5.5), 2026-10-17: sync-service hot reloading. Author review: Pending.
+  sync-service:
     build:
       target: tooling
     command: ["npx", "tsx", "watch", "src/index.ts"]
     develop:
       watch:
         - action: sync
+          path: ./sync-service/src
+          target: /app/src
+        - action: rebuild
+          path: ./sync-service/package.json
+
+  credit-service:
+    build:
+      target: tooling
+    command: ["npx", "tsx", "watch", "--import", "./src/shared/telemetry.mts", "src/index.ts"]
+    environment:
+      LOG_PRETTY: "true"
+    develop:
+      watch:
+        - action: sync
           path: ./credit-service/src
           target: /app/src
+          ignore:
+            - shared/
+        - action: sync
+          path: ./shared/src
+          target: /app/src/shared
         - action: rebuild
           path: ./credit-service/package.json
 
   credit-publisher:
     build:
       target: tooling
-    command: ["npx", "tsx", "watch", "src/outbox-publisher/publisher.ts"]
+    command: ["npx", "tsx", "watch", "--import", "./src/shared/telemetry.mts", "src/outbox-publisher/publisher.ts"]
+    environment:
+      LOG_PRETTY: "true"
     develop:
       watch:
         - action: sync
           path: ./credit-service/src
           target: /app/src
+          ignore:
+            - shared/
+        - action: sync
+          path: ./shared/src
+          target: /app/src/shared
         - action: rebuild
           path: ./credit-service/package.json
 
@@ -122,11 +207,18 @@ services:
   saga-orchestrator:
     build:
       target: tooling
-    command: ["npx", "tsx", "watch", "src/index.ts"]
+    command: ["npx", "tsx", "watch", "--import", "./src/shared/telemetry.mts", "src/index.ts"]
+    environment:
+      LOG_PRETTY: "true"
     develop:
       watch:
         - action: sync
           path: ./saga-orchestrator/src
           target: /app/src
+          ignore:
+            - shared/
+        - action: sync
+          path: ./shared/src
+          target: /app/src/shared
         - action: rebuild
           path: ./saga-orchestrator/package.json

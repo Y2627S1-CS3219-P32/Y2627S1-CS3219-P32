@@ -3,6 +3,9 @@
     Tool: ChatGPT (model: GPT-6), date: 2026-09-29
     Scope: PostgreSQL user schema and case-insensitive display-name uniqueness
     Author review: Done
+    Tool: ChatGPT (GPT-6), date: 2026-11-04
+    Scope: Account verification status and code fields
+    Author review: Pending
 **/
 import { sql } from "drizzle-orm";
 import {
@@ -23,6 +26,10 @@ export const usersTable = pgTable("users", {
   email: text().notNull(),
   role: text("role", { enum: ["student", "admin"] }).notNull(),
   passwordHash: text().notNull().default(""),
+  verificationStatus: text("verification_status", {
+    enum: ["pending_verification", "verified"],
+  }).notNull().default("verified"),
+  verificationCode: text("verification_code"),
 }, (table) => [
   uniqueIndex("users_email_unique").on(table.email),
   uniqueIndex("users_display_name_unique").on(sql`lower(${table.displayName})`)
@@ -42,4 +49,9 @@ export const userEventStatesTable = pgTable("user_event_states", {
 });
 
 export type User = typeof usersTable.$inferSelect;
-export type PublicUser = Pick<User, "id" | "name" | "displayName" | "email" | "role">;
+export type AccountVerificationStatus = User["verificationStatus"];
+export type PublicUser = Pick<
+  User,
+  "id" | "name" | "displayName" | "email" | "role" | "verificationStatus"
+>;
+export type AdminUser = PublicUser & Pick<User, "verificationCode">;

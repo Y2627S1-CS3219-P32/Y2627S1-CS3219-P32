@@ -5,6 +5,7 @@
  * Author review: Pending.
  * Claude Code (Opus 5.5), 2026-10-17: title, PATCH /orders/:orderId bodies, and
  * comma-separated state filters for the frontend tabs. Author review: Pending.
+ * Claude Code (Opus 5.5), 2026-10-17: isGroupOrder. Author review: Pending.
  */
 import { ORDER_STATES, type OrderState } from "../db/schema.js";
 import { HttpError } from "../errors.js";
@@ -21,6 +22,7 @@ export interface OrderInput {
   description: string;
   deliveryLocation: string;
   creditReward: number;
+  isGroupOrder: boolean;
 }
 
 function text(body: Record<string, unknown>, field: string, max: number): string {
@@ -47,8 +49,12 @@ export function parseOrderInput(body: unknown): OrderInput {
     throw new HttpError(400, "creditReward must be a positive whole number");
   }
 
+  const isGroupOrder = fields.isGroupOrder ?? false;
+  if (typeof isGroupOrder !== "boolean") throw new HttpError(400, "isGroupOrder must be a boolean");
+
   return {
     supplierId: supplierId.toLowerCase(),
+    isGroupOrder,
     title: text(fields, "title", MAX_TITLE),
     description: text(fields, "description", MAX_DESCRIPTION),
     deliveryLocation: text(fields, "deliveryLocation", MAX_DELIVERY_LOCATION),
@@ -57,6 +63,9 @@ export function parseOrderInput(body: unknown): OrderInput {
 }
 
 export type OrderEdit = Partial<Pick<OrderInput, "title" | "description" | "deliveryLocation">>;
+
+// group.placed descriptions follow the same limit as POST /orders.
+export const MAX_GROUP_DESCRIPTION = MAX_DESCRIPTION;
 
 const EDITABLE = { title: MAX_TITLE, description: MAX_DESCRIPTION, deliveryLocation: MAX_DELIVERY_LOCATION } as const;
 

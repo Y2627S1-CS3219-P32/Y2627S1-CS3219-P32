@@ -1,14 +1,26 @@
 <!-- AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-30.
-Scope: JWT login page and first-administrator setup navigation. Author review: Done. -->
+Scope: JWT login page and first-administrator setup navigation. Author review: Done.
+ChatGPT (GPT-6), 2026-11-04. Scope: Redirect unverified login attempts to verification. Author review: Pending. -->
 <script setup lang="ts">
 import { getApiErrorMessage } from "../utils/get-api-error-message";
 
 const route = useRoute();
 
-const email = ref("");
+const email = ref(typeof route.query.email === "string" ? route.query.email : "");
 const password = ref("");
 const pending = ref(false);
 const errorMessage = ref("");
+
+function isForbidden(error: unknown): boolean {
+  if (typeof error !== "object" || error === null) return false;
+  if ("statusCode" in error && error.statusCode === 403) return true;
+  if ("status" in error && error.status === 403) return true;
+  return "response" in error &&
+    typeof error.response === "object" &&
+    error.response !== null &&
+    "status" in error.response &&
+    error.response.status === 403;
+}
 
 async function login() {
   pending.value = true;
@@ -27,6 +39,13 @@ async function login() {
     await refreshNuxtData("navigation-user");
     await navigateTo(redirect);
   } catch (error) {
+    if (isForbidden(error)) {
+      await navigateTo({
+        path: "/verify",
+        query: { email: email.value.trim().toLowerCase() },
+      });
+      return;
+    }
     errorMessage.value = getApiErrorMessage(error) ?? "Login failed. Check the email and password, then try again.";
   } finally {
     pending.value = false;
@@ -39,6 +58,9 @@ async function login() {
     <section class="w-full max-w-md rounded-xl border border-[#e1e6eb] bg-white p-8 shadow-sm">
       <NuxtLink to="/" class="text-sm font-medium text-[#064784] hover:underline">Return to home page</NuxtLink>
       <div class="mt-5 text-3xl font-bold">Welcome Back!</div>
+      <p v-if="route.query.verified === '1'" class="mt-3 text-sm text-green-800" role="status">
+        Your account is verified. Sign in to continue.
+      </p>
 
       <form class="mt-7 space-y-5" @submit.prevent="login">
         <div>

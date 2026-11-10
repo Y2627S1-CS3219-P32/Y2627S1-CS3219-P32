@@ -24,13 +24,24 @@ Scope: Link the landing-page login action to the JWT test page. Author review: D
         </div>
       </div>
 
-      <div class="order-1 overflow-hidden bg-white md:order-2">
+      <figure class="order-1 overflow-hidden bg-white md:order-2">
         <img
           src="/images/mascot.jpg"
-          alt="A campus cafe ready for your next stop"
+          alt="NUS 18cm sitting Plush Lion"
           class="aspect-square w-full object-cover"
         >
-      </div>
+        <figcaption class="px-3 py-2 text-center text-xs text-[#777]">
+          Image © NUS Co-op:
+          <a
+            href="https://www.nuscoop.sg/NUS-18cm-sitting-Plush-Lion"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="underline underline-offset-2 hover:text-[#064784]"
+          >
+            NUS 18cm sitting Plush Lion
+          </a>
+        </figcaption>
+      </figure>
     </section>
   </main>
 </template>

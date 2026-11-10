@@ -1,0 +1,4 @@
+# AI Assistance Disclosure: ChatGPT (GPT-6), 2026-11-04. Scope: Mail-service build exclusions. Author review: Pending.
+node_modules
+npm-debug.log
+.env

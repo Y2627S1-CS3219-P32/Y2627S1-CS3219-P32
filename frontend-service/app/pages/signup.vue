@@ -1,5 +1,6 @@
 <!-- AI Assistance Disclosure: ChatGPT (GPT-6), 2026-09-30.
-Scope: Student registration fields and validation feedback. Author review: Done. -->
+Scope: Student registration fields and validation feedback. Author review: Done.
+ChatGPT (GPT-6), 2026-11-04. Scope: Redirect new accounts to verification. Author review: Pending. -->
 <script setup lang="ts">
 import { getApiErrorMessage } from "../utils/get-api-error-message";
 
@@ -36,8 +37,10 @@ async function register() {
         password: password.value,
       },
     });
-    await refreshNuxtData("navigation-user");
-    await navigateTo("/profile");
+    await navigateTo({
+      path: "/verify",
+      query: { email: email.value.trim().toLowerCase() },
+    });
   } catch (error) {
     errorMessage.value = getApiErrorMessage(error) ?? "Account creation failed. Please try again.";
   } finally {

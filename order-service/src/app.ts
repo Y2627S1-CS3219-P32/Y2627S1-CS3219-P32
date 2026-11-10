@@ -6,16 +6,21 @@
  * Author review: Pending.
  * Claude Code (Opus 5.5), 2026-10-17: GET /orders/:orderId, its event history, and
  * PATCH /orders/:orderId for editing. Author review: Pending.
+ * Claude Code (Opus 5.5), 2026-10-17: joining group orders and group.placed from the sync
+ * service. Author review: Pending.
  */
 import express, { type ErrorRequestHandler, type Request, type Response } from "express";
 import { getUserId, requireInternal, requireUser } from "./auth.js";
-import { applySupplierEvent, applyUserEvent, InvalidMessageError, parseSagaCommand } from "./events/consumers.js";
+import { applySupplierEvent, applyUserEvent, InvalidMessageError, parseGroupPlaced, parseSagaCommand } from "./events/consumers.js";
 import { publishPendingEvents } from "./events/outbox.js";
 import { decodePushMessage } from "./events/pubsub.js";
 import { HttpError } from "./errors.js";
 import { parseListQuery, parseOrderEdit, parseOrderInput, UUID_PATTERN } from "./orders/input.js";
 import { getOrder, listOrderEvents, listOrders } from "./orders/queries.js";
-import { createOrder, editOrder, expireOverdueOrders, handleSagaCommand, performUserAction, USER_ACTIONS, type UserAction } from "./orders/write.js";
+import { createOrder, editOrder, expireOverdueOrders, handleSagaCommand, joinOrder, placeGroupOrder, performUserAction, USER_ACTIONS, type UserAction } from "./orders/write.js";
+// Claude Code (Opus 5.5), 2026-11-04: logs through the shared pino logger. Author review: Pending.
+import { logger } from "./shared/logger.js";
+import { receivePush } from "./shared/messaging.js";
 
 export const app = express();
 app.use(express.json({ limit: "10kb" }));
@@ -71,6 +76,13 @@ app.patch("/orders/:orderId", requireUser, async (req, res) => {
   await sendOrder(res, id);
 });
 
+// Members join a group order through its shareable link while it is SYNCHRONISING.
+app.post("/orders/:orderId/join", requireUser, async (req, res) => {
+  const id = getOrderIdParam(req);
+  await joinOrder(id, getUserId(res));
+  await sendOrder(res, id);
+});
+
 for (const action of Object.keys(USER_ACTIONS) as UserAction[]) {
   app.post(`/orders/:orderId/${action}`, requireUser, async (req, res) => {
     const id = getOrderIdParam(req);
@@ -85,17 +97,19 @@ internal.use(requireInternal);
 // Pub/Sub push: 204 acknowledges; 5xx makes Pub/Sub redeliver. Malformed messages
 // are acknowledged (and logged) so they do not block their ordering key forever.
 function pushHandler(name: string, handle: (message: unknown) => Promise<void>) {
-  return async (req: Request, res: Response) => {
+  // Claude Code (Opus 5.5), 2026-11-05: in the message's trace, and logged with its outcome,
+  // through the shared helper. Author review: Pending.
+  return receivePush(async (req: Request, res: Response) => {
     const message = decodePushMessage(req.body);
     try {
       if (message === undefined) throw new InvalidMessageError("Push request has no JSON message data");
       await handle(message);
     } catch (error) {
       if (!(error instanceof InvalidMessageError)) throw error;
-      console.error(`[order-service] Dropped invalid ${name} message: ${error.message}`);
+      logger.error({ source: name, reason: error.message }, "Dropped invalid message");
     }
     res.status(204).end();
-  };
+  });
 }
 
 internal.post("/pubsub/user-events", pushHandler("user-events", applyUserEvent));
@@ -103,7 +117,16 @@ internal.post("/pubsub/supplier-events", pushHandler("supplier-events", applySup
 internal.post("/pubsub/order-commands", pushHandler("order-commands", async (message) => {
   const command = parseSagaCommand(message);
   const result = await handleSagaCommand(command);
-  if (result !== "applied") console.log(`[order-service] ${command.type} ${command.commandId} for ${command.orderId}: ${result}`);
+  if (result !== "applied") {
+    logger.info({ commandType: command.type, commandId: command.commandId, orderId: command.orderId, result }, "Saga command not applied");
+  }
+}));
+
+internal.post("/pubsub/sync-events", pushHandler("sync-events", async (message) => {
+  const placed = parseGroupPlaced(message);
+  if (!placed) return;
+  const result = await placeGroupOrder(placed);
+  if (result !== "applied") console.log(`[order-service] group.placed ${placed.eventId} for ${placed.orderId}: ${result}`);
 }));
 
 // Called every minute by Cloud Scheduler (locally by the order-ticker container).
@@ -126,7 +149,7 @@ const errorHandler: ErrorRequestHandler = (error, _req, res, _next) => {
     res.status(400).json({ error: "Request body contains invalid JSON" });
     return;
   }
-  console.error("[order-service] Request failed", error);
+  logger.error({ err: error }, "Request failed");
   res.status(500).json({ error: "Internal server error" });
 };
 
