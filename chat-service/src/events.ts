@@ -6,29 +6,11 @@ import { chatMessages, chatRoomMembers, chatRooms } from "./db/schema.js";
 import { config } from "./config.js";
 import { canAccessChat } from "./access.js";
 import { chatExpiresAt } from "./retention.js";
+import { ORDER_EVENTS_FILTERS, ORDER_EVENT_TYPES } from "./order-event-filters.js";
 
-const ORDER_EVENTS_FILTER = [
-  'attributes.type = "order.group_started"',
-  'attributes.type = "order.member_joined"',
-  'attributes.type = "order.created"',
-  'attributes.type = "order.accepted"',
-  'attributes.type = "order.deleted"',
-  'attributes.type = "order.cancelled"',
-  'attributes.type = "order.expired"',
-  'attributes.type = "order.completed"',
-].join(" OR ");
 const MESSAGE_BODY_LIMIT = 2000;
 const CLEANUP_INTERVAL_MS = 60 * 60 * 1000;
-const ORDER_EVENT_TYPES = new Set([
-  "order.group_started",
-  "order.member_joined",
-  "order.created",
-  "order.accepted",
-  "order.deleted",
-  "order.cancelled",
-  "order.expired",
-  "order.completed",
-]);
+const ORDER_EVENT_TYPE_SET = new Set<string>(ORDER_EVENT_TYPES);
 const ROOM_TERMINATION_EVENTS = new Set(["order.deleted", "order.cancelled", "order.expired", "order.completed"]);
 
 class InvalidOrderEventError extends Error {}
@@ -199,7 +181,7 @@ async function deleteRoomResources(pubsub: PubSub, orderId: string): Promise<voi
 }
 
 async function handleOrderEvent(pubsub: PubSub, event: unknown, receive: (message: StoredMessage) => Promise<void>): Promise<void> {
-  if (!isRecord(event) || typeof event.type !== "string" || !ORDER_EVENT_TYPES.has(event.type) || !isUuid(event.orderId)) {
+  if (!isRecord(event) || typeof event.type !== "string" || !ORDER_EVENT_TYPE_SET.has(event.type) || !isUuid(event.orderId)) {
     throw new InvalidOrderEventError("Invalid order lifecycle event");
   }
 
@@ -265,7 +247,7 @@ function eventHandler(
   subscription.on("error", (error) => console.error(`[chat-service] ${name} subscription error`, error));
 }
 
-async function ensureGlobalSubscription(pubsub: PubSub): Promise<Subscription> {
+async function ensureGlobalSubscriptions(pubsub: PubSub): Promise<Subscription[]> {
   const topic = pubsub.topic(config.pubsub.orderEventsTopic);
   if (config.pubsub.emulatorHost) {
     await pubsub.createTopic(config.pubsub.orderEventsTopic).catch((error: unknown) => {
@@ -273,13 +255,18 @@ async function ensureGlobalSubscription(pubsub: PubSub): Promise<Subscription> {
     });
   }
 
-  await topic.createSubscription(config.pubsub.orderEventsSubscription, {
-    filter: ORDER_EVENTS_FILTER,
-    enableMessageOrdering: true,
-  }).catch((error: unknown) => {
-    if (!isAlreadyExists(error)) throw error;
-  });
-  return pubsub.subscription(config.pubsub.orderEventsSubscription);
+  return Promise.all(ORDER_EVENTS_FILTERS.map(async (filter, index) => {
+    const name = index === 0
+      ? config.pubsub.orderEventsSubscription
+      : `${config.pubsub.orderEventsSubscription}-${index + 1}`;
+    await topic.createSubscription(name, {
+      filter,
+      enableMessageOrdering: true,
+    }).catch((error: unknown) => {
+      if (!isAlreadyExists(error)) throw error;
+    });
+    return pubsub.subscription(name);
+  }));
 }
 
 async function storeChatMessage(message: StoredMessage): Promise<void> {
@@ -313,15 +300,17 @@ export async function publishChatMessage(
 
 export async function startEventSubscriptions() {
   const pubsub = getPubSub();
-  let global: Subscription | undefined;
+  let globalSubscriptions: Subscription[] = [];
   try {
     await deleteExpiredRooms(pubsub);
-    global = await ensureGlobalSubscription(pubsub);
-    eventHandler(pubsub, storeChatMessage, "order-events", global);
+    globalSubscriptions = await ensureGlobalSubscriptions(pubsub);
+    globalSubscriptions.forEach((subscription, index) => {
+      eventHandler(pubsub, storeChatMessage, `order-events-${index + 1}`, subscription);
+    });
     const rooms = await db.select({ orderId: chatRooms.orderId }).from(chatRooms);
     await Promise.all(rooms.map(({ orderId }) => ensureRoomSubscription(pubsub, orderId, storeChatMessage)));
   } catch (error) {
-    if (global) await global.close();
+    await Promise.allSettled(globalSubscriptions.map((subscription) => subscription.close()));
     await pubsub.close();
     pubsubClient = undefined;
     throw error;
@@ -342,7 +331,7 @@ export async function startEventSubscriptions() {
       clearInterval(cleanupTimer);
       await Promise.allSettled([...roomSubscriptions.values()].map((subscription) => subscription.close()));
       roomSubscriptions.clear();
-      await global.close();
+      await Promise.all(globalSubscriptions.map((subscription) => subscription.close()));
       await pubsub.close();
       pubsubClient = undefined;
     },

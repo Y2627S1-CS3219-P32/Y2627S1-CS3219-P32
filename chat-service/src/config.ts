@@ -18,7 +18,7 @@ export const config = {
     projectId: process.env.PUBSUB_PROJECT_ID ?? process.env.GOOGLE_CLOUD_PROJECT ?? "foc-local",
     emulatorHost: process.env.PUBSUB_EMULATOR_HOST || undefined,
     orderEventsTopic: process.env.ORDER_EVENTS_TOPIC ?? "order-events",
-    orderEventsSubscription: process.env.ORDER_EVENTS_SUBSCRIPTION ?? "chat-order-events-group-v3",
+    orderEventsSubscription: process.env.ORDER_EVENTS_SUBSCRIPTION ?? "chat-order-events-group-v4",
     chatTopicPrefix: process.env.CHAT_TOPIC_PREFIX ?? "order-chat-",
     chatSubscriptionPrefix: process.env.CHAT_SUBSCRIPTION_PREFIX ?? "chat-messages-",
   },
