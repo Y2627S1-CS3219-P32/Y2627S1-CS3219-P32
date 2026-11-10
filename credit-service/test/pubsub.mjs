@@ -92,7 +92,13 @@ const provision = async (id, eventId = randomUUID()) => {
   await pubsub
     .topic(process.env.USER_EVENTS_TOPIC ?? "user-events")
     .publishMessage({
-      json: { eventId, type: "user.created", user: { id }, version: 99 },
+      json: {
+        eventId,
+        type: "user.verified",
+        user: { id },
+        verificationPurpose: "registration",
+        version: 99,
+      },
     });
   await wait(
     async () =>
