@@ -85,6 +85,25 @@ create_runtime_database_url() {
   fi
 }
 
+refresh_agent_redis_secrets() {
+  if [ "$(run redis instances describe "$AGENT_REDIS_INSTANCE" --region "$REGION" --format 'value(transitEncryptionMode)')" != SERVER_AUTHENTICATION ]; then
+    echo "Agent Redis must exist and have TLS enabled." >&2
+    return 1
+  fi
+
+  local host port password ca
+  host="$(run redis instances describe "$AGENT_REDIS_INSTANCE" --region "$REGION" --format 'value(host)')"
+  port="$(run redis instances describe "$AGENT_REDIS_INSTANCE" --region "$REGION" --format 'value(port)')"
+  password="$(run redis instances describe "$AGENT_REDIS_INSTANCE" --region "$REGION" --format 'value(authString)')"
+  ca="$(run redis instances describe "$AGENT_REDIS_INSTANCE" --region "$REGION" --flatten serverCaCerts --format 'value(serverCaCerts.cert)')"
+  if [ -z "$host" ] || [ -z "$port" ] || [ -z "$password" ] || [ -z "$ca" ]; then
+    echo "Agent Redis must provide a host, port, AUTH credentials, and a TLS CA certificate." >&2
+    return 1
+  fi
+  store_secret agent-redis-url "rediss://:${password}@${host}:${port}"
+  store_secret agent-redis-ca "$ca"
+}
+
 ensure_agent_resources() {
   create_database socket conversation_owner conversations agent-chat-database-url
   create_database socket mandate_owner mandates mandate-database-url
@@ -521,6 +540,7 @@ deploy_agent_service_images() {
 
 deploy_agent_services_only() {
   require_agent_secrets
+  refresh_agent_redis_secrets
   deploy_agent_service_images
 }
 
