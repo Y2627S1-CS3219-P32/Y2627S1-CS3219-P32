@@ -22,6 +22,8 @@ import {
   ensureBootstrapAvailable,
   login,
   register,
+  requestPasswordReset,
+  resetPassword,
   verifyUser,
   updateAuthenticatedUser,
 } from "../services/auth.service";
@@ -44,6 +46,14 @@ export async function postRegister(req: Request, res: Response): Promise<void> {
 
 export async function postVerifyUser(req: Request, res: Response): Promise<void> {
   res.json(await verifyUser(req.body));
+}
+
+export async function postPasswordResetRequest(req: Request, res: Response): Promise<void> {
+  res.json(await requestPasswordReset(req.body));
+}
+
+export async function postPasswordReset(req: Request, res: Response): Promise<void> {
+  res.json(await resetPassword(req.body));
 }
 
 export async function getCurrentUser(_req: Request, res: Response): Promise<void> {

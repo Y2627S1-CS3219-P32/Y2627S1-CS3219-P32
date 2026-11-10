@@ -61,6 +61,9 @@ async function login() {
       <p v-if="route.query.verified === '1'" class="mt-3 text-sm text-green-800" role="status">
         Your account is verified. Sign in to continue.
       </p>
+      <p v-if="route.query.passwordReset === '1'" class="mt-3 text-sm text-green-800" role="status">
+        Your password has been reset. Sign in with your new password.
+      </p>
 
       <form class="mt-7 space-y-5" @submit.prevent="login">
         <div>
@@ -97,6 +100,11 @@ async function login() {
       </form>
 
       <p class="mt-6 text-center text-sm text-[#5b6570]">
+        <NuxtLink to="/forgot-password" class="font-medium text-[#064784] hover:underline">
+          Forgot your password?
+        </NuxtLink>
+      </p>
+      <p class="mt-3 text-center text-sm text-[#5b6570]">
         New here?
         <NuxtLink to="/signup" class="font-medium text-[#064784] hover:underline">Create an account</NuxtLink>
       </p>

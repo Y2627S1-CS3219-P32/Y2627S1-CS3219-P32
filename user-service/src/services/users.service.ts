@@ -20,6 +20,7 @@ import {
   findUserById,
   findUserByDisplayName,
   findUserByEmail,
+  invalidatePasswordResetToken,
   reserveUserId,
 } from "../repositories/users.repository";
 import { validateDisplayName } from "../registration-validation";
@@ -148,6 +149,7 @@ export async function createUser(input: unknown): Promise<AdminUser> {
     passwordHash: hashPassword(password),
     verificationStatus: "pending_verification",
     verificationCode: createVerificationCode(),
+    verificationPurpose: "registration",
   };
   await publishUserEvent({ type: "user.created", user: userSnapshot(user) }, user.id);
   return toAdminUser(user);
@@ -182,13 +184,18 @@ export async function updateUser(
     | "passwordHash"
     | "verificationStatus"
     | "verificationCode"
+    | "verificationPurpose"
   >> = { ...fields };
   if (fields.email && fields.email !== current.email) {
     updates.verificationStatus = "pending_verification";
     updates.verificationCode = createVerificationCode();
+    updates.verificationPurpose = "email_update";
   }
   if (password !== undefined) updates.passwordHash = hashPassword(password);
   const user: User = { ...current, ...updates };
+  if (password !== undefined || (fields.email && fields.email !== current.email)) {
+    await invalidatePasswordResetToken(id);
+  }
   await publishUserEvent({ type: "user.updated", user: userSnapshot(user) }, id);
   return toAdminUser(user);
 }
@@ -201,5 +208,6 @@ export async function deleteUser(idParam: string, actingUserId: number): Promise
   if (user.role === "admin" && await countAdministrators() === 1) {
     throw new HttpError(409, "The last administrator cannot be deleted");
   }
+  await invalidatePasswordResetToken(id);
   await publishUserEvent({ type: "user.deleted", userId: id }, id);
 }

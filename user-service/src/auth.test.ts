@@ -62,8 +62,8 @@ test("display names require 2 to 50 ASCII letters and internal hyphens", () => {
 test("registration emails are limited to the allowed domains", () => {
   assert.equal(validateUniversityEmail("Student@U.NUS.EDU"), "student@u.nus.edu");
   assert.equal(validateUniversityEmail("student@nus.edu.sg"), "student@nus.edu.sg");
-  assert.equal(validateUniversityEmail("student@foc.com"), "student@foc.com");
-  for (const email of ["not-an-email", "student@example.com", "student@sub.foc.com"]) {
+  assert.equal(validateUniversityEmail("student@nusfoc.com"), "student@nusfoc.com");
+  for (const email of ["not-an-email", "student@example.com", "student@foc.com", "student@sub.foc.com"]) {
     assert.throws(() => validateUniversityEmail(email), { statusCode: 400 });
   }
 });

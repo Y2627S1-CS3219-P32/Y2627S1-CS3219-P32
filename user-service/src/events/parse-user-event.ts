@@ -31,12 +31,17 @@ function parseUserSnapshot(value: unknown): UserSnapshot {
       value.verificationStatus !== "verified") ||
     (value.verificationCode !== undefined &&
       value.verificationCode !== null &&
-      typeof value.verificationCode !== "string")
+      typeof value.verificationCode !== "string") ||
+    (value.verificationPurpose !== undefined &&
+      value.verificationPurpose !== null &&
+      value.verificationPurpose !== "registration" &&
+      value.verificationPurpose !== "email_update")
   ) {
     throw new Error("Invalid user snapshot in Pub/Sub event");
   }
   const verificationStatus = value.verificationStatus ?? "verified";
   const verificationCode = value.verificationCode ?? null;
+  const verificationPurpose = value.verificationPurpose ?? null;
   if (
     (verificationStatus === "pending_verification" && typeof verificationCode !== "string") ||
     (verificationStatus === "verified" && verificationCode !== null)
@@ -53,6 +58,7 @@ function parseUserSnapshot(value: unknown): UserSnapshot {
     passwordHash: value.passwordHash,
     verificationStatus,
     verificationCode,
+    verificationPurpose,
   };
 }
 
@@ -74,6 +80,22 @@ export function parseUserEvent(value: unknown): UserEvent {
     const user = parseUserSnapshot(value.user);
     if (value.type === "user.verified" && user.verificationStatus !== "verified") {
       throw new Error("Verified user event must contain a verified account");
+    }
+    if (value.type === "user.verified") {
+      if (
+        value.verificationPurpose !== undefined &&
+        value.verificationPurpose !== "registration" &&
+        value.verificationPurpose !== "email_update"
+      ) {
+        throw new Error("Verified user event must contain a valid verification purpose");
+      }
+      return {
+        eventId: value.eventId,
+        version: value.version,
+        type: value.type,
+        user,
+        verificationPurpose: value.verificationPurpose ?? "registration",
+      };
     }
     return {
       eventId: value.eventId,

@@ -6,7 +6,7 @@
 **/
 import { HttpError } from "./errors";
 
-const allowedEmailDomains = new Set(["u.nus.edu", "nus.edu.sg", "foc.com"]);
+const allowedEmailDomains = new Set(["u.nus.edu", "nus.edu.sg", "nusfoc.com"]);
 
 export function validateDisplayName(value: unknown): string {
   const displayName = typeof value === "string" ? value : "";
@@ -33,7 +33,7 @@ export function validateUniversityEmail(value: unknown): string {
   }
   const domain = email.slice(email.lastIndexOf("@") + 1);
   if (!allowedEmailDomains.has(domain)) {
-    throw new HttpError(400, "Email must use u.nus.edu, nus.edu.sg, or foc.com");
+    throw new HttpError(400, "Email must use u.nus.edu, nus.edu.sg, or nusfoc.com");
   }
   return email;
 }

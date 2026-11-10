@@ -9,7 +9,7 @@
     "start": "tsx --import ./src/shared/telemetry.mts src/index.ts",
     "worker": "tsx --import ./src/shared/telemetry.mts src/worker.ts",
     "db:migrate": "drizzle-kit push",
-    "test": "tsx --test src/auth.test.ts src/events/parse-user-event.test.ts src/verification.test.ts"
+    "test": "tsx --test src/auth.test.ts src/events/parse-user-event.test.ts src/password-reset.test.ts src/verification.test.ts"
   },
   "keywords": [],
   "author": "",

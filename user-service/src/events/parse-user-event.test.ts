@@ -21,6 +21,7 @@ const user = {
   passwordHash: "scrypt$not-a-plaintext-password",
   verificationStatus: "pending_verification",
   verificationCode: "012345",
+  verificationPurpose: "registration",
 };
 
 test("parses full user-created, user-updated, and user-verified snapshots", () => {
@@ -32,19 +33,26 @@ test("parses full user-created, user-updated, and user-verified snapshots", () =
       user,
     });
   }
-  const verifiedUser = { ...user, verificationStatus: "verified", verificationCode: null };
+  const verifiedUser = {
+    ...user,
+    verificationStatus: "verified",
+    verificationCode: null,
+    verificationPurpose: null,
+  };
   assert.deepEqual(
     parseUserEvent({
       eventId: "event-2",
       version: 2,
       type: "user.verified",
       user: verifiedUser,
+      verificationPurpose: "registration",
     }),
     {
       eventId: "event-2",
       version: 2,
       type: "user.verified",
       user: verifiedUser,
+      verificationPurpose: "registration",
     },
   );
 });
@@ -56,8 +64,32 @@ test("parses user-deleted events", () => {
   );
 });
 
+test("preserves email-update purpose through verification events", () => {
+  const result = parseUserEvent({
+    eventId: "event-email-update",
+    version: 2,
+    type: "user.verified",
+    user: {
+      ...user,
+      verificationStatus: "verified",
+      verificationCode: null,
+      verificationPurpose: null,
+    },
+    verificationPurpose: "email_update",
+  });
+  assert.equal(result.type, "user.verified");
+  if (result.type === "user.verified") {
+    assert.equal(result.verificationPurpose, "email_update");
+  }
+});
+
 test("legacy user snapshots default to verified without a stored code", () => {
-  const { verificationStatus: _status, verificationCode: _code, ...legacyUser } = user;
+  const {
+    verificationStatus: _status,
+    verificationCode: _code,
+    verificationPurpose: _purpose,
+    ...legacyUser
+  } = user;
   assert.deepEqual(
     parseUserEvent({
       eventId: "event-3",
@@ -73,6 +105,7 @@ test("legacy user snapshots default to verified without a stored code", () => {
         ...legacyUser,
         verificationStatus: "verified",
         verificationCode: null,
+        verificationPurpose: null,
       },
     },
   );

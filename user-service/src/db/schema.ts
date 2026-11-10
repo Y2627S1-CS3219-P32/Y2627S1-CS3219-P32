@@ -16,6 +16,7 @@ import {
   pgTable,
   serial,
   text,
+  timestamp,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 
@@ -30,6 +31,9 @@ export const usersTable = pgTable("users", {
     enum: ["pending_verification", "verified"],
   }).notNull().default("verified"),
   verificationCode: text("verification_code"),
+  verificationPurpose: text("verification_purpose", {
+    enum: ["registration", "email_update"],
+  }),
 }, (table) => [
   uniqueIndex("users_email_unique").on(table.email),
   uniqueIndex("users_display_name_unique").on(sql`lower(${table.displayName})`)
@@ -39,6 +43,12 @@ export const usersTable = pgTable("users", {
 export const userBootstrapReservationsTable = pgTable("user_bootstrap_reservations", {
   id: integer().primaryKey(),
   userId: integer("user_id").notNull(),
+});
+
+export const passwordResetTokensTable = pgTable("password_reset_tokens", {
+  userId: integer("user_id").primaryKey().references(() => usersTable.id, { onDelete: "cascade" }),
+  tokenHash: text("token_hash").notNull().unique(),
+  expiresAt: timestamp("expires_at", { withTimezone: true, mode: "date" }).notNull(),
 });
 
 export const userEventSequence = pgSequence("user_event_sequence");
@@ -55,3 +65,4 @@ export type PublicUser = Pick<
   "id" | "name" | "displayName" | "email" | "role" | "verificationStatus"
 >;
 export type AdminUser = PublicUser & Pick<User, "verificationCode">;
+export type VerificationPurpose = NonNullable<User["verificationPurpose"]>;
