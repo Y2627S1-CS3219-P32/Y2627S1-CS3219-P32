@@ -1,6 +1,6 @@
 # Credit Service
 
-Credit owns four PostgreSQL tables. Commands commit the saved JSON result, movement, balances, and outcome together. Balance reads require a user JWT. Reserve, release, and transfer arrive through authenticated Pub/Sub push delivery. User events provision accounts once. No request creates an account.
+Credit owns four PostgreSQL tables. Commands commit the saved JSON result, movement, balances, and outcome together. Balance reads require a user JWT. Reserve, release, and transfer arrive through authenticated Pub/Sub push delivery. Accounts are provisioned once on authenticated `user.verified` events. No request creates an account.
 
 ## Source layout
 
@@ -141,7 +141,7 @@ Set `PUBSUB_PROJECT_ID` (default foc-local), `PUBSUB_EMULATOR_HOST`, and `PUBSUB
 
 ## Operations
 
-`POST /internal/pubsub/user-events` accepts the standard Pub/Sub wrapper containing base64 JSON. Creation uses `{eventId,type:"user.created",user:{id:1}}`. Deletion uses `{eventId,type:"user.deleted",userId:1}`. Upstream version fields are ignored. Establish the durable subscription before registration traffic. Creation events provision new accounts; delayed creation events cannot reactivate deleted accounts.
+`POST /internal/pubsub/user-events` accepts the standard Pub/Sub wrapper containing base64 JSON. Account initialization uses `{eventId,type:"user.verified",user:{id:1},verificationPurpose:"registration"}`. User-created and user-updated events do not initialize accounts. Deletion uses `{eventId,type:"user.deleted",userId:1}`. Upstream version fields are ignored. Establish the durable subscription before registration traffic. Verification events provision new accounts; delayed verification events cannot reactivate deleted accounts.
 
 `GET /api/v1/credits/me` returns `totalCredits`, `reservedCredits`, and `availableCredits` for the bearer JWT owner.
 

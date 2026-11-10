@@ -54,7 +54,7 @@ One row per User Service user ID holds current balances and lifecycle state. use
 | `deleted_at` | Nullable TIMESTAMPTZ | Permanent deletion tombstone |
 | `created_at`, `updated_at` | TIMESTAMPTZ, not null | Local account record timestamps |
 
-A deletion received before creation inserts a zero-total, zero-reserved account with deleted_at set and no allocation. It is an inactive tombstone, not a provisioned active account. A later creation cannot activate or grant to it. Deletion of a provisioned account preserves its balances and all history. A missing row means ACCOUNT_PENDING; a deleted row means USER_INACTIVE. Active account creation and allocation always commit together.
+A deletion received before verification inserts a zero-total, zero-reserved account with deleted_at set and no allocation. It is an inactive tombstone, not a provisioned active account. A later verification cannot activate or grant to it. Deletion of a provisioned account preserves its balances and all history. A missing row means ACCOUNT_PENDING; a deleted row means USER_INACTIVE. Active account creation and allocation always commit together.
 
 No user lifecycle counter is stored. This depends on User Service never reusing IDs and Credit never clearing deleted_at or supporting undelete. Repeated deletion preserves the original local deletion timestamp. Profile updates are ignored and cannot reactivate accounts. Store no names, emails, roles, or password hashes.
 
@@ -64,11 +64,11 @@ Keep PostgreSQL BIGINT storage with upper-bound checks on balances, initial gran
 
 ### Credit orders
 
-One immutable row per finalized command, not one mutable row per errand. Command callers reuse request_id on retry. ALLOCATE uses the source user.created eventId as request_id and correlation_id.
+One immutable row per finalized command, not one mutable row per errand. Command callers reuse request_id on retry. ALLOCATE uses the source user.verified eventId as request_id and correlation_id.
 
 | Column | Type and constraint | Meaning |
 |---|---|---|
-| `request_id` | UUID primary key | Stable command ID, or source creation eventId |
+| `request_id` | UUID primary key | Stable command ID, or source verification eventId |
 | `kind` | Text enum: ALLOCATE, RESERVE, TRANSFER, RELEASE | Requested action |
 | `initial_grant` | Nullable BIGINT, check > 0 and <= MAX_SAFE_INTEGER when present | Actual grant issued; required only for ALLOCATE |
 | `request_payload` | JSONB, not null | Original validated business fields for audit |
@@ -177,14 +177,14 @@ Reserved credits equal the sum of actual reserve amounts whose derived state is 
 
 ### Provisioning and permanent deletion
 
-Credit owns a durable credit-service-user-events subscription to user-events, separate from other services’ subscriptions. Authenticate Pub/Sub push delivery and validate eventId, type, and positive user ID from user.id for creation or userId for deletion. The existing upstream envelope may include version; ignore it in Credit. Do not store or emit version fields, and do not change the User Service contract.
+Credit owns a durable credit-service-user-events subscription to user-events, separate from other services’ subscriptions. Authenticate Pub/Sub push delivery and validate eventId, type, and positive user ID from user.id for creation, verification, or update, or userId for deletion. Initialize accounts only for user.verified; user.created and user.updated do not initialize accounts. The existing upstream envelope may include version; ignore it in Credit. Do not store or emit version fields, and do not change the User Service contract.
 
 ```mermaid
 sequenceDiagram
     participant B as Pub/Sub user-events
     participant C as Credit user-event consumer
     participant D as Credit PostgreSQL
-    B->>C: user.created(eventId E1, user.id U1)
+    B->>C: user.verified(eventId E1, user.id U1)
     C->>D: BEGIN, lock request E1 then account key U1
     alt Existing active account or deleted tombstone
         C->>D: Leave grant and account unchanged
@@ -196,13 +196,13 @@ sequenceDiagram
     C-->>B: Acknowledge after commit
 ```
 
-Account creation, ALLOCATE with the actual initial_grant, issuance movement, and outbox event commit atomically. Repeated creation, including different eventIds for one user, creates no additional grant, CreditOrder, or event. Configuration changes affect new accounts only. Allocation outcome eventId is distinct from the source requestId.
+Account creation, ALLOCATE with the actual initial_grant, issuance movement, and outbox event commit atomically. Repeated verification, including different eventIds for one user, creates no additional grant, CreditOrder, or event. Configuration changes affect new accounts only. Allocation outcome eventId is distinct from the source requestId.
 
-For user.deleted, take the same account-key lock. Set deleted_at if not already set. If no row exists, insert a zero-balance deleted account without an ALLOCATE order or movement. Never clear deleted_at. Creation after deletion is always ignored, regardless of delivery order or upstream counters. If creation committed first, deletion retains its grant and financial history; it does not reverse issued credits. user.updated is acknowledged without changing Credit data.
+For user.deleted, take the same account-key lock. Set deleted_at if not already set. If no row exists, insert a zero-balance deleted account without an ALLOCATE order or movement. Never clear deleted_at. Verification after deletion is always ignored, regardless of delivery order or upstream counters. If verification committed first, deletion retains its grant and financial history; it does not reverse issued credits. user.updated is acknowledged without changing Credit data.
 
-These rules replace lifecycle counters because account creation is one-time and deletion is irreversible. They do not support undelete or ID reuse. Concurrent creation/deletion serialize by user ID. Duplicate deletion changes nothing. Acknowledge after commit; transient processing/database failure returns an error for Pub/Sub retry.
+These rules replace lifecycle counters because account creation is one-time and deletion is irreversible. They do not support undelete or ID reuse. Concurrent verification/deletion serialize by user ID. Duplicate deletion changes nothing. Acknowledge after commit; transient processing/database failure returns an error for Pub/Sub retry.
 
-Create the subscription before registration traffic. Credit provisions accounts through user.created events and never clears deletion tombstones. No public arbitrary-user allocation endpoint is provided.
+Create the subscription before registration traffic. Credit provisions accounts through user.verified events and never clears deletion tombstones. user.created alone does not provision an account. No public arbitrary-user allocation endpoint is provided.
 
 ### Release before reserve
 
@@ -341,8 +341,8 @@ Health checks plus bounded runtime retries handle startup/outages. API readiness
 
 Build schema/atomic handlers, then command consumer, balance API, publisher, and Compose. Use real PostgreSQL integration tests:
 
-1. Concurrent/redelivered creation, including different eventIds for one user, commits one account, ALLOCATE, movement, and outbox outcome. Profile updates arriving first never suppress allocation.
-2. Creation then deletion retains balances/history and blocks new use. Deletion then creation retains a zero-balance tombstone and never allocates. Repeated deletion preserves deleted_at. No counters, undelete, or ID reuse are used.
+1. Concurrent/redelivered verification, including different eventIds for one user, commits one account, ALLOCATE, movement, and outbox outcome. Profile updates arriving first never suppress allocation.
+2. Verification then deletion retains balances/history and blocks new use. Deletion then verification retains a zero-balance tombstone and never allocates. Repeated deletion preserves deleted_at. No counters, undelete, or ID reuse are used.
 3. Two concurrent 700-credit reserves against 1,000 permit one movement. Same-ID success/rejection replays the saved result even after balances/state change; changed payload replays the original result without overwriting its audit record; a changed order ID conflicts.
 4. Fresh-ID reserve/transfer/release repeats create no duplicate movements. Operation-specific lookups ignore rejected commands and distinguish successful no-ops from applied reserve/transfer outcomes.
 5. Test behavior for no prior operation, held credits, release, cancellation, and completed transfer. CANCELLED survives solely through successful RELEASE history with no movement. It remains effective after published outbox rows are archived.
@@ -351,7 +351,7 @@ Build schema/atomic handlers, then command consumer, balance API, publisher, and
 8. Transfer-before-reserve is retryable. Transfer/reserve after cancellation is definitive rejection. Deleted allocated accounts can have existing holds released; tombstone-only accounts produce durable USER_INACTIVE rejections without a movement.
 9. Assert ledger/balance agreement, nonnegative balances, HELD sums, and supply conservation. Histories may not contain both transfer and successful release for one errand.
 10. Broker outage/restart eventually publishes; publish-before-mark crash repeats the same eventId. Payloads contain no schemaVersion or reservationVersion; existing upstream user events with extra version metadata remain accepted.
-11. Before provisioning, balance/reserve/transfer return ACCOUNT_PENDING without creating an account or finalized command. Retrying after the creation event works. Backfill/live traffic cannot regrant or reactivate deleted accounts.
+11. Before provisioning, balance/reserve/transfer return ACCOUNT_PENDING without creating an account or finalized command. Retrying after the verification event works. Backfill/live traffic cannot regrant or reactivate deleted accounts.
 12. Reject forged event pushes, unauthorized reads and command pushes, self-transfer, invalid amounts, and conflicting participants.
 13. Verify amount boundaries and exact JSON-number balance output; recipient overflow rejects atomically. Container restart preserves data. A publisher drives all operations through Pub/Sub without an orchestrator.
 
@@ -363,7 +363,7 @@ D3 evidence includes balances, command outcomes, order/ledger rows, duplicate co
 |---|---|
 | Can a rejected pending errand try again after its balance changes? | Same requestId replays rejection. A new request is a new attempt, but errand eligibility is the order owner's policy. |
 | What are the reversal limits? | Core RELEASE releases the full hold. Partial release or reversing a completed transfer would need additional policy; neither is assumed. |
-| What remains for initial allocation? | Confirm the grant amount and establish the subscription before registration traffic. Authenticated user.created delivery is the provisioning source; Credit owns retries through its durable subscription. |
+| What remains for initial allocation? | Confirm the grant amount and establish the subscription before registration traffic. Authenticated user.verified delivery is the provisioning source; Credit owns retries through its durable subscription. |
 | What remains to confirm in the Credit contract? | Command publisher and push identity permissions, and whether to replace the existing JSON result with structured outcome fields. Keep result until that decision is made. Whole-credit JSON numbers and safe-integer balance bounds are selected. Integer user IDs, UUID errand/request IDs, Pub/Sub, and Order-style event field mapping are selected. |
 
 CANCELLED is derived from a successful RELEASE with no reserve movement; no reservation record is needed. Other services and their recovery workflows are outside this implementation.
