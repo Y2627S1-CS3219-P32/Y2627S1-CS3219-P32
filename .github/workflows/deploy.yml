@@ -6,6 +6,8 @@
 # Authenticates through Workload Identity Federation, set up once with `./deploy.sh github`,
 # which prints the repository variables below (Settings > Secrets and variables > Actions >
 # Variables). `./deploy.sh setup` must also have been run once.
+# Claude Code (Opus 5.5), 2026-11-10: the OBSERVABILITY repository variable (on/off, default
+# off) deploys or removes the observability stack; see README.md. Author review: Pending.
 name: Deploy to Google Cloud
 
 on:
@@ -74,6 +76,8 @@ jobs:
         run: ./deploy.sh
         env:
           TAG: ${{ steps.build.outputs.tag }}
+          # About US$0.50 an hour while on; off deletes the observability service.
+          OBSERVABILITY: ${{ vars.OBSERVABILITY || 'off' }}
 
       - name: Seed supplier data
         if: inputs.seed

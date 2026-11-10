@@ -4,6 +4,12 @@
 # ChatGPT (GPT-6), 2026-11-04: build and publish mail-service image. Author review: Pending.
 # Claude Code (Opus 5.5), 2026-11-10: mail-service and chat-service images get the `shared` build
 # context too. Author review: Pending.
+# Claude Code (Opus 5.5), 2026-11-10: sync-service and order-ranking-service images, and their
+# migration (tooling) images, with the `shared` build context (logger, telemetry, Pub/Sub
+# messaging). deploy.sh does not deploy them yet. Author review: Pending.
+# Claude Code (Opus 5.5), 2026-11-10: the observability stack's images (observability/Dockerfile,
+# one target each), which deploy.sh runs as one service with OBSERVABILITY=on.
+# Author review: Pending.
 #
 # Usage (from the repository root):
 #   gcloud builds submit --config cloudbuild.yaml
@@ -207,6 +213,115 @@ steps:
           -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/saga-orchestrator-tooling:latest \
           saga-orchestrator
 
+  - id: sync-service
+    name: gcr.io/cloud-builders/docker
+    waitFor: ["-"]
+    entrypoint: sh
+    args:
+      - -c
+      - |
+        docker buildx create --driver docker-container --driver-opt image=moby/buildkit:v0.20.2 --use
+        docker buildx build --load --build-context=shared=shared/src \
+          -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/sync-service:${BUILD_ID} \
+          -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/sync-service:latest \
+          sync-service
+
+  - id: sync-service-tooling
+    name: gcr.io/cloud-builders/docker
+    waitFor: ["-"]
+    entrypoint: sh
+    args:
+      - -c
+      - |
+        docker buildx create --driver docker-container --driver-opt image=moby/buildkit:v0.20.2 --use
+        docker buildx build --load --build-context=shared=shared/src --target=tooling \
+          -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/sync-service-tooling:${BUILD_ID} \
+          -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/sync-service-tooling:latest \
+          sync-service
+
+  - id: order-ranking-service
+    name: gcr.io/cloud-builders/docker
+    waitFor: ["-"]
+    entrypoint: sh
+    args:
+      - -c
+      - |
+        docker buildx create --driver docker-container --driver-opt image=moby/buildkit:v0.20.2 --use
+        docker buildx build --load --build-context=shared=shared/src \
+          -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/order-ranking-service:${BUILD_ID} \
+          -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/order-ranking-service:latest \
+          order-ranking-service
+
+  - id: order-ranking-service-tooling
+    name: gcr.io/cloud-builders/docker
+    waitFor: ["-"]
+    entrypoint: sh
+    args:
+      - -c
+      - |
+        docker buildx create --driver docker-container --driver-opt image=moby/buildkit:v0.20.2 --use
+        docker buildx build --load --build-context=shared=shared/src --target=tooling \
+          -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/order-ranking-service-tooling:${BUILD_ID} \
+          -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/order-ranking-service-tooling:latest \
+          order-ranking-service
+
+  # Claude Code (Opus 5.5), 2026-11-10: the observability stack, one image per target of
+  # observability/Dockerfile. Author review: Pending.
+  - id: observability-proxy
+    name: gcr.io/cloud-builders/docker
+    waitFor: ["-"]
+    args:
+      - build
+      - --target=proxy
+      - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/observability-proxy:${BUILD_ID}
+      - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/observability-proxy:latest
+      - observability
+  - id: observability-grafana
+    name: gcr.io/cloud-builders/docker
+    waitFor: ["-"]
+    args:
+      - build
+      - --target=grafana
+      - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/observability-grafana:${BUILD_ID}
+      - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/observability-grafana:latest
+      - observability
+  - id: observability-otel-collector
+    name: gcr.io/cloud-builders/docker
+    waitFor: ["-"]
+    args:
+      - build
+      - --target=otel-collector
+      - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/observability-otel-collector:${BUILD_ID}
+      - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/observability-otel-collector:latest
+      - observability
+  - id: observability-mimir
+    name: gcr.io/cloud-builders/docker
+    waitFor: ["-"]
+    args:
+      - build
+      - --target=mimir
+      - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/observability-mimir:${BUILD_ID}
+      - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/observability-mimir:latest
+      - observability
+  - id: observability-loki
+    name: gcr.io/cloud-builders/docker
+    waitFor: ["-"]
+    args:
+      - build
+      - --target=loki
+      - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/observability-loki:${BUILD_ID}
+      - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/observability-loki:latest
+      - observability
+  - id: observability-tempo
+    name: gcr.io/cloud-builders/docker
+    waitFor: ["-"]
+    args:
+      - build
+      - --target=tempo
+      - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/observability-tempo:${BUILD_ID}
+      - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/observability-tempo:latest
+      - observability
+
 images:
   - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/frontend-service:${BUILD_ID}
   - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/frontend-service:latest
@@ -236,3 +351,23 @@ images:
   - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/saga-orchestrator:latest
   - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/saga-orchestrator-tooling:${BUILD_ID}
   - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/saga-orchestrator-tooling:latest
+  - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/sync-service:${BUILD_ID}
+  - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/sync-service:latest
+  - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/sync-service-tooling:${BUILD_ID}
+  - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/sync-service-tooling:latest
+  - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/order-ranking-service:${BUILD_ID}
+  - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/order-ranking-service:latest
+  - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/order-ranking-service-tooling:${BUILD_ID}
+  - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/order-ranking-service-tooling:latest
+  - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/observability-proxy:${BUILD_ID}
+  - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/observability-proxy:latest
+  - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/observability-grafana:${BUILD_ID}
+  - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/observability-grafana:latest
+  - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/observability-otel-collector:${BUILD_ID}
+  - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/observability-otel-collector:latest
+  - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/observability-mimir:${BUILD_ID}
+  - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/observability-mimir:latest
+  - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/observability-loki:${BUILD_ID}
+  - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/observability-loki:latest
+  - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/observability-tempo:${BUILD_ID}
+  - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/observability-tempo:latest

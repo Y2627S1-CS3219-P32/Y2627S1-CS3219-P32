@@ -1,5 +1,8 @@
 # AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-11-04.
 # Scope: Single-process local Loki on the filesystem, with OTLP ingestion. Author review: Pending.
+# Claude Code (Opus 5.5), 2026-11-10: chunks and index in a GCS bucket on Cloud Run
+# (LOKI_OBJECT_STORE and LOKI_GCS_BUCKET, from the environment: observability/Dockerfile sets the local
+# default, deploy.sh the Cloud Run values). Author review: Pending.
 auth_enabled: false
 
 server:
@@ -14,20 +17,29 @@ common:
   ring:
     kvstore:
       store: inmemory
-  storage:
-    filesystem:
-      chunks_directory: /loki/chunks
-      rules_directory: /loki/rules
+
+# Only the store that schema_config names (filesystem or gcs) is used.
+storage_config:
+  filesystem:
+    directory: /loki/chunks
+  gcs:
+    bucket_name: ${LOKI_GCS_BUCKET}
 
 schema_config:
   configs:
     - from: 2024-01-01
       store: tsdb
-      object_store: filesystem
+      object_store: ${LOKI_OBJECT_STORE}
       schema: v13
       index:
         prefix: index_
         period: 24h
+
+ruler:
+  storage:
+    type: local
+    local:
+      directory: /loki/rules
 
 limits_config:
   # OTLP attributes that are not index labels are kept as structured metadata,
@@ -39,7 +51,13 @@ limits_config:
 compactor:
   working_directory: /loki/compactor
   retention_enabled: true
-  delete_request_store: filesystem
+  delete_request_store: ${LOKI_OBJECT_STORE}
+
+ingester:
+  wal:
+    # On Cloud Run, where the disk (and so the WAL) is memory and does not outlive the
+    # instance.
+    flush_on_shutdown: ${LOKI_FLUSH_ON_SHUTDOWN}
 
 pattern_ingester:
   enabled: true

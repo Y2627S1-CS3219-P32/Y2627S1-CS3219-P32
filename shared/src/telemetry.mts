@@ -10,7 +10,8 @@
  *   tsx --import ./src/shared/telemetry.mts src/index.ts
  *
  * It does nothing unless OTEL_EXPORTER_OTLP_ENDPOINT is set, which compose.observability.yaml
- * does, so tests, plain `docker compose up` and Cloud Run run without it. Every other
+ * does, and deploy.sh on Cloud Run with OBSERVABILITY=on, so tests and plain
+ * `docker compose up` run without it. Every other
  * standard OTEL_* variable (OTEL_SERVICE_NAME, OTEL_METRIC_EXPORT_INTERVAL, OTEL_LOG_LEVEL,
  * OTEL_SDK_DISABLED, ...) works as documented.
  *
@@ -23,7 +24,12 @@
  *            to stdout as before; trace_id and span_id are added there too.
  *
  * This is an .mts file so it is an ES module, with top-level await, in user-service too.
+ *
+ * Claude Code (Opus 5.5), 2026-11-10: a service.instance.id for each process; Cloud Run
+ * (deploy.sh) sets the endpoint while the `observability` service is deployed.
+ * Author review: Pending.
  */
+import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { register } from "node:module";
 import { constants } from "node:os";
@@ -64,7 +70,19 @@ function redactedUrlAttributes(request: { origin: string; path: string }) {
   return { "url.full": url.toString(), "url.query": url.search };
 }
 
+// Tells apart the instances of a service, whose metrics would otherwise be one series: on
+// Cloud Run they all have the same host name. OTEL_RESOURCE_ATTRIBUTES can still set it.
+function addServiceInstanceId(): void {
+  const attributes = process.env.OTEL_RESOURCE_ATTRIBUTES ?? "";
+  if (/(^|,)\s*service\.instance\.id\s*=/.test(attributes)) return;
+  process.env.OTEL_RESOURCE_ATTRIBUTES = [attributes, `service.instance.id=${randomUUID()}`]
+    .filter(Boolean)
+    .join(",");
+}
+
 async function start(): Promise<void> {
+  addServiceInstanceId();
+
   // ES modules are linked before any of them runs, so patching them takes a loader hook
   // registered here, before the service's imports are resolved. The message channel limits
   // the hook to the modules the instrumentations below ask for.

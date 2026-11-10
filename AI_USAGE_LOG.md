@@ -236,6 +236,65 @@ Author review: Checked for correctness. -->
   chat-service. Not run on Cloud Build or Cloud Run.
 - Author review: Pending.
 
+## 2026-11-10: sync-service and order-ranking-service in Cloud Build
+
+- Tool: Claude Code (Opus 5.5). Mode: Implementation and verification.
+- Exact prompt: `add the telemetry stuff into cloudbuild too`
+- Key response: `cloudbuild.yaml` now builds and pushes sync-service and order-ranking-service and
+  their migration (`tooling`) images, with the `shared` build context like every other step, so
+  the images include the shared logger, telemetry and Pub/Sub messaging. `deploy.sh` does not
+  deploy these two services yet. Telemetry in the images stays off on Cloud Run, as for the
+  others, since no `OTEL_EXPORTER_OTLP_ENDPOINT` is set there.
+- Affected files: `cloudbuild.yaml`, this log.
+- Verification: the file parses; all 18 steps pass the `shared` context, and every tag a step
+  builds is in `images` (and the reverse). The four new `docker buildx build` commands build
+  locally. Not run on Cloud Build.
+- Author review: Pending.
+
+## 2026-11-10: Mimir, and the observability stack on Cloud Run
+
+- Tool: Claude Code (Opus 5.5). Mode: Implementation and verification.
+- Exact prompt: `swap prometheus for mimir. retain the consistency of deployment with the rest of
+  the services. use public url with login for grafana`
+- Key response:
+  - Grafana Mimir 3.2.4 (single process) replaces Prometheus, locally and on Cloud Run: OTLP
+    metrics from the collector, Tempo's span and service-graph metrics, and the stack's own
+    metrics, which the collector now scrapes. The Grafana data source is now `Mimir`, and the
+    old `Prometheus` one is deleted.
+  - `observability/Dockerfile` builds one image per component with its configuration inside.
+    Docker Compose builds the images, and so does Cloud Build (six new steps). Settings that
+    differ between the two come from environment variables.
+  - With `OBSERVABILITY=on`, `deploy.sh` deploys the stack as one Cloud Run service,
+    `observability`. nginx is the entry point: OTLP goes to the collector only with the
+    `x-otlp-token` from Secret Manager, and everything else goes to Grafana, which is public
+    and asks for its login (admin password in Secret Manager). Mimir, Loki and Tempo store
+    their data in three GCS buckets. Every app service gets the endpoint, the token header and
+    `OTEL_TRACES_SAMPLER=always_on`. With `OBSERVABILITY=off` (the default) their telemetry
+    is off and the service is deleted. `./deploy.sh observability-down` deletes it right away.
+    The workflow reads the `OBSERVABILITY` repository variable.
+  - `telemetry.mts` gives each process a random `service.instance.id`.
+- Affected files: `observability/` (new `Dockerfile`, `mimir.yaml`, `otel-collector.local.yaml`,
+  `proxy.conf.template`; `prometheus.yaml` removed), `compose.observability.yaml`,
+  `cloudbuild.yaml`, `deploy.sh`, `.github/workflows/deploy.yml`, `shared/src/telemetry.mts`
+  (and its copies), `README.md`, `shared/README.md`, this log.
+- Verification:
+  - **Local stack:** after a signup-to-group-order run, Mimir has metrics from every app
+    service, the stack and Docker; Loki has the Pub/Sub log lines; Tempo has the traces.
+  - **Cloud Run stand-in:** the six images ran locally sharing one network namespace, with
+    deploy.sh's settings and the filesystem in place of GCS. There were no port clashes. OTLP
+    without the token, or with a wrong one, got 401. Grafana asked for login, and all three
+    data sources passed their health checks. A Node process using `telemetry.mts` sent its
+    traces and metrics through the proxy, each instance with its own `service.instance.id`.
+  - **GCS mode:** each store parses its GCS configuration and stops only at missing Google
+    credentials.
+  - **deploy.sh:** a dry run against a stub `gcloud` recorded the expected commands for both
+    settings. Not run on Cloud Build or Cloud Run.
+  - **Incident:** the first dry run picked up the real `gcloud` (the stub's directory was not
+    on `PATH`). In the local default project, `cs3219-512013`, it created the
+    `password-reset-requests` topic and re-applied existing Pub/Sub IAM bindings, then stopped
+    at Secret Manager (billing disabled). Nothing was deployed.
+- Author review: Pending.
+
 
 # AI usage log (User Service)
 

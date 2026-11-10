@@ -1,15 +1,24 @@
 # AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-11-04.
 # Scope: Grafana data sources for Prometheus, Loki and Tempo, linked so traces, logs and
 # metrics jump to one another. Author review: Pending.
+# Claude Code (Opus 5.5), 2026-11-10: Mimir in place of Prometheus; hosts from the
+# environment (observability/Dockerfile sets the local defaults, deploy.sh the Cloud Run
+# values). Author review: Pending.
 # `$$` escapes Grafana's environment-variable expansion in provisioning files.
 apiVersion: 1
 
-datasources:
+# The data source Mimir replaced, still in Grafana databases created before it.
+deleteDatasources:
   - name: Prometheus
-    uid: prometheus
+    orgId: 1
+
+datasources:
+  # Mimir answers Prometheus queries under /prometheus.
+  - name: Mimir
+    uid: mimir
     type: prometheus
     access: proxy
-    url: http://prometheus:9090
+    url: http://${MIMIR_HOST}:9009/prometheus
     isDefault: true
     jsonData:
       httpMethod: POST
@@ -21,7 +30,7 @@ datasources:
     uid: loki
     type: loki
     access: proxy
-    url: http://loki:3100
+    url: http://${LOKI_HOST}:3100
     jsonData:
       derivedFields:
         # OTLP logs carry trace_id as structured metadata, not in the line.
@@ -36,10 +45,10 @@ datasources:
     uid: tempo
     type: tempo
     access: proxy
-    url: http://tempo:3200
+    url: http://${TEMPO_HOST}:3200
     jsonData:
       serviceMap:
-        datasourceUid: prometheus
+        datasourceUid: mimir
       nodeGraph:
         enabled: true
       search:
@@ -54,7 +63,7 @@ datasources:
           - key: service.name
             value: service_name
       tracesToMetrics:
-        datasourceUid: prometheus
+        datasourceUid: mimir
         spanStartTimeShift: -5m
         spanEndTimeShift: 5m
         tags:

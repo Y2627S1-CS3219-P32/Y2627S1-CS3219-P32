@@ -4,7 +4,9 @@ Claude Code (Opus 5.5), 2026-11-04: the OpenTelemetry bootstrap. Author review: 
 Claude Code (Opus 5.5), 2026-11-05: Pub/Sub message logs and traces. Author review: Pending.
 Claude Code (Opus 5.5), 2026-11-10: log messages that describe each message. Author review: Pending.
 Claude Code (Opus 5.5), 2026-11-10: the chat, mail, order-ranking and sync services; the `level`
-option. Author review: Pending. -->
+option. Author review: Pending.
+Claude Code (Opus 5.5), 2026-11-10: Cloud Run telemetry settings; service.instance.id.
+Author review: Pending. -->
 # Shared code
 
 Code used by more than one backend service: the logger,
@@ -70,7 +72,10 @@ node --import ./otel/telemetry.mts .output/server/index.mjs   # frontend-service
 
 It does nothing unless `OTEL_EXPORTER_OTLP_ENDPOINT` is set. `compose.observability.yaml`
 sets it on every app service, so telemetry is on with that file and off without it (and in
-tests and on Cloud Run). With it on, each service sends over OTLP (HTTP/protobuf):
+tests). On Cloud Run, `OBSERVABILITY=on ./deploy.sh` sets it, with the `x-otlp-token` header
+(`OTEL_EXPORTER_OTLP_HEADERS`) and `OTEL_TRACES_SAMPLER=always_on`; see the
+[root README](../README.md#observability-on-cloud-run). With it on, each service sends over
+OTLP (HTTP/protobuf):
 
 | Signal | What |
 | --- | --- |
@@ -82,6 +87,10 @@ It leaves out `/health` requests and `pg` queries without a parent span (outbox 
 readiness checks), and replaces `token`, `ticket` and signature query parameters in
 recorded URLs with `REDACTED`, since the Pub/Sub push endpoints carry the internal secret
 as `?token=`.
+
+Each process adds a random `service.instance.id` to `OTEL_RESOURCE_ATTRIBUTES` (unless that
+sets one), so the metrics of several instances of a service, which on Cloud Run share a host
+name, stay apart.
 
 Any standard `OTEL_*` variable works, for example `OTEL_SERVICE_NAME` (otherwise
 `K_SERVICE`, then the `package.json` name, as for the logger), `OTEL_METRIC_EXPORT_INTERVAL`,
