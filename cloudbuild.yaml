@@ -217,6 +217,17 @@ steps:
       - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/agent-chat-service:latest
       - .
 
+  - id: agent-chat-tooling
+    name: gcr.io/cloud-builders/docker
+    waitFor: ["-"]
+    args:
+      - build
+      - --target=tooling
+      - -f=agent-service/chat/Dockerfile
+      - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/agent-chat-tooling:${BUILD_ID}
+      - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/agent-chat-tooling:latest
+      - .
+
   - id: agent-orchestrator-service
     name: gcr.io/cloud-builders/docker
     waitFor: ["-"]
@@ -235,6 +246,17 @@ steps:
       - -f=mandate-service/Dockerfile
       - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/mandate-service:${BUILD_ID}
       - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/mandate-service:latest
+      - .
+
+  - id: mandate-service-tooling
+    name: gcr.io/cloud-builders/docker
+    waitFor: ["-"]
+    args:
+      - build
+      - --target=tooling
+      - -f=mandate-service/Dockerfile
+      - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/mandate-service-tooling:${BUILD_ID}
+      - -t=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/mandate-service-tooling:latest
       - .
 
 
@@ -271,5 +293,9 @@ images:
   - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/mandate-service:latest
   - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/agent-chat-service:${BUILD_ID}
   - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/agent-chat-service:latest
+  - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/agent-chat-tooling:${BUILD_ID}
+  - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/agent-chat-tooling:latest
   - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/agent-orchestrator-service:${BUILD_ID}
   - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/agent-orchestrator-service:latest
+  - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/mandate-service-tooling:${BUILD_ID}
+  - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/mandate-service-tooling:latest

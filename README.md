@@ -198,6 +198,10 @@ gcloud builds submit --config cloudbuild.yaml --region asia-southeast1  # build 
 ./deploy.sh seed    # load supplier seed data (safe to repeat)
 ```
 
+Agent/Mandate database credentials and private Redis are provisioned automatically.
+Run `./deploy.sh soclass` before deploying the agent services to configure the model credentials.
+See [agent deployment](agent-service/docs/agent-deployment.md#prepare-production) for provisioning details and network overrides.
+
 ### Automatic deployment (GitHub Actions)
 
 <!-- AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-10-18.
@@ -283,6 +287,10 @@ configuration and verification. Author review: Pending. See [exact prompts and k
 Link this README from the submission slide deck.
 
 ### Rebase assistance — 2026-11-10
+
+Local redeployment assistance: Codex (GPT-6.1) reconciled already-matching agent migration
+baselines, applied additive user schema updates, and excluded a legacy token table
+from schema management to preserve local data. Author review: Pending; see [AI_USAGE_LOG.md](AI_USAGE_LOG.md).
 
 Codex (GPT-6.1) executed the approved rebase plan: preserved the original commits,
 merged onto remote main, resolved configuration conflicts, moved agent/mandate host
