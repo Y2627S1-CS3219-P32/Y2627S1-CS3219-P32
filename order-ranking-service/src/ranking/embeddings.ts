@@ -3,7 +3,7 @@
  * Scope: Text embedding providers (OpenAI embeddings API, and a keyless hashing
  * fallback for local development and tests) and the vector helpers used for ranking.
  * Author review: Pending.
- * Claude Code (Opus 5.5), 2026-11-11: the client works with any OpenAI-compatible API (SoCLaaS),
+ * Claude Code (Opus 5.5), 2026-11-11: the client works with any OpenAI-compatible API,
  * `dimensions` is optional, and responses are checked item by item, including their length
  * against the pgvector columns. Author review: Pending.
  */
@@ -22,7 +22,7 @@ export interface OpenAiCompatibleOptions {
   sendDimensions: boolean;
 }
 
-// POST {baseUrl}/embeddings on OpenAI's API or a compatible one (SoCLaaS). The response
+// POST {baseUrl}/embeddings on OpenAI's API or a compatible one. The response
 // keeps the input order through `index`. Vectors must fit the pgvector columns, so a model
 // returning another length fails here, with the length it returned, instead of in the database.
 export function openAiCompatibleEmbedder(options: OpenAiCompatibleOptions): Embedder {

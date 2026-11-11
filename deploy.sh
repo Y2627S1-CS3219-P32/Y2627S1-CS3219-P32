@@ -21,9 +21,9 @@
 # Author review: Pending.
 # Claude Code (Opus 5.5), 2026-11-11: check_observability, which stops the deploy before the
 # app services if the observability service does not take OTLP. Author review: Pending.
-# Claude Code (Opus 5.5), 2026-11-11: order-ranking-service (database, migrations, SoCLaaS
-# embeddings check, service, push subscriptions, scheduler job, frontend URL) and the
-# `soclaas-embedding` command. Author review: Pending.
+# Claude Code (Opus 5.5), 2026-11-11: order-ranking-service (database, migrations, OpenAI
+# embeddings check, service, push subscriptions, scheduler job, frontend URL) and the `openai`
+# command. Author review: Pending.
 #
 # Usage (from the repository root, after `gcloud builds submit --config cloudbuild.yaml`):
 #   ./deploy.sh setup   # one-time: Cloud SQL, databases, secrets, IAM, networking
@@ -32,7 +32,7 @@
 #   ./deploy.sh github  # one-time: let .github/workflows/deploy.yml deploy from main
 #   ./deploy.sh mailjet # securely add/update Mailjet secrets for mail-service
 #   ./deploy.sh soclass # securely configure SoC LLaaS credentials for agent-service
-#   ./deploy.sh soclaas-embedding # set the SoCLaaS embedding model for order-ranking-service
+#   ./deploy.sh openai  # securely add/update the OpenAI key for order-ranking-service
 #   OBSERVABILITY=on ./deploy.sh observability # deploy only the observability stack
 #   ./deploy.sh observability-down  # delete the observability service now (stops its cost)
 #
@@ -79,10 +79,6 @@ PUBLIC_ORIGINS="${PUBLIC_ORIGINS:-https://nusfoc.com}"
 OBSERVABILITY="${OBSERVABILITY:-off}"
 # Its buckets are <prefix>-mimir, <prefix>-loki and <prefix>-tempo (bucket names are global).
 OBSERVABILITY_BUCKET_PREFIX="${OBSERVABILITY_BUCKET_PREFIX:-${PROJECT_ID}-observability}"
-# order-ranking-service embeddings: SoCLaaS, unless the soclaas-base-url secret says otherwise.
-SOCLAAS_BASE_URL="${SOCLAAS_BASE_URL:-https://soclaas-api.comp.nus.edu.sg/v1}"
-# false for an embedding model that returns 1536 numbers itself but rejects `dimensions`.
-RANKING_EMBEDDING_SEND_DIMENSIONS="${RANKING_EMBEDDING_SEND_DIMENSIONS:-true}"
 
 REGISTRY="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPOSITORY}"
 SQL_CONNECTION="${PROJECT_ID}:${REGION}:${SQL_INSTANCE}"
@@ -101,11 +97,10 @@ require_agent_secrets() {
   done
 }
 
-# order-ranking-service embeds through SoCLaaS with the agent's key and its own model ID:
-# the agent's soclaas-model is a chat model.
+# order-ranking-service embeds with OpenAI, using its own key (not the agent's SoCLaaS key).
 require_ranking_secrets() {
-  if ! secret_exists soclaas-embedding-model; then
-    echo "Missing soclaas-embedding-model. Run './deploy.sh soclaas-embedding' first." >&2
+  if ! secret_exists openai-api-key; then
+    echo "Missing openai-api-key. Run './deploy.sh openai' first." >&2
     return 1
   fi
 }
@@ -600,8 +595,8 @@ deploy_event_services() {
   ensure_scheduler_job saga-outbox-publish "${saga_url}/internal/outbox/publish" "$saga_url"
 }
 
-# Ranks open orders for couriers (frontend "Suggested" tab). Its embeddings come from SoCLaaS,
-# checked by a one-off job before the service changes, so a wrong key, model or vector length
+# Ranks open orders for couriers (frontend "Suggested" tab). Its embeddings come from OpenAI
+# (text-embedding-3-small, 1536 numbers, the size of its vector columns), checked by a one-off job before the service changes, so a wrong key, model or vector length
 # stops the deploy with the reason. It learns orders and suppliers from events published from
 # now on (see order-ranking-service/README.md). Needs ensure_service_resources (topics,
 # scheduler identity), which deploy_event_services runs first.
@@ -614,13 +609,8 @@ deploy_ranking_service() {
   local ranking_url env secrets
   ranking_url="$(run_url order-ranking-service)"
   env="^|^PUBSUB_PROJECT_ID=${PROJECT_ID}|INTERNAL_AUDIENCE=${ranking_url}|INTERNAL_INVOKER_EMAILS=${PUBSUB_PUSH_SERVICE_ACCOUNT},${SCHEDULER_SERVICE_ACCOUNT}"
-  env="${env}|EMBEDDING_PROVIDER=openai|EMBEDDING_SEND_DIMENSIONS=${RANKING_EMBEDDING_SEND_DIMENSIONS}"
-  secrets="JWT_SECRET=jwt-secret:latest,OPENAI_API_KEY=soclaas-api-key:latest,EMBEDDING_MODEL=soclaas-embedding-model:latest"
-  if secret_exists soclaas-base-url; then
-    secrets="${secrets},OPENAI_BASE_URL=soclaas-base-url:latest"
-  else
-    env="${env}|OPENAI_BASE_URL=${SOCLAAS_BASE_URL}"
-  fi
+  env="${env}|EMBEDDING_PROVIDER=openai|OPENAI_BASE_URL=https://api.openai.com/v1|EMBEDDING_MODEL=text-embedding-3-small"
+  secrets="JWT_SECRET=jwt-secret:latest,OPENAI_API_KEY=openai-api-key:latest"
 
   # One embedding request with the settings below; retried twice for a passing provider error.
   run run jobs deploy order-ranking-embeddings-check --region "$REGION" \
@@ -1024,23 +1014,22 @@ configure_soclass() {
   echo "SoC LLaaS settings saved to Secret Manager. Run './deploy.sh' to deploy agent-orchestrator-service."
 }
 
-# The SoCLaaS model order-ranking-service embeds with: an ID from GET <base URL>/models that
-# supports embeddings and returns 1536 numbers (or accepts `dimensions`). Not a secret, but kept
-# with the other SoCLaaS settings.
-configure_soclaas_embedding() {
+# The OpenAI API key order-ranking-service embeds with, typed hidden (never on the command line).
+configure_openai() {
   if [ ! -t 0 ]; then
-    echo "Run './deploy.sh soclaas-embedding' in an interactive terminal." >&2
+    echo "Run './deploy.sh openai' in an interactive terminal to enter the OpenAI key securely." >&2
     return 1
   fi
-  local model
-  read -r -p "SoCLaaS embedding model ID: " model
-  if [ -z "$model" ]; then
-    echo "A model ID is required; no secrets were changed." >&2
+  local api_key
+  read -r -s -p "OpenAI API key: " api_key
+  printf '\n' >&2
+  if [ -z "$api_key" ]; then
+    echo "An API key is required; no secrets were changed." >&2
     return 1
   fi
-  store_secret soclaas-embedding-model "$model" >/dev/null
-  unset model
-  echo "Saved soclaas-embedding-model. The next './deploy.sh' checks it before deploying order-ranking-service."
+  store_secret openai-api-key "$api_key" >/dev/null
+  unset api_key
+  echo "Saved openai-api-key. The next './deploy.sh' checks it before deploying order-ranking-service."
 }
 
 seed() {
@@ -1057,7 +1046,7 @@ case "${1:-deploy}" in
   github) github_ci ;;
   mailjet) configure_mailjet ;;
   soclass) configure_soclass ;;
-  soclaas-embedding) configure_soclaas_embedding ;;
+  openai) configure_openai ;;
   observability-down) remove_observability ;;
-  *) echo "Usage: $0 [setup|deploy|agent-services|observability|seed|github|mailjet|soclass|soclaas-embedding|observability-down]" >&2; exit 1 ;;
+  *) echo "Usage: $0 [setup|deploy|agent-services|observability|seed|github|mailjet|soclass|openai|observability-down]" >&2; exit 1 ;;
 esac

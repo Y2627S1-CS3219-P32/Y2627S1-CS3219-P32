@@ -1,7 +1,7 @@
 <!-- AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-10-31.
 Scope: Order-ranking-service design, setup, endpoint and event documentation. Author review: Pending.
 Claude Code (Opus 5.5), 2026-11-01. Scope: Delivered history, supplier re-embedding and the time reason. Author review: Pending.
-Claude Code (Opus 5.5), 2026-11-11. Scope: OpenAI-compatible embeddings (SoCLaaS in production), the embeddings check and the Cloud deployment. Author review: Pending. -->
+Claude Code (Opus 5.5), 2026-11-11. Scope: OpenAI-compatible embeddings (OpenAI in production), the embeddings check and the Cloud deployment. Author review: Pending. -->
 # Order Ranking Service
 
 Smart request-to-courier matching (nice-to-have). Ranks open orders for each courier
@@ -20,8 +20,8 @@ npm run dev
    service's copy of the order (only a newer `sequence` applies). `supplier-events` give
    each supplier's pickup coordinates, type and building (latest version only).
 2. **Embedding.** Each order's title, description and pickup place are embedded as 1536
-   numbers through an OpenAI-compatible `POST /embeddings` API: SoCLaaS in production,
-   OpenAI `text-embedding-3-small` by default locally. This runs in the background, never
+   numbers by OpenAI `text-embedding-3-small` (any OpenAI-compatible `POST /embeddings` API
+   can be configured; without a key, locally, a hashing stand-in). This runs in the background, never
    inside the event handler, so a provider outage cannot hold up order events. Failures back off
    1, 2, 4… minutes, up to `EMBEDDING_MAX_ATTEMPTS`. The order is embedded again when
    its title, description or supplier changes, and when its supplier arrives later or
@@ -85,9 +85,9 @@ The frontend joins each `orderId` with the order from order-service.
 | `DATABASE_URL` | Ranking database with pgvector (Compose: `postgres://ranking:ranking@localhost:5441/rankings`) |
 | `JWT_SECRET` | Same secret as user-service; tokens are verified locally |
 | `PORT` | Defaults to `3000` (Compose publishes it on host port `3007`) |
-| `OPENAI_API_KEY` | Key for the embeddings API (in production, the SoCLaaS key). Without it, a keyless hashing embedder is used, which only matches shared words |
+| `OPENAI_API_KEY` | Key for the embeddings API (in production, the `openai-api-key` secret). Without it, a keyless hashing embedder is used, which only matches shared words |
 | `EMBEDDING_PROVIDER` | `openai` (any OpenAI-compatible API) or `hashing`; defaults to `openai` when a key is set. deploy.sh sets `openai`, so a missing key fails at startup instead of falling back to hashing |
-| `OPENAI_BASE_URL` | Default `https://api.openai.com/v1`; SoCLaaS is `https://soclaas-api.comp.nus.edu.sg/v1` |
+| `OPENAI_BASE_URL` | Default `https://api.openai.com/v1`; another OpenAI-compatible API also works |
 | `EMBEDDING_MODEL` | Default `text-embedding-3-small`, but required with any other `OPENAI_BASE_URL`: an embeddings-capable model ID from `GET <base URL>/models` |
 | `EMBEDDING_SEND_DIMENSIONS` | Default `true`: requests ask for `dimensions: 1536`. Set `false` for a model that returns 1536 numbers itself but rejects the parameter |
 | `EMBEDDING_MAX_ATTEMPTS`, `EMBEDDING_BATCH_SIZE` | Default `5` and `50` |
@@ -111,9 +111,8 @@ migrations (which create the pgvector extension), checks the embeddings, then de
 `order-ranking-service` with internal ingress, Google OIDC for its internal routes, push
 subscriptions on `order-events` and `supplier-events`, and a Cloud Scheduler job calling
 `/internal/embeddings/process` every minute. The frontend gets its URL as
-`NUXT_ORDER_RANKING_SERVICE_BASE_URL`. The embeddings use the agent's `soclaas-api-key` (and
-`soclaas-base-url` if set) and their own model, in the `soclaas-embedding-model` secret:
-`./deploy.sh soclaas-embedding` stores it.
+`NUXT_ORDER_RANKING_SERVICE_BASE_URL`. The embeddings use OpenAI `text-embedding-3-small`
+(1536 numbers) with the key in the `openai-api-key` secret, which `./deploy.sh openai` stores.
 
 The service learns orders and suppliers only from events published after its subscriptions
 exist; Pub/Sub does not replay older ones. On a system that already has data, orders and

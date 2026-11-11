@@ -3,7 +3,7 @@
  * Scope: Order-ranking-service environment configuration: auth and Pub/Sub as in
  * order-service, the embedding provider, and the ranking weights and reason thresholds.
  * Author review: Pending.
- * Claude Code (Opus 5.5), 2026-11-11: any OpenAI-compatible embeddings API (SoCLaaS in
+ * Claude Code (Opus 5.5), 2026-11-11: any OpenAI-compatible embeddings API (OpenAI itself in
  * production): EMBEDDING_MODEL is required away from OpenAI's API, and sending `dimensions` can
  * be turned off. Author review: Pending.
  */
@@ -47,7 +47,7 @@ if (provider === "openai" && !openaiApiKey) {
   throw new Error("OPENAI_API_KEY is required when EMBEDDING_PROVIDER is openai");
 }
 
-// "openai" means any OpenAI-compatible POST /embeddings API, such as SoCLaaS.
+// "openai" means OpenAI's API or any OpenAI-compatible POST /embeddings API.
 const OPENAI_BASE_URL = "https://api.openai.com/v1";
 const openaiBaseUrl = (process.env.OPENAI_BASE_URL || OPENAI_BASE_URL).replace(/\/+$/, "");
 const embeddingModel = process.env.EMBEDDING_MODEL || undefined;

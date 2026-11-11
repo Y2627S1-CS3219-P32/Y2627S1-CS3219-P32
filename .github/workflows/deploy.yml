@@ -11,8 +11,7 @@
 # Claude Code (Opus 5.5), 2026-11-11: a `checks` job (about 3 minutes) that must pass before
 # the image build starts. Author review: Pending.
 # Claude Code (Opus 5.5), 2026-11-11: order-ranking-service's database-free tests (its embeddings
-# client and ranking scores) in `checks`, and the RANKING_EMBEDDING_SEND_DIMENSIONS repository
-# variable for deploy.sh. Author review: Pending.
+# client and ranking scores) in `checks`. Author review: Pending.
 name: Deploy to Google Cloud
 
 on:
@@ -72,7 +71,7 @@ jobs:
           npm run test:boundaries
           npm run test:contracts
 
-      # The SoCLaaS embeddings client against a local stand-in, and the ranking scores.
+      # The OpenAI embeddings client against a local stand-in, and the ranking scores.
       - name: Order ranking tests
         working-directory: order-ranking-service
         run: |
@@ -125,8 +124,6 @@ jobs:
           TAG: ${{ steps.build.outputs.tag }}
           # About US$0.50 an hour while on; off deletes the observability service.
           OBSERVABILITY: ${{ vars.OBSERVABILITY || 'off' }}
-          # false only for an embedding model that rejects the `dimensions` parameter.
-          RANKING_EMBEDDING_SEND_DIMENSIONS: ${{ vars.RANKING_EMBEDDING_SEND_DIMENSIONS || 'true' }}
 
       - name: Seed supplier data
         if: inputs.seed

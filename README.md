@@ -217,20 +217,16 @@ See [agent deployment](agent-service/docs/agent-deployment.md#prepare-production
 
 <!-- Claude Code (Opus 5.5), 2026-11-11: order ranking deployment. Author review: Pending. -->
 `./deploy.sh` also deploys order-ranking-service (the frontend's suggested orders), which embeds
-order text through SoCLaaS with the same `soclaas-api-key` (and `soclaas-base-url`, if set). It
-needs its own embedding model, since `soclaas-model` is a chat model. Once, before the deploy:
-
-1. List the models your key can use, from a terminal with the key in `SOCLAAS_API_KEY`:
-   `curl -s https://soclaas-api.comp.nus.edu.sg/v1/models -H "Authorization: Bearer $SOCLAAS_API_KEY"`.
-   Pick one that supports embeddings and returns 1536 numbers (or accepts `dimensions`).
-2. `./deploy.sh soclaas-embedding` and enter that model ID.
+order text with OpenAI `text-embedding-3-small` (1536 numbers). It needs its own OpenAI API key,
+separate from the agent's SoCLaaS settings. Once, before the deploy, run `./deploy.sh openai` in an
+interactive terminal and type the key when prompted; it is hidden while typing and stored as the
+`openai-api-key` secret. Without it, `./deploy.sh` stops before changing anything.
 
 Each deploy then creates the `rankings` database (with pgvector) if needed, runs its migrations,
-makes one embedding request with these settings (stopping with the reason if the key, model or
-vector length is wrong), and deploys the service, its `order-events` and `supplier-events`
-subscriptions and an every-minute embedding retry job. If the model returns 1536 numbers but
-rejects `dimensions`, deploy with `RANKING_EMBEDDING_SEND_DIMENSIONS=false`. The service learns
-orders and suppliers from events published after its first deploy; see
+makes one embedding request with these settings (stopping with the reason if the key or vector
+length is wrong), and deploys the service, its `order-events` and `supplier-events`
+subscriptions and an every-minute embedding retry job. The service learns orders and suppliers
+from events published after its first deploy; see
 [its README](order-ranking-service/README.md#cloud-deployment).
 
 ### Observability on Cloud Run

@@ -1,9 +1,9 @@
 /**
  * AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-11-11.
- * Scope: The OpenAI-compatible embeddings client (as used with SoCLaaS) against a local
- * stand-in server: request shape, `dimensions` on and off, response order and validation,
- * vector length against the pgvector columns; the embedding configuration rules; and the
- * deploy-time embeddings:check script. No database or real provider is used.
+ * Scope: The OpenAI embeddings client against a local stand-in server: request shape,
+ * `dimensions` on and off, response order and validation, vector length against the pgvector
+ * columns; the embedding configuration rules, including deploy.sh's production settings; and
+ * the deploy-time embeddings:check script. No database or real provider is used.
  * Author review: Pending.
  */
 import assert from "node:assert/strict";
@@ -118,17 +118,26 @@ test("configuration: keyless local use still falls back to hashing", async () =>
   assert.equal(config.provider, "hashing");
 });
 
-test("configuration: an OpenAI-compatible base URL needs an explicit model", async () => {
-  const soclaas = { EMBEDDING_PROVIDER: "openai", OPENAI_API_KEY: API_KEY, OPENAI_BASE_URL: "https://soclaas-api.comp.nus.edu.sg/v1/" };
-  assert.match((await loadConfig(soclaas)).error, /EMBEDDING_MODEL is required .*GET https:\/\/soclaas-api\.comp\.nus\.edu\.sg\/v1\/models/);
-
-  const { config } = await loadConfig({ ...soclaas, EMBEDDING_MODEL: "an-embedding-model" });
+test("configuration: deploy.sh's production settings give OpenAI text-embedding-3-small at 1536", async () => {
+  // As set by deploy_ranking_service, with OPENAI_API_KEY from the openai-api-key secret.
+  const production = { EMBEDDING_PROVIDER: "openai", OPENAI_API_KEY: API_KEY, OPENAI_BASE_URL: "https://api.openai.com/v1", EMBEDDING_MODEL: "text-embedding-3-small" };
+  const { config } = await loadConfig(production);
   assert.equal(config.provider, "openai");
-  assert.equal(config.openaiBaseUrl, "https://soclaas-api.comp.nus.edu.sg/v1");
-  assert.equal(config.model, "an-embedding-model");
+  assert.equal(config.openaiBaseUrl, "https://api.openai.com/v1");
+  assert.equal(config.model, "text-embedding-3-small");
   assert.equal(config.sendDimensions, true);
-  assert.equal((await loadConfig({ ...soclaas, EMBEDDING_MODEL: "m", EMBEDDING_SEND_DIMENSIONS: "false" })).config.sendDimensions, false);
-  assert.match((await loadConfig({ ...soclaas, EMBEDDING_MODEL: "m", EMBEDDING_SEND_DIMENSIONS: "no" })).error, /EMBEDDING_SEND_DIMENSIONS must be true or false/);
+  // Without the key it stops at startup rather than falling back to hashing.
+  assert.match((await loadConfig({ ...production, OPENAI_API_KEY: "" })).error, /OPENAI_API_KEY is required/);
+});
+
+test("configuration: another OpenAI-compatible base URL needs an explicit model", async () => {
+  const compatible = { EMBEDDING_PROVIDER: "openai", OPENAI_API_KEY: API_KEY, OPENAI_BASE_URL: "https://embeddings.example.test/v1/" };
+  assert.match((await loadConfig(compatible)).error, /EMBEDDING_MODEL is required .*GET https:\/\/embeddings\.example\.test\/v1\/models/);
+  const { config } = await loadConfig({ ...compatible, EMBEDDING_MODEL: "an-embedding-model" });
+  assert.equal(config.openaiBaseUrl, "https://embeddings.example.test/v1");
+  assert.equal(config.model, "an-embedding-model");
+  assert.equal((await loadConfig({ ...compatible, EMBEDDING_MODEL: "m", EMBEDDING_SEND_DIMENSIONS: "false" })).config.sendDimensions, false);
+  assert.match((await loadConfig({ ...compatible, EMBEDDING_MODEL: "m", EMBEDDING_SEND_DIMENSIONS: "no" })).error, /EMBEDDING_SEND_DIMENSIONS must be true or false/);
 });
 
 test("configuration: the openai provider without a key fails instead of hashing", async () => {
