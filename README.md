@@ -215,6 +215,20 @@ Agent/Mandate database credentials and private Redis are provisioned automatical
 Run `./deploy.sh soclass` before deploying the agent services to configure the model credentials.
 See [agent deployment](agent-service/docs/agent-deployment.md#prepare-production) for provisioning details and network overrides.
 
+<!-- Claude Code (Opus 5.5), 2026-11-11: order ranking deployment. Author review: Pending. -->
+`./deploy.sh` also deploys order-ranking-service (the frontend's suggested orders), which embeds
+order text with OpenAI `text-embedding-3-small` (1536 numbers). It needs its own OpenAI API key,
+separate from the agent's SoCLaaS settings. Once, before the deploy, run `./deploy.sh openai` in an
+interactive terminal and type the key when prompted; it is hidden while typing and stored as the
+`openai-api-key` secret. Without it, `./deploy.sh` stops before changing anything.
+
+Each deploy then creates the `rankings` database (with pgvector) if needed, runs its migrations,
+makes one embedding request with these settings (stopping with the reason if the key or vector
+length is wrong), and deploys the service, its `order-events` and `supplier-events`
+subscriptions and an every-minute embedding retry job. The service learns orders and suppliers
+from events published after its first deploy; see
+[its README](order-ranking-service/README.md#cloud-deployment).
+
 ### Observability on Cloud Run
 
 <!-- AI Assistance Disclosure: Claude Code (Opus 5.5), 2026-11-10.

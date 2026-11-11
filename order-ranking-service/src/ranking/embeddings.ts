@@ -3,6 +3,9 @@
  * Scope: Text embedding providers (OpenAI embeddings API, and a keyless hashing
  * fallback for local development and tests) and the vector helpers used for ranking.
  * Author review: Pending.
+ * Claude Code (Opus 5.5), 2026-11-11: the client works with any OpenAI-compatible API,
+ * `dimensions` is optional, and responses are checked item by item, including their length
+ * against the pgvector columns. Author review: Pending.
  */
 import { config } from "../config.js";
 import { EMBEDDING_DIMENSIONS } from "../db/schema.js";
@@ -11,30 +14,60 @@ export type Embedder = (texts: string[]) => Promise<number[][]>;
 
 export class EmbeddingError extends Error {}
 
-// POST /v1/embeddings; the response keeps the input order through `index`.
-const openaiEmbedder: Embedder = async (texts) => {
-  const response = await fetch(`${config.embedding.openaiBaseUrl}/embeddings`, {
-    method: "POST",
-    headers: {
-      authorization: `Bearer ${config.embedding.openaiApiKey}`,
-      "content-type": "application/json",
-    },
-    body: JSON.stringify({ model: config.embedding.model, input: texts, dimensions: EMBEDDING_DIMENSIONS }),
-    signal: AbortSignal.timeout(15_000),
-  });
-  if (!response.ok) {
-    // The body explains the failure (bad key, quota) and never contains the key.
-    const detail = (await response.text()).slice(0, 300);
-    throw new EmbeddingError(`OpenAI embeddings returned ${response.status}: ${detail}`);
-  }
-  const body = await response.json() as { data?: { index: number; embedding: number[] }[] };
-  const vectors: number[][] = new Array(texts.length);
-  for (const item of body.data ?? []) vectors[item.index] = item.embedding;
-  if (vectors.length !== texts.length || vectors.some((vector) => vector?.length !== EMBEDDING_DIMENSIONS)) {
-    throw new EmbeddingError("OpenAI embeddings returned an unexpected response");
-  }
-  return vectors;
-};
+export interface OpenAiCompatibleOptions {
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+  // Send `dimensions: EMBEDDING_DIMENSIONS`; not every model or provider accepts it.
+  sendDimensions: boolean;
+}
+
+// POST {baseUrl}/embeddings on OpenAI's API or a compatible one. The response
+// keeps the input order through `index`. Vectors must fit the pgvector columns, so a model
+// returning another length fails here, with the length it returned, instead of in the database.
+export function openAiCompatibleEmbedder(options: OpenAiCompatibleOptions): Embedder {
+  const url = `${options.baseUrl}/embeddings`;
+  return async (texts) => {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${options.apiKey}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        model: options.model,
+        input: texts,
+        ...(options.sendDimensions ? { dimensions: EMBEDDING_DIMENSIONS } : {}),
+      }),
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!response.ok) {
+      // The body explains the failure (bad key, quota, unsupported model) and never contains the key.
+      const detail = (await response.text()).slice(0, 300);
+      throw new EmbeddingError(`Embeddings API (${url}, model ${options.model}) returned ${response.status}: ${detail}`);
+    }
+    const body = await response.json() as { data?: { index?: unknown; embedding?: unknown }[] };
+    const vectors: number[][] = new Array(texts.length);
+    for (const item of Array.isArray(body.data) ? body.data : []) {
+      if (!Number.isSafeInteger(item.index) || (item.index as number) < 0 || (item.index as number) >= texts.length) {
+        throw new EmbeddingError(`Embeddings API returned an item with an unexpected index: ${String(item.index)}`);
+      }
+      if (!Array.isArray(item.embedding) || !item.embedding.every((value) => typeof value === "number" && Number.isFinite(value))) {
+        throw new EmbeddingError("Embeddings API returned an embedding that is not a list of numbers");
+      }
+      if (item.embedding.length !== EMBEDDING_DIMENSIONS) {
+        throw new EmbeddingError(`Model ${options.model} returned ${item.embedding.length}-dimensional embeddings; ` +
+          `the database stores ${EMBEDDING_DIMENSIONS}. Use a model that returns ${EMBEDDING_DIMENSIONS} ` +
+          `(or accepts the dimensions parameter), or migrate the vector columns.`);
+      }
+      vectors[item.index as number] = item.embedding as number[];
+    }
+    for (let index = 0; index < texts.length; index++) {
+      if (!vectors[index]) throw new EmbeddingError(`Embeddings API returned no embedding for input ${index}`);
+    }
+    return vectors;
+  };
+}
 
 const STOP_WORDS = new Set([
   "a", "an", "and", "are", "as", "at", "be", "by", "can", "for", "from", "get", "i", "in", "is", "it",
@@ -70,7 +103,14 @@ export function hashingEmbedding(text: string): number[] {
 
 const hashingEmbedder: Embedder = async (texts) => texts.map(hashingEmbedding);
 
-let embedder: Embedder = config.embedding.provider === "openai" ? openaiEmbedder : hashingEmbedder;
+let embedder: Embedder = config.embedding.provider === "openai"
+  ? openAiCompatibleEmbedder({
+    baseUrl: config.embedding.openaiBaseUrl,
+    apiKey: config.embedding.openaiApiKey!,
+    model: config.embedding.model,
+    sendDimensions: config.embedding.sendDimensions,
+  })
+  : hashingEmbedder;
 
 export function embed(texts: string[]): Promise<number[][]> {
   return embedder(texts);

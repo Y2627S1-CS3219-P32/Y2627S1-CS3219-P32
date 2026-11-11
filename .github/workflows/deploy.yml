@@ -10,6 +10,8 @@
 # off) deploys or removes the observability stack; see README.md. Author review: Pending.
 # Claude Code (Opus 5.5), 2026-11-11: a `checks` job (about 3 minutes) that must pass before
 # the image build starts. Author review: Pending.
+# Claude Code (Opus 5.5), 2026-11-11: order-ranking-service's database-free tests (its embeddings
+# client and ranking scores) in `checks`. Author review: Pending.
 name: Deploy to Google Cloud
 
 on:
@@ -68,6 +70,14 @@ jobs:
           npm test --workspace mandate-service
           npm run test:boundaries
           npm run test:contracts
+
+      # The OpenAI embeddings client against a local stand-in, and the ranking scores.
+      - name: Order ranking tests
+        working-directory: order-ranking-service
+        run: |
+          npm ci
+          npm run build
+          node --test test/embeddings.test.mjs test/score.test.mjs
 
   deploy:
     needs: checks

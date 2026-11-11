@@ -6,7 +6,9 @@
 # context too. Author review: Pending.
 # Claude Code (Opus 5.5), 2026-11-10: sync-service and order-ranking-service images, and their
 # migration (tooling) images, with the `shared` build context (logger, telemetry, Pub/Sub
-# messaging). deploy.sh does not deploy them yet. Author review: Pending.
+# messaging). Author review: Pending.
+# Claude Code (Opus 5.5), 2026-11-11: deploy.sh now deploys order-ranking-service (and runs its
+# tooling image's migrations); it does not deploy sync-service yet. Author review: Pending.
 # Claude Code (Opus 5.5), 2026-11-10: the observability stack's images (observability/Dockerfile,
 # one target each), which deploy.sh runs as one service with OBSERVABILITY=on.
 # Author review: Pending.
